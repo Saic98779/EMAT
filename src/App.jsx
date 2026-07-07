@@ -6,13 +6,14 @@ import Login from './pages/Login'
 import GtDashboard from './pages/gt/GtDashboard'
 import IndustryAssociations from './pages/gt/IndustryAssociations'
 import ProposalDetail from './pages/gt/ProposalDetail'
-import NewProposal from './pages/gt/NewProposal'
+import InPrincipleApproval from './pages/gt/InPrincipleApproval'
 import BseTeam from './pages/gt/BseTeam'
 import Attendance from './pages/gt/Attendance'
 import Disbursals from './pages/gt/Disbursals'
 
 import SdeDashboard from './pages/sde/SdeDashboard'
 import ApprovalQueue from './pages/sde/ApprovalQueue'
+import Appraisal from './pages/sde/Appraisal'
 
 import BseDashboard from './pages/bse/BseDashboard'
 import MyFieldVisits from './pages/bse/MyFieldVisits'
@@ -38,7 +39,7 @@ export default function App() {
       <Route element={<Protected role="gt"><AppLayout /></Protected>}>
         <Route path="/gt" element={<GtDashboard />} />
         <Route path="/gt/ias" element={<IndustryAssociations />} />
-        <Route path="/gt/ias/new" element={<NewProposal />} />
+        <Route path="/gt/ias/new" element={<InPrincipleApproval />} />
         <Route path="/gt/ias/:id" element={<ProposalDetail />} />
         <Route path="/gt/team" element={<BseTeam />} />
         <Route path="/gt/attendance" element={<Attendance />} />
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/sde/queue" element={<ApprovalQueue />} />
         <Route path="/sde/ias" element={<IndustryAssociations basePath="/sde/ias" />} />
         <Route path="/sde/ias/:id" element={<ProposalDetail backPath="/sde/ias" />} />
+        <Route path="/sde/ias/:id/appraisal" element={<Appraisal />} />
         <Route path="/sde/disbursals" element={<Disbursals role="sde" />} />
       </Route>
 

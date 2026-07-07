@@ -23,7 +23,7 @@ export default function GtDashboard() {
         action={
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/gt/ias/new')}
             sx={{ bgcolor: 'common.white', color: 'primary.dark', '&:hover': { bgcolor: 'grey.100' } }}>
-            New Basic Proposal
+            In-Principle Approval
           </Button>
         }
       />

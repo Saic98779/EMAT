@@ -16,9 +16,9 @@ import RouteOutlinedIcon from '@mui/icons-material/RouteOutlined'
 import SearchIcon from '@mui/icons-material/Search'
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone'
 import LogoutIcon from '@mui/icons-material/Logout'
-import VerifiedIcon from '@mui/icons-material/Verified'
 import MenuIcon from '@mui/icons-material/Menu'
 import { useAuth } from '../auth'
+import Logo from './Logo'
 
 const DRAWER_WIDTH = 260
 
@@ -32,7 +32,7 @@ const ICONS = {
 export const NAV = {
   gt: [
     { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'Dashboard' },
-    { icon: 'doc', label: 'Industry Associations', path: '/gt/ias', overline: 'Industry Associations', title: 'Industry Associations' },
+    { icon: 'doc', label: 'IA Onboarding', path: '/gt/ias', overline: 'Industry Association Onboarding', title: 'Industry Association Onboarding' },
     { icon: 'groups', label: 'BSE Team', path: '/gt/team', overline: 'Team', title: 'BSE team' },
     { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', badge: 2, overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/gt/disbursals', badge: 2, overline: 'Field ops', title: 'Disbursals' },
@@ -67,11 +67,11 @@ export default function AppLayout() {
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Toolbar sx={{ gap: 1.5 }}>
-        <Avatar variant="rounded" sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}><VerifiedIcon fontSize="small" /></Avatar>
+      <Toolbar sx={{ gap: 1.25 }}>
+        <Logo size={40} />
         <Box>
-          <Typography fontWeight={700} lineHeight={1}>eMAT</Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.12em' }}>PORTAL</Typography>
+          <Typography fontWeight={800} lineHeight={1} color="primary.dark">eMAT</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.14em' }}>PORTAL</Typography>
         </Box>
       </Toolbar>
       <Divider />

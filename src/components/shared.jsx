@@ -49,7 +49,7 @@ export function GreetingBanner({ date, greeting, subtitle, action, badge }) {
   return (
     <Card sx={{
       mb: 3, color: 'common.white', position: 'relative', overflow: 'hidden', border: 0,
-      background: (t) => `linear-gradient(120deg, ${t.palette.primary.dark} 0%, #1e3a8a 55%, ${t.palette.secondary.dark} 130%)`,
+      background: (t) => `linear-gradient(120deg, ${t.palette.primary.dark} 0%, #0d3a52 55%, ${t.palette.success.dark} 135%)`,
     }}>
       {/* decorative rings */}
       <Box sx={{ position: 'absolute', right: -60, top: -60, width: 220, height: 220, borderRadius: '50%', bgcolor: alpha('#fff', 0.06) }} />

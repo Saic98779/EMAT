@@ -6,8 +6,8 @@ import {
   Divider, Chip,
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import VerifiedIcon from '@mui/icons-material/Verified'
 import LoginIcon from '@mui/icons-material/Login'
+import Logo from '../components/Logo'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import GppGoodOutlinedIcon from '@mui/icons-material/GppGoodOutlined'
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
@@ -36,7 +36,7 @@ function Hero() {
       background: (t) => `linear-gradient(150deg, ${t.palette.primary.dark} 0%, #0b1e46 55%, ${t.palette.secondary.dark} 130%)`,
     }}>
       <Stack direction="row" spacing={1.5} alignItems="center">
-        <Avatar variant="rounded" sx={{ width: 46, height: 46, bgcolor: alpha('#fff', 0.14) }}><VerifiedIcon /></Avatar>
+        <Box sx={{ bgcolor: '#fff', borderRadius: 2, p: 0.75, display: 'flex' }}><Logo size={44} /></Box>
         <Box>
           <Typography fontWeight={800} fontSize="1.35rem" lineHeight={1}>eMAT</Typography>
           <Typography variant="caption" sx={{ letterSpacing: '0.22em', color: alpha('#fff', 0.6) }}>PORTAL</Typography>

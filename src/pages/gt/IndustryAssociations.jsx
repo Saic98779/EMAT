@@ -13,10 +13,10 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   return (
     <Box>
       <PageHeader
-        title="Industry Associations"
+        title={isGt ? 'Industry Association Onboarding' : 'Industry Associations'}
         subtitle={`${industryAssociations.length} associations across the appraisal pipeline`}
         action={isGt && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/gt/ias/new')}>New Basic Proposal</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/gt/ias/new')}>In-Principle Approval</Button>
         )}
       />
 
