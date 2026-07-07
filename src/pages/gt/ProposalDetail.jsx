@@ -4,6 +4,7 @@ import {
   Divider, Chip,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import EastIcon from '@mui/icons-material/East'
 import { StatusChip, SectionCard, Mono } from '../../components/shared'
 import { industryAssociations } from '../../data'
 import { monoFont } from '../../theme'
@@ -36,6 +37,7 @@ function Contact({ label, person }) {
 export default function ProposalDetail({ backPath = '/gt/ias' }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const isGt = backPath.startsWith('/gt')
   const ia = industryAssociations.find((x) => x.id === id)
 
   if (!ia) return <Typography>Association not found.</Typography>
@@ -50,6 +52,12 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
           <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" mb={3}>
             <Typography variant="h5">{ia.name}</Typography>
             <StatusChip status={ia.status} />
+            {isGt && ia.stage === 1 && (
+              <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
+                onClick={() => navigate(`/gt/ias/${ia.id}/appraisal`)}>
+                {ia.status === 'Changes Requested' ? 'Revise detailed appraisal' : 'Continue detailed appraisal'}
+              </Button>
+            )}
           </Stack>
           <Mono>{ia.id} · {ia.sector} · est. {ia.est}</Mono>
           <Stepper activeStep={ia.stage} alternativeLabel sx={{ mt: 3 }}>

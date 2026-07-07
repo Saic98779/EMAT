@@ -183,12 +183,12 @@ export const gtStats = {
     { icon: 'team', value: 4, label: 'Team requests', accent: 'secondary', delta: { dir: 'down', text: '-1 vs last wk' } },
   ],
   attention: [
-    { title: 'Enter detailed proposal — Pune Auto Components Cluster', meta: 'IA-2047 · basic approved by SDE', badge: 'Action', icon: 'proposal' },
-    { title: 'Revise & resubmit — Rajkot Engineering Cluster', meta: 'IA-2044 · changes requested', badge: 'Revise', icon: 'proposal' },
-    { title: 'Approve disbursal — ₹6,200', meta: 'DSB-344 · Arjun Nair · Travel & Per-diem', badge: 'L1', icon: 'money' },
-    { title: 'Approve disbursal — ₹8,450', meta: 'DSB-341 · Ravi Kumar · Travel & Per-diem', badge: 'L1', icon: 'money' },
-    { title: 'Approve attendance — Ravi Kumar', meta: 'ATT-216 · Tirupur Knitwear Cluster', badge: 'L1', icon: 'calendar' },
-    { title: 'Approve attendance — Meena Joshi', meta: 'ATT-218 · Bhosari MIDC, Pune', badge: 'L1', icon: 'calendar' },
+    { title: 'Enter detailed appraisal — Pune Auto Components Cluster', meta: 'IA-2047 · basic approved by SDE', badge: 'Action', icon: 'proposal', to: '/gt/ias/IA-2047/appraisal' },
+    { title: 'Revise & resubmit — Rajkot Engineering Cluster', meta: 'IA-2044 · changes requested', badge: 'Revise', icon: 'proposal', to: '/gt/ias/IA-2044/appraisal' },
+    { title: 'Approve disbursal — ₹6,200', meta: 'DSB-344 · Arjun Nair · Travel & Per-diem', badge: 'L1', icon: 'money', to: '/gt/disbursals' },
+    { title: 'Approve disbursal — ₹8,450', meta: 'DSB-341 · Ravi Kumar · Travel & Per-diem', badge: 'L1', icon: 'money', to: '/gt/disbursals' },
+    { title: 'Approve attendance — Ravi Kumar', meta: 'ATT-216 · Tirupur Knitwear Cluster', badge: 'L1', icon: 'calendar', to: '/gt/attendance' },
+    { title: 'Approve attendance — Meena Joshi', meta: 'ATT-218 · Bhosari MIDC, Pune', badge: 'L1', icon: 'calendar', to: '/gt/attendance' },
   ],
   pipeline: [
     { label: 'Basic in review', value: 2, total: 6, color: 'warning' },

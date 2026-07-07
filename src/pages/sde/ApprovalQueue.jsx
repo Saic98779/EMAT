@@ -36,9 +36,7 @@ export default function ApprovalQueue() {
                 <Stack direction="row" spacing={1} alignItems="center">
                   <StatusChip status={q.badge} />
                   {q.iaId && <Button variant="outlined" size="small" onClick={() => navigate(`/sde/ias/${q.iaId}`)}>Open</Button>}
-                  {q.action === 'Final review'
-                    ? <Button variant="contained" size="small" onClick={() => navigate(`/sde/ias/${q.iaId}/appraisal`)}>{q.action}</Button>
-                    : <Button variant="contained" size="small" onClick={() => setReview(q)}>{q.action}</Button>}
+                  <Button variant="contained" size="small" onClick={() => setReview(q)}>{q.action}</Button>
                 </Stack>
               </Stack>
             </CardContent>

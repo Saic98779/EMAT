@@ -42,7 +42,8 @@ export default function GtDashboard() {
                 const Icon = iconMap[a.icon]
                 const color = statusColor(a.badge)
                 return (
-                  <Stack key={a.title} direction="row" alignItems="center" spacing={2} sx={{ py: 1.5, px: 1, mx: -1, borderRadius: 2, transition: 'background .15s', '&:hover': { bgcolor: 'action.hover' } }}>
+                  <Stack key={a.title} direction="row" alignItems="center" spacing={2} onClick={() => a.to && navigate(a.to)}
+                    sx={{ py: 1.5, px: 1, mx: -1, borderRadius: 2, cursor: a.to ? 'pointer' : 'default', transition: 'background .15s', '&:hover': { bgcolor: 'action.hover' } }}>
                     <Avatar variant="rounded" sx={{ bgcolor: `${color === 'default' ? 'primary' : color}.light`, color: `${color === 'default' ? 'primary' : color}.dark`, width: 40, height: 40 }}>
                       <Icon fontSize="small" />
                     </Avatar>
