@@ -2,13 +2,14 @@ import { useNavigate } from 'react-router-dom'
 import { Box, Card, CardContent, Stack, Typography, Button } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
-import { disbursals } from '../../data'
+import { useData } from '../../store'
 import { monoFont } from '../../theme'
 
 const inr = (n) => '₹' + n.toLocaleString('en-IN')
 
 export default function BseDisbursals() {
   const navigate = useNavigate()
+  const { disbursals } = useData()
   return (
     <Box>
       <PageHeader

@@ -6,7 +6,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EastIcon from '@mui/icons-material/East'
 import { StatusChip, SectionCard, Mono } from '../../components/shared'
-import { industryAssociations } from '../../data'
+import { useData } from '../../store'
 import { monoFont } from '../../theme'
 
 const STEPS = ['Basic appraisal (L1)', 'Detailed proposal', 'Final approval (L2)']
@@ -38,7 +38,8 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const isGt = backPath.startsWith('/gt')
-  const ia = industryAssociations.find((x) => x.id === id)
+  const { ias } = useData()
+  const ia = ias.find((x) => x.id === id)
 
   if (!ia) return <Typography>Association not found.</Typography>
   const d = ia.detailed

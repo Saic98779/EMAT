@@ -4,14 +4,14 @@ import {
 } from '@mui/material'
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
-import { attendanceRequests } from '../../data'
+import { useData } from '../../store'
 
 export default function Attendance() {
-  const [items, setItems] = useState(attendanceRequests)
+  const { attendance: items, setAttendanceStatus } = useData()
   const [toast, setToast] = useState('')
 
   const act = (id, verb, status) => {
-    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, status } : x)))
+    setAttendanceStatus(id, status)
     setToast(`${id} ${verb}.`)
   }
 

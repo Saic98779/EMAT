@@ -9,6 +9,7 @@ import '@fontsource/roboto/700.css'
 import '@fontsource/roboto-mono/400.css'
 import theme from './theme'
 import { AuthProvider } from './auth'
+import { DataProvider } from './store'
 import App from './App'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -17,7 +18,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <CssBaseline />
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <DataProvider>
+            <App />
+          </DataProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

@@ -3,13 +3,13 @@ import {
   Box, Card, CardContent, Stack, Typography, Button, Snackbar, Alert,
 } from '@mui/material'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
-import { disbursals } from '../../data'
+import { useData } from '../../store'
 import { monoFont } from '../../theme'
 
 const inr = (n) => '₹' + n.toLocaleString('en-IN')
 
 export default function Disbursals({ role = 'gt' }) {
-  const [items, setItems] = useState(disbursals)
+  const { disbursals: items, setDisbursalStatus } = useData()
   const [toast, setToast] = useState('')
 
   const subtitle = role === 'sde'
@@ -21,7 +21,7 @@ export default function Disbursals({ role = 'gt' }) {
     role === 'gt' ? d.status === 'GT Approval (L1)' : d.status === 'SIDBI Approval (L2)'
 
   const act = (id, verb, status) => {
-    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, status } : x)))
+    setDisbursalStatus(id, status)
     setToast(`${id} ${verb}.`)
   }
 
