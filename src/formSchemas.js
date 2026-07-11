@@ -81,6 +81,93 @@ export const inPrincipleSchema = {
   ],
 }
 
+// ── Disburse BSE Salary (GT — manpower agency salary voucher + Annexure I) ──
+const num = (v) => (v == null || v === '' ? NaN : parseFloat(v))
+
+export const salarySchema = {
+  key: 'bse-salary',
+  sections: [
+    { n: 1, title: 'Manpower Agency & Payment', fields: [
+      { name: 'manpower_name', label: 'Manpower Agency Name', type: 'text', span: 6 },
+      { name: 'agency_gstin', label: 'GSTIN of the Agency', type: 'text', span: 6 },
+      { name: 'sidbi_gstin', label: 'GSTIN of SIDBI', type: 'text', span: 6, default: '09AABCS3480N5ZS', readOnly: true },
+      { name: 'nature_payment', label: 'Nature of Payment', type: 'textarea', span: 12,
+        default: 'Payment towards Salary for the month <<MMM-YYYY>> of ____ BSEs. BSE-wise Details in Annexure I.' },
+    ] },
+    { n: 2, title: 'Invoice Details', fields: [
+      { name: 'invoice_date', label: 'Invoice Date', type: 'text', span: 3, placeholder: 'DD/MM/YYYY' },
+      { name: 'invoice_number', label: 'Invoice Number', type: 'text', span: 3 },
+      { name: 'value_service', label: 'Value of service / Items supplied', type: 'number', span: 3, prefix: '₹' },
+      { name: 'igst', label: 'IGST @18%', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 0.18).toFixed(2)) },
+      { name: 'total_amount', label: 'Total amount', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 1.18).toFixed(2)) },
+    ] },
+    { n: 3, title: 'Disbursement Decision', fields: [
+      { name: 'tds', label: 'Applicability of TDS', type: 'yesno', span: 4 },
+      { name: 'amount_recommended', label: 'Amount Recommended for Disbursement', type: 'number', span: 4, prefix: '₹' },
+      { name: 'account_code', label: 'Account Code payment to be made', type: 'text', span: 4, default: 'EX1909010', readOnly: true },
+      { name: 'compliance', label: 'Compliance of Pre-disbursement Terms & conditions', type: 'yesno', span: 5 },
+      { name: 'recommendation', label: 'Recommendation', type: 'textarea', span: 12 },
+    ] },
+    { n: 4, title: 'Annexure I — BSE-wise Details', fields: [
+      { name: 'ia_name', label: 'IA Name', type: 'text', span: 4 },
+      { name: 'bse_name', label: 'BSE Name', type: 'text', span: 4 },
+      { name: 'salary_month', label: 'Month for which salary is disbursed', type: 'text', span: 4, placeholder: 'MMM-YYYY' },
+      { name: 'monthly_salary', label: 'Monthly Salary of BSE', type: 'number', span: 3, prefix: '₹' },
+      { name: 'salary_days', label: 'No. of days salary is paid', type: 'number', span: 3 },
+      { name: 'additional_amount', label: 'Any additional amount to BSE', type: 'number', span: 3, prefix: '₹' },
+      { name: 'additional_reason', label: 'Reason for such payment', type: 'text', span: 3 },
+      { name: 'payment_bse', label: 'Payment to be disbursed to BSE', type: 'computed', prefix: '₹', span: 4,
+        formula: (v) => {
+          const s = num(v.monthly_salary), d = num(v.salary_days), add = num(v.additional_amount) || 0
+          if (isNaN(s) || isNaN(d)) return isNaN(add) ? '' : add
+          return Math.round((s * d) / 30) + add
+        } },
+      { name: 'gt_comments_attendance', label: 'GT Comments on BSE attendance', type: 'textarea', span: 6 },
+      { name: 'gt_comments_additional', label: 'GT Comments on additional payment, if any', type: 'textarea', span: 6 },
+    ] },
+  ],
+}
+
+// ── Disbursement Note — CAPEX (GT — CAPEX purchase voucher) ─────────────────
+const igstField = { name: 'igst', label: 'IGST @18%', type: 'computed', prefix: '₹', span: 3,
+  formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 0.18).toFixed(2)) }
+const totalField = { name: 'total_amount', label: 'Total amount', type: 'computed', prefix: '₹', span: 3,
+  formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 1.18).toFixed(2)) }
+
+export const capexSchema = {
+  key: 'capex-note',
+  sections: [
+    { n: 1, title: 'Industry Association', fields: [
+      { name: 'ia_name', label: 'Industry Association Name', type: 'text', span: 8 },
+      { name: 'ia_gstin', label: 'GSTIN of IA', type: 'text', span: 4 },
+      { name: 'ia_gstin_na_reason', label: 'If GSTIN not applicable — reason', type: 'text', span: 8 },
+      { name: 'sidbi_gstin', label: 'GSTIN of SIDBI', type: 'text', span: 4, default: '09AABCS3480N5ZS', readOnly: true },
+    ] },
+    { n: 2, title: 'Nature of Payment', fields: [
+      { name: 'nature_payment', label: 'Nature of Payment', type: 'textarea', span: 12,
+        default: 'Payment towards CAPEX purchase.\n\nIA has been sanctioned Rs.____/- towards the purchase of ____. Out of this Rs.____/- has already been disbursed towards the purchase of ____. The present disbursement is of Rs.____/- towards the purchase of ____.' },
+    ] },
+    { n: 3, title: 'Invoice Details', fields: [
+      { name: 'invoice_date', label: 'Invoice Date', type: 'text', span: 3, placeholder: 'DD/MM/YYYY' },
+      { name: 'invoice_number', label: 'Invoice Number', type: 'text', span: 3 },
+      { name: 'value_service', label: 'Value of service / Items supplied', type: 'number', span: 3, prefix: '₹' },
+      igstField,
+      totalField,
+    ] },
+    { n: 4, title: 'Disbursement Decision', fields: [
+      { name: 'tds', label: 'Applicability of TDS', type: 'yesno', span: 4 },
+      { name: 'tds_na_reason', label: 'If TDS not applicable — reason', type: 'text', span: 8 },
+      { name: 'amount_recommended', label: 'Amount Recommended for Disbursement', type: 'number', span: 4, prefix: '₹' },
+      { name: 'account_code', label: 'Account Code payment to be made', type: 'text', span: 4, default: 'EX1909010', readOnly: true },
+      { name: 'gt_comments_capex', label: 'GT Comments on CAPEX Verification in IA premises', type: 'textarea', span: 12 },
+      { name: 'compliance', label: 'Compliance of Pre-disbursement Terms & conditions', type: 'yesno', span: 5 },
+      { name: 'recommendation', label: 'Recommendation', type: 'textarea', span: 12 },
+    ] },
+  ],
+}
+
 // ── Appraisal (SIDBI SDE, second level — full 15-point) ─────────────────────
 export const appraisalSchema = {
   key: 'appraisal',

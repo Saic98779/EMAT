@@ -93,12 +93,46 @@ export function DataProvider({ children }) {
   const setDisbursalStatus = (id, status, flow) =>
     setDisbursals((prev) => prev.map((d) => (d.id === id ? { ...d, status, ...(flow ? { flow } : {}) } : d)))
 
+  // GT disburses a BSE salary (via manpower agency) → recorded as a disbursal.
+  const addSalary = (f) => {
+    const id = nextId('DSB', disbursals)
+    const d = {
+      id,
+      amount: parseFloat(f.amount_recommended) || 0,
+      title: `BSE salary — ${f.bse_name || 'BSE'} · ${f.salary_month || ''}`.trim(),
+      who: f.bse_name || 'BSE',
+      category: 'BSE Salary',
+      date: today(),
+      status: 'Disbursed',
+      flow: `Manpower agency · ${f.manpower_name || '—'}`,
+    }
+    setDisbursals((prev) => [d, ...prev])
+    return id
+  }
+
   const setAttendanceStatus = (id, status) =>
     setAttendance((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))
 
+  // GT disburses a CAPEX purchase for an IA → recorded as a disbursal.
+  const addCapex = (f) => {
+    const id = nextId('DSB', disbursals)
+    const d = {
+      id,
+      amount: parseFloat(f.amount_recommended) || 0,
+      title: `CAPEX — ${f.ia_name || 'IA'}${f.invoice_number ? ` · Inv ${f.invoice_number}` : ''}`,
+      who: f.ia_name || 'IA',
+      category: 'CAPEX',
+      date: today(),
+      status: 'Disbursed',
+      flow: 'CAPEX purchase · IA premises verified',
+    }
+    setDisbursals((prev) => [d, ...prev])
+    return id
+  }
+
   const value = {
     ias, disbursals, attendance, visits,
-    addIA, submitAppraisal, setIAStatus, addDisbursal, setDisbursalStatus, setAttendanceStatus,
+    addIA, submitAppraisal, setIAStatus, addDisbursal, setDisbursalStatus, setAttendanceStatus, addSalary, addCapex,
   }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

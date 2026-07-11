@@ -8,7 +8,9 @@ import IndustryAssociations from './pages/gt/IndustryAssociations'
 import ProposalDetail from './pages/gt/ProposalDetail'
 import InPrincipleApproval from './pages/gt/InPrincipleApproval'
 import Appraisal from './pages/gt/Appraisal'
+import CapexNote from './pages/gt/CapexNote'
 import BseTeam from './pages/gt/BseTeam'
+import BseSalary from './pages/gt/BseSalary'
 import Attendance from './pages/gt/Attendance'
 import Disbursals from './pages/gt/Disbursals'
 
@@ -41,8 +43,10 @@ export default function App() {
         <Route path="/gt/ias" element={<IndustryAssociations />} />
         <Route path="/gt/ias/new" element={<InPrincipleApproval />} />
         <Route path="/gt/ias/:id/appraisal" element={<Appraisal />} />
+        <Route path="/gt/ias/:id/capex" element={<CapexNote />} />
         <Route path="/gt/ias/:id" element={<ProposalDetail />} />
         <Route path="/gt/team" element={<BseTeam />} />
+        <Route path="/gt/team/salary" element={<BseSalary />} />
         <Route path="/gt/attendance" element={<Attendance />} />
         <Route path="/gt/disbursals" element={<Disbursals />} />
       </Route>

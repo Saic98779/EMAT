@@ -6,6 +6,7 @@ import AddIcon from '@mui/icons-material/Add'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import EditNoteIcon from '@mui/icons-material/EditNote'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
 import { useData } from '../../store'
 
@@ -20,6 +21,8 @@ function rowAction(ia, navigate, basePath) {
     return <Button size="small" variant="contained" startIcon={<AssignmentTurnedInIcon />} onClick={go(`/gt/ias/${ia.id}/appraisal`)}>Detailed appraisal</Button>
   if (ia.status === 'Changes Requested')
     return <Button size="small" variant="contained" color="secondary" startIcon={<EditNoteIcon />} onClick={go(`/gt/ias/${ia.id}/appraisal`)}>Revise</Button>
+  if (ia.status === 'Approved')
+    return <Button size="small" variant="contained" color="success" startIcon={<PaymentsOutlinedIcon />} onClick={go(`/gt/ias/${ia.id}/capex`)}>Disburse CAPEX</Button>
   return view
 }
 
