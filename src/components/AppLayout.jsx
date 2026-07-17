@@ -34,6 +34,7 @@ export const NAV = {
     { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'Dashboard' },
     { icon: 'doc', label: 'IA Onboarding', path: '/gt/ias', overline: 'Industry Association Onboarding', title: 'Industry Association Onboarding' },
     { icon: 'groups', label: 'BSE Team', path: '/gt/team', overline: 'Team', title: 'BSE team' },
+    { icon: 'inbox', label: 'Salary Requests', path: '/gt/salary-requests', badge: 1, overline: 'Disbursement', title: 'BSE Salary Requests' },
     { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', badge: 2, overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/gt/disbursals', badge: 2, overline: 'Field ops', title: 'Disbursals' },
   ],
@@ -48,6 +49,10 @@ export const NAV = {
     { icon: 'route', label: 'My Field Visits', path: '/bse/visits', overline: 'Field ops', title: 'My field visits' },
     { icon: 'calendar', label: 'Attendance', path: '/bse/attendance', overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/bse/disbursals', overline: 'Field ops', title: 'Disbursals' },
+  ],
+  ia: [
+    { icon: 'home', label: 'Dashboard', path: '/ia', overline: 'Overview', title: 'Dashboard' },
+    { icon: 'payments', label: 'Salary Requests', path: '/ia/requests', overline: 'Disbursement', title: 'BSE Salary Requests' },
   ],
 }
 

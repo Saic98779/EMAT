@@ -1,0 +1,43 @@
+// Identified MSME cluster master (subset of the "242 cluster list").
+// Shape: { state, district, name }. Replace with the full sheet export when available.
+
+export const CLUSTERS = [
+  { state: 'Andhra Pradesh', district: 'East Godavari', name: 'Pulses & Pulses Products Cluster, Rayavaram Mandal' },
+  { state: 'Andhra Pradesh', district: 'East Godavari', name: 'Furniture Manufacturing Cluster, Rajavommangi' },
+  { state: 'Andhra Pradesh', district: 'Krishna', name: 'Imitation Jewellery Industry Cluster, Machilipatnam' },
+  { state: 'Andhra Pradesh', district: 'Krishna', name: 'Gold Jewellery Cluster, Vijayawada' },
+  { state: 'Andhra Pradesh', district: 'Krishna', name: 'Gold Ornaments Cluster, Jaggayyapet' },
+  { state: 'Andhra Pradesh', district: 'Kakinada', name: 'Printing Cluster, Kakinada' },
+  { state: 'Andhra Pradesh', district: 'Nellore', name: 'Gold Jewellery Cluster, Nellore' },
+  { state: 'Andhra Pradesh', district: 'Tirupati', name: 'Printing Cluster, Tirupati' },
+  { state: 'Andhra Pradesh', district: 'Nellore', name: 'Hosiery & Readymade Garments Cluster' },
+  { state: 'Telangana', district: 'Karimnagar', name: 'Gold Ornament Cluster, Karimnagar' },
+  { state: 'Telangana', district: 'Karimnagar', name: 'Rice Mill Cluster, Karimnagar' },
+  { state: 'Bihar', district: 'Nawada', name: 'Brass & Bronze Metal Utensils Cluster, Nawada' },
+  { state: 'Gujarat', district: 'Ahmedabad', name: 'Foundry Industry Cluster, Ahmedabad' },
+  { state: 'Gujarat', district: 'Ahmedabad', name: 'Diamond Cluster, Saranpur' },
+  { state: 'Gujarat', district: 'Bhavnagar', name: 'Lab Grown Diamond Cluster, Bhavnagar' },
+  { state: 'Gujarat', district: 'Mahesana', name: 'Packaging Cluster, Kadi' },
+  { state: 'Gujarat', district: 'Rajkot', name: 'Pump and Foundry Cluster, Rajkot' },
+  { state: 'Gujarat', district: 'Surat', name: 'Diamond Cutting & Polishing Cluster, Katcha Surat' },
+  { state: 'Gujarat', district: 'Surat', name: 'Engineering Cluster, Vatashla' },
+  { state: 'Gujarat', district: 'Surat', name: 'Food Processing Cluster, Surat' },
+  { state: 'Gujarat', district: 'Surat', name: 'Metal Fabrication Cluster (Aluminium/Steel), Surat' },
+  { state: 'Gujarat', district: 'Surat', name: 'Lab Grown Diamond Cluster, Surat' },
+  { state: 'Gujarat', district: 'Surendranagar', name: 'Plastic Products Cluster, Navajunction Road' },
+  { state: 'Gujarat', district: 'Surendranagar', name: 'Agro Food Processing Cluster, Surendranagar' },
+  { state: 'Gujarat', district: 'Navsari', name: 'Lab Grown Diamond Cluster, Navsari' },
+  { state: 'Gujarat', district: 'Dahod', name: 'Textile Cluster, Dahod' },
+  { state: 'Tamil Nadu', district: 'Tiruppur', name: 'Knitwear & Hosiery Cluster, Tiruppur' },
+  { state: 'Tamil Nadu', district: 'Coimbatore', name: 'Textiles & Apparel Cluster, Coimbatore' },
+  { state: 'Tamil Nadu', district: 'Karur', name: 'Home Textiles Cluster, Karur' },
+  { state: 'Tamil Nadu', district: 'Namakkal', name: 'Poultry & Egg Cluster, Namakkal' },
+  { state: 'Maharashtra', district: 'Pune', name: 'Auto Components Cluster, Bhosari MIDC' },
+  { state: 'Maharashtra', district: 'Kolhapur', name: 'Foundry Cluster, Kolhapur' },
+  { state: 'Punjab', district: 'Ludhiana', name: 'Knitwear & Hosiery Cluster, Ludhiana' },
+  { state: 'Punjab', district: 'Jalandhar', name: 'Sports Goods Cluster, Jalandhar' },
+  { state: 'Uttar Pradesh', district: 'Kanpur Nagar', name: 'Leather & Footwear Cluster, Kanpur' },
+  { state: 'Rajasthan', district: 'Jaipur', name: 'Gems & Jewellery Cluster, Jaipur' },
+]
+
+export const clustersOf = (state) => CLUSTERS.filter((c) => c.state === state)

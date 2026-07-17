@@ -32,7 +32,7 @@ export function statusColor(status) {
   if (s.includes('approved') || s.includes('disbursed') || s.includes('sanction') || s.includes('completed')) return 'success'
   if (s.includes('reject')) return 'error'
   if (s.includes('change') || s.includes('revise')) return 'secondary'
-  if (s.includes('final') || s.includes('sidbi') || s.includes('l2') || s.includes('scheduled')) return 'info'
+  if (s.includes('final') || s.includes('sidbi') || s.includes('l2') || s.includes('scheduled') || s.includes('submitted')) return 'info'
   if (s.includes('pending') || s.includes('review') || s.includes('action') || s.includes('l1') || s.includes('disburse')) return 'warning'
   return 'default'
 }

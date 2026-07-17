@@ -3,20 +3,37 @@ import { useNavigate } from 'react-router-dom'
 import { Box, Stack, Typography, Button, Snackbar, Alert, Chip, Paper } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EastIcon from '@mui/icons-material/East'
-import FormRenderer from '../../components/FormRenderer'
+import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { inPrincipleSchema } from '../../formSchemas'
 import { useData } from '../../store'
+
+// First unmet requirement (missing required field or a validation error), if any.
+function firstProblem(values) {
+  for (const sec of inPrincipleSchema.sections) {
+    for (const f of sec.fields) {
+      if (f.showIf && !f.showIf(values)) continue
+      const v = values[f.name]
+      const filled = Array.isArray(v) ? v.length > 0 : v != null && v !== ''
+      if (f.required && !filled) return `${sec.title}: “${f.label}” is required`
+      const err = fieldError(f, v, values)
+      if (err) return `${sec.title}: ${f.label} — ${err}`
+    }
+  }
+  return null
+}
 
 export default function InPrincipleApproval() {
   const navigate = useNavigate()
   const { addIA } = useData()
   const [values, setValues] = useState({})
-  const [toast, setToast] = useState(false)
+  const [toast, setToast] = useState('')
   const setValue = (name, v) => setValues((p) => ({ ...p, [name]: v }))
 
   const submit = () => {
+    const problem = firstProblem(values)
+    if (problem) { setToast(problem); return }
     const id = addIA(values)
-    setToast(true)
+    setToast('done')
     setTimeout(() => navigate(`/gt/ias/${id}`), 1100)
   }
 
@@ -38,8 +55,10 @@ export default function InPrincipleApproval() {
         <Button variant="contained" endIcon={<EastIcon />} onClick={submit}>Submit for Review</Button>
       </Paper>
 
-      <Snackbar open={toast} autoHideDuration={2000} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert severity="success" variant="filled">{values.ia_name || 'New IA'} added to the onboarding pipeline.</Alert>
+      <Snackbar open={!!toast} autoHideDuration={3000} onClose={() => setToast('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity={toast === 'done' ? 'success' : 'warning'} variant="filled">
+          {toast === 'done' ? `${values.ia_name || 'New IA'} added to the onboarding pipeline.` : toast}
+        </Alert>
       </Snackbar>
     </Box>
   )

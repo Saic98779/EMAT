@@ -11,6 +11,7 @@ import Appraisal from './pages/gt/Appraisal'
 import CapexNote from './pages/gt/CapexNote'
 import BseTeam from './pages/gt/BseTeam'
 import BseSalary from './pages/gt/BseSalary'
+import GtSalaryRequests from './pages/gt/GtSalaryRequests'
 import Attendance from './pages/gt/Attendance'
 import Disbursals from './pages/gt/Disbursals'
 
@@ -22,6 +23,10 @@ import MyFieldVisits from './pages/bse/MyFieldVisits'
 import BseAttendance from './pages/bse/BseAttendance'
 import BseDisbursals from './pages/bse/BseDisbursals'
 import RaiseDisbursal from './pages/bse/RaiseDisbursal'
+
+import IaDashboard from './pages/ia/IaDashboard'
+import IaRequests from './pages/ia/IaRequests'
+import IaSalaryRequest from './pages/ia/IaSalaryRequest'
 
 function Protected({ role, children }) {
   const { role: current } = useAuth()
@@ -47,6 +52,7 @@ export default function App() {
         <Route path="/gt/ias/:id" element={<ProposalDetail />} />
         <Route path="/gt/team" element={<BseTeam />} />
         <Route path="/gt/team/salary" element={<BseSalary />} />
+        <Route path="/gt/salary-requests" element={<GtSalaryRequests />} />
         <Route path="/gt/attendance" element={<Attendance />} />
         <Route path="/gt/disbursals" element={<Disbursals />} />
       </Route>
@@ -67,6 +73,13 @@ export default function App() {
         <Route path="/bse/attendance" element={<BseAttendance />} />
         <Route path="/bse/disbursals" element={<BseDisbursals />} />
         <Route path="/bse/disbursals/new" element={<RaiseDisbursal />} />
+      </Route>
+
+      {/* IA — Industry Association */}
+      <Route element={<Protected role="ia"><AppLayout /></Protected>}>
+        <Route path="/ia" element={<IaDashboard />} />
+        <Route path="/ia/requests" element={<IaRequests />} />
+        <Route path="/ia/requests/new" element={<IaSalaryRequest />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

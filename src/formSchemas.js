@@ -1,7 +1,10 @@
-// Data-driven schemas for the two onboarding forms.
-// section: { n, title, fields[] }  |  field: { name, label, type, options?, placeholder?, span?, help? }
-// types: text | number | email | tel | textarea | yesno | select | computed | subheading
-// span is a 12-column width — keep short/numeric fields narrow.
+// Data-driven schemas for the onboarding & disbursement forms.
+// field: { name, label, type, options?/optionsFrom?, span?, required?, pattern?, otp?, help? }
+// types: text | number | email | tel | textarea | yesno | select | radio | checkboxes | file | computed | subheading
+import { STATES, districtsOf, sidbiBranchesOf, SDE_OFFICERS } from './geo'
+import { clustersOf } from './clusters'
+
+const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
 
 const apexNodal = (prefix) => [
   { name: `${prefix}_name`, label: 'Name', type: 'text', span: 3 },
@@ -62,21 +65,91 @@ const infraFields = [
   { name: 'paid_services_details', label: 'Details of Paid Services', type: 'text', span: 12 },
 ]
 
-// ── In-Principle Approval (GT capture, first level) ─────────────────────────
+// ── In-Principle Approval (GT capture, first level) — full validated format ──
 export const inPrincipleSchema = {
   key: 'in-principle',
   sections: [
-    ...identity,
-    { n: 7, title: 'Nearest SIDBI Branch Office', fields: [{ name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'text', span: 6 }] },
-    { n: 8, title: 'Cluster Details', fields: clusterFields },
-    { n: 9, title: 'Existing Infra Details', fields: [
-      ...infraFields,
-      { name: 'adverse_remarks', label: 'Any adverse remarks about IA on web search', type: 'textarea', span: 12 },
+    { n: 1, title: 'State & Industry Association', fields: [
+      { name: 'state', label: 'State', type: 'select', options: STATES, span: 4, required: true, help: 'Auto-fetched from location; modifiable' },
+      { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 8, required: true },
     ] },
-    { n: 10, title: 'DIA Specific Details', fields: [
-      { name: 'why_selected', label: 'Why it should be selected', type: 'textarea', span: 12 },
-      ...grantFields,
-      ...envisaged,
+    { n: 2, title: 'Constitution of IA', fields: [
+      { name: 'constitution_type', label: 'Constitution', type: 'select', span: 5, required: true,
+        options: ['Societies Registration Act 1860', 'Section 8 Company', 'Trust', 'Other'] },
+      { name: 'ia_profit_type', label: 'Type of IA', type: 'select', span: 4, required: true, options: ['For Profit', 'Not for Profit'] },
+      { name: 'year_incorp', label: 'Year of Incorporation', type: 'number', span: 3, required: true,
+        validate: (v) => (v === '' ? '' : (!/^\d{4}$/.test(String(v)) ? '4-digit year' : (Number(v) < 1800 || Number(v) > 2026 ? 'Year 1800–2026' : ''))) },
+      { name: 'incorp_certificate', label: 'Incorporation Certificate', type: 'file', span: 6 },
+      { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 6 },
+    ] },
+    { n: 3, title: 'Address of IA', fields: [
+      { name: 'address', label: 'Registered address', type: 'text', span: 5 },
+      { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 4, required: true, help: 'Within the selected State' },
+      { name: 'pincode', label: 'Pincode', type: 'text', span: 3, required: true, pattern: PINCODE },
+    ] },
+    { n: 4, title: 'Apex Office Holder Details of IA', fields: [
+      { name: 'apex_name', label: 'Name', type: 'text', span: 3, required: true },
+      { name: 'apex_designation', label: 'Designation', type: 'text', span: 3 },
+      { name: 'apex_contact', label: 'Contact Number', type: 'tel', span: 3, required: true },
+      { name: 'apex_email', label: 'Email ID', type: 'email', span: 3, required: true, otp: true },
+      { name: 'apex_kyc_doc', label: 'KYC Document (Address Proof)', type: 'select', span: 4,
+        options: ['Voter ID card', 'Driving licence', 'Passport', 'Telephone bill', 'Electricity bill', 'Water consumption bill', 'Gas receipt / connection card'] },
+      { name: 'apex_id_proof', label: 'ID Proof', type: 'select', span: 4, options: ['PAN', 'Aadhaar', 'Passport', 'Driving Licence'] },
+      { name: 'apex_kyc_file', label: 'Upload KYC / ID documents', type: 'file', span: 4 },
+    ] },
+    { n: 5, title: 'Details of Nodal Contact of IA', fields: [
+      { name: 'nodal_name', label: 'Name', type: 'text', span: 3, required: true },
+      { name: 'nodal_designation', label: 'Designation', type: 'text', span: 3 },
+      { name: 'nodal_contact', label: 'Contact Number', type: 'tel', span: 3, required: true },
+      { name: 'nodal_email', label: 'Email ID', type: 'email', span: 3, required: true, otp: true },
+    ] },
+    { n: 6, title: 'Cluster / District Details', fields: [
+      { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'select', optionsFrom: (v) => sidbiBranchesOf(v.state), span: 6, required: true },
+      { name: 'cluster_mapped', label: 'Mapped with any identified cluster?', type: 'yesno', span: 3 },
+      { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 3 },
+      { name: 'cluster_which', label: 'If yes, which cluster', type: 'select', span: 8,
+        showIf: (v) => v.cluster_mapped === 'yes',
+        optionsFrom: (v) => { const c = clustersOf(v.state).map((x) => x.name); return c.length ? c : ['No identified cluster listed for this State'] } },
+      { name: 'msme_count', label: 'No. of MSMEs (without traders) in district', type: 'number', span: 4,
+        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Numbers only' : '')) },
+    ] },
+    { n: 7, title: 'Existing Infra Details', fields: [
+      { name: 'members_gt200', label: 'No. of active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 5, required: true },
+      { name: 'active_members', label: 'No. of active members in IA', type: 'number', span: 3, required: true,
+        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+      { name: 'member_directory', label: 'Member directory available', type: 'yesno', span: 4 },
+      { name: 'members_justification', label: 'Justification for choosing IA if active member base < 200', type: 'textarea', span: 9, required: true,
+        showIf: (v) => v.members_gt200 === 'No' || (v.active_members !== '' && v.active_members != null && Number(v.active_members) < 200) },
+      { name: 'members_justification_file', label: 'Approval letter from SIDBI (if any)', type: 'file', span: 3,
+        showIf: (v) => v.members_gt200 === 'No' || (v.active_members !== '' && v.active_members != null && Number(v.active_members) < 200) },
+      { name: 'building', label: 'Building of IA', type: 'select', span: 4,
+        options: ['Owned office', 'Rented office', 'Leased office', 'Office of office bearer'] },
+      { name: 'building_proof', label: 'Building proof (declaration / electricity / telephone bill)', type: 'file', span: 4 },
+      { name: 'it_infra', label: 'IT infrastructure (Computer / Printer / Scanner)', type: 'yesno', span: 4 },
+      { name: 'it_infra_details', label: 'If yes, details', type: 'checkboxes', showIf: (v) => v.it_infra === 'yes',
+        options: ['Computer', 'Laptop', 'Printer', 'Printer with Scanner', 'Internet Connection'] },
+      { name: 'secretariat_staff', label: 'Availability of Secretariat Staff', type: 'yesno', span: 4 },
+      { name: 'secretariat_details', label: 'If yes: Name · Contact No · Email ID', type: 'text', span: 8, showIf: (v) => v.secretariat_staff === 'yes' },
+      { name: 'website', label: 'Website availability', type: 'yesno', span: 4 },
+      { name: 'website_url', label: 'If yes, website URL', type: 'text', span: 8, showIf: (v) => v.website === 'yes' },
+      { name: 'paid_services', label: 'Paid services offered to members', type: 'yesno', span: 4 },
+      { name: 'paid_services_details', label: 'Details of paid services', type: 'text', span: 8, showIf: (v) => v.paid_services === 'yes' },
+      { name: 'adverse_remarks', label: 'Any adverse remarks about IA on web search?', type: 'yesno', span: 4 },
+      { name: 'adverse_details', label: 'If yes, details', type: 'textarea', span: 5, max: 500, showIf: (v) => v.adverse_remarks === 'yes' },
+      { name: 'adverse_report', label: 'Upload web report', type: 'file', span: 3, showIf: (v) => v.adverse_remarks === 'yes' },
+    ] },
+    { n: 8, title: 'DIA Specific Details', fields: [
+      { name: 'basis_of_selection', label: 'Basis of selection (select one / multiple / all)', type: 'checkboxes',
+        options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
+      { name: 'willingness_comments', label: "Comments on IA's willingness to take up Micro income-generating activities", type: 'textarea', span: 12, max: 500 },
+      { name: 'worked_before', label: 'GT / SIDBI worked with IA before?', type: 'yesno', span: 4 },
+      { name: 'grant_proposed', label: 'Grant Proposed (₹ Lakhs)', type: 'number', span: 4, prefix: '₹',
+        validate: (v) => (v === '' ? '' : (isNaN(Number(v)) || Number(v) < 0 ? 'Enter a valid amount' : '')) },
+      { name: 'grant_details', label: 'Grant Details proposed (BSE Salary ₹60,000/month from date of joining; Budget for IA Sustainability & Training Program ₹6,80,000)', type: 'textarea', span: 12 },
+      { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
+      { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
+      { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12, max: 500 },
+      { name: 'select_sde', label: 'Select SDE', type: 'select', options: SDE_OFFICERS, span: 6, required: true },
     ] },
   ],
 }
@@ -126,6 +199,44 @@ export const salarySchema = {
         } },
       { name: 'gt_comments_attendance', label: 'GT Comments on BSE attendance', type: 'textarea', span: 6 },
       { name: 'gt_comments_additional', label: 'GT Comments on additional payment, if any', type: 'textarea', span: 6 },
+    ] },
+  ],
+}
+
+// ── BSE Salary Request (raised by the Industry Association) ──────────────────
+export const salaryRequestSchema = {
+  key: 'salary-request',
+  sections: [
+    { n: 1, title: 'Manpower Agency & Payment', fields: [
+      { name: 'manpower_name', label: 'Manpower Agency Name', type: 'text', span: 6 },
+      { name: 'agency_gstin', label: 'GSTIN of the Agency', type: 'text', span: 6 },
+      { name: 'sidbi_gstin', label: 'GSTIN of SIDBI', type: 'text', span: 6, default: '09AABCS3480N5ZS', readOnly: true },
+      { name: 'nature_payment', label: 'Nature of Payment', type: 'textarea', span: 12,
+        default: 'Payment towards Salary for the month <<MMM-YYYY>> of ____ BSEs. BSE-wise Details enclosed.' },
+    ] },
+    { n: 2, title: 'Invoice Details', fields: [
+      { name: 'invoice_date', label: 'Invoice Date', type: 'text', span: 3, placeholder: 'DD/MM/YYYY' },
+      { name: 'invoice_number', label: 'Invoice Number', type: 'text', span: 3 },
+      { name: 'value_service', label: 'Value of service / Items supplied', type: 'number', span: 3, prefix: '₹' },
+      { name: 'igst', label: 'IGST @18%', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 0.18).toFixed(2)) },
+      { name: 'total_amount', label: 'Total amount', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 1.18).toFixed(2)) },
+    ] },
+    { n: 3, title: 'BSE Salary Details', fields: [
+      { name: 'ia_name', label: 'IA Name', type: 'text', span: 4 },
+      { name: 'bse_name', label: 'BSE Name', type: 'text', span: 4 },
+      { name: 'salary_month', label: 'Month for which salary is claimed', type: 'text', span: 4, placeholder: 'MMM-YYYY' },
+      { name: 'monthly_salary', label: 'Monthly Salary of BSE', type: 'number', span: 3, prefix: '₹' },
+      { name: 'salary_days', label: 'No. of days salary is paid', type: 'number', span: 3 },
+      { name: 'additional_amount', label: 'Any additional amount to BSE', type: 'number', span: 3, prefix: '₹' },
+      { name: 'additional_reason', label: 'Reason for such payment', type: 'text', span: 3 },
+      { name: 'payment_bse', label: 'Payment claimed for BSE', type: 'computed', prefix: '₹', span: 4,
+        formula: (v) => {
+          const s = num(v.monthly_salary), d = num(v.salary_days), add = num(v.additional_amount) || 0
+          if (isNaN(s) || isNaN(d)) return isNaN(add) ? '' : add
+          return Math.round((s * d) / 30) + add
+        } },
     ] },
   ],
 }

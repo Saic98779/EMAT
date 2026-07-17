@@ -26,6 +26,7 @@ const ROLE_TABS = [
   { key: 'gt', tag: 'Field', label: 'GT Team' },
   { key: 'sde', tag: 'Appraisal', label: 'SIDBI SDE' },
   { key: 'bse', tag: 'Field', label: 'BSE' },
+  { key: 'ia', tag: 'Association', label: 'IA' },
 ]
 
 function Hero() {
@@ -99,12 +100,12 @@ export default function Login() {
           <Typography variant="h4">Sign in</Typography>
           <Typography color="text.secondary" mb={3}>Select your role to continue to the portal.</Typography>
 
-          <ToggleButtonGroup exclusive fullWidth value={role} onChange={(_, v) => v && setRole(v)} sx={{ mb: 3, gap: 1.25 }}>
+          <ToggleButtonGroup exclusive fullWidth value={role} onChange={(_, v) => v && setRole(v)} sx={{ mb: 3, gap: 1 }}>
             {ROLE_TABS.map((r) => (
               <ToggleButton key={r.key} value={r.key}
-                sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1.25, px: 2, border: '1px solid', borderColor: 'divider', borderRadius: '10px !important' }}>
-                <Typography variant="caption" color="text.secondary">{r.tag}</Typography>
-                <Typography fontWeight={700} fontSize="0.92rem">{r.label}</Typography>
+                sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1, px: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: '10px !important' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.62rem', lineHeight: 1.3 }} noWrap>{r.tag}</Typography>
+                <Typography fontWeight={700} fontSize="0.82rem" noWrap>{r.label}</Typography>
               </ToggleButton>
             ))}
           </ToggleButtonGroup>

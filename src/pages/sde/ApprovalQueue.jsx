@@ -47,7 +47,7 @@ export default function ApprovalQueue() {
       <Dialog open={!!review} onClose={() => setReview(null)} maxWidth="sm" fullWidth>
         {review && (
           <>
-            <DialogTitle sx={{ pb: 0.5 }}>
+            <DialogTitle component="div" sx={{ pb: 0.5 }}>
               <Typography variant="overline" color="text.secondary" display="block">
                 {isDisbursal ? 'Level 2 — Disbursal' : review.kind.includes('FINAL') ? 'Level 2 — Detailed proposal' : 'Level 1 — Basic proposal'}
               </Typography>

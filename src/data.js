@@ -22,12 +22,26 @@ export const ROLES = {
     short: 'BSE',
     user: { name: 'Ravi Kumar', initials: 'RK', title: 'BSE · Field Officer', email: 'ravi.bse@emat.in' },
   },
+  ia: {
+    key: 'ia',
+    label: 'Industry Association',
+    tag: 'IA',
+    short: 'IA',
+    user: { name: 'Lakshmi Iyer', initials: 'LI', title: 'Coimbatore Textile Mfrs. Assn.', email: 'nodal@ctma.org' },
+  },
 }
 
 export const DEMO_CREDS = [
   { role: 'gt', name: 'GT Field Team', email: 'anita.gt@emat.in', password: 'demo123' },
   { role: 'sde', name: 'SIDBI SDE · Appraisal', email: 'rajesh.sde@sidbi.in', password: 'demo123' },
   { role: 'bse', name: 'BSE · Field Officer', email: 'ravi.bse@emat.in', password: 'demo123' },
+  { role: 'ia', name: 'Industry Association', email: 'nodal@ctma.org', password: 'demo123' },
+]
+
+// Salary disbursement requests raised by the IA (seed).
+export const salaryRequests = [
+  { id: 'SR-101', agency: 'Skillforce Manpower Pvt. Ltd.', bse: 'Ravi Kumar', month: 'May-2026', amount: 32000, invoiceNo: 'INV-5567', date: '02 Jun 2026', status: 'Approved by GT', docs: ['Invoice-INV-5567.pdf', 'Attendance-May.xlsx'] },
+  { id: 'SR-102', agency: 'Skillforce Manpower Pvt. Ltd.', bse: 'Ravi Kumar', month: 'Jun-2026', amount: 32000, invoiceNo: 'INV-5601', date: '01 Jul 2026', status: 'Submitted to GT', docs: ['Invoice-INV-5601.pdf'] },
 ]
 
 // Status → MUI chip color mapping helpers live in StatusChip.jsx.

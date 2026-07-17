@@ -2,6 +2,7 @@ import { createContext, useContext, useState } from 'react'
 import {
   industryAssociations as seedIAs, disbursals as seedDisbursals,
   attendanceRequests as seedAttendance, fieldVisits as seedVisits,
+  salaryRequests as seedSalaryRequests,
 } from './data'
 
 const DataContext = createContext(null)
@@ -24,6 +25,7 @@ export function DataProvider({ children }) {
   const [disbursals, setDisbursals] = useState(seedDisbursals)
   const [attendance, setAttendance] = useState(seedAttendance)
   const [visits, setVisits] = useState(seedVisits)
+  const [salaryRequests, setSalaryRequests] = useState(seedSalaryRequests)
 
   // GT captures an In-Principle Approval → new IA enters the pipeline.
   const addIA = (f) => {
@@ -113,6 +115,30 @@ export function DataProvider({ children }) {
   const setAttendanceStatus = (id, status) =>
     setAttendance((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))
 
+  // Industry Association raises a BSE salary disbursement request (with docs).
+  const addSalaryRequest = (f, docs) => {
+    const id = nextId('SR', salaryRequests)
+    const s = parseFloat(f.monthly_salary), d = parseFloat(f.salary_days), add = parseFloat(f.additional_amount) || 0
+    const payout = !isNaN(s) && !isNaN(d) ? Math.round((s * d) / 30) + add : (parseFloat(f.total_amount) || 0)
+    const req = {
+      id,
+      agency: f.manpower_name || '—',
+      bse: f.bse_name || '—',
+      month: f.salary_month || '—',
+      amount: payout,
+      invoiceNo: f.invoice_number || '—',
+      date: today(),
+      status: 'Submitted to GT',
+      docs: docs || [],
+    }
+    setSalaryRequests((prev) => [req, ...prev])
+    return id
+  }
+
+  // GT reviews an IA salary request — records comments and a decision.
+  const reviewSalaryRequest = (id, status, comments) =>
+    setSalaryRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status, gtComments: comments } : r)))
+
   // GT disburses a CAPEX purchase for an IA → recorded as a disbursal.
   const addCapex = (f) => {
     const id = nextId('DSB', disbursals)
@@ -131,8 +157,9 @@ export function DataProvider({ children }) {
   }
 
   const value = {
-    ias, disbursals, attendance, visits,
-    addIA, submitAppraisal, setIAStatus, addDisbursal, setDisbursalStatus, setAttendanceStatus, addSalary, addCapex,
+    ias, disbursals, attendance, visits, salaryRequests,
+    addIA, submitAppraisal, setIAStatus, addDisbursal, setDisbursalStatus, setAttendanceStatus,
+    addSalary, addCapex, addSalaryRequest, reviewSalaryRequest,
   }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
