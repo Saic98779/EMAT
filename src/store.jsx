@@ -26,6 +26,7 @@ export function DataProvider({ children }) {
   const [attendance, setAttendance] = useState(seedAttendance)
   const [visits, setVisits] = useState(seedVisits)
   const [salaryRequests, setSalaryRequests] = useState(seedSalaryRequests)
+  const [bseCandidates, setBseCandidates] = useState([])
 
   // GT captures an In-Principle Approval → new IA enters the pipeline.
   const addIA = (f) => {
@@ -156,10 +157,41 @@ export function DataProvider({ children }) {
     return id
   }
 
+  // GT Field Manager proposes a new BSE candidate for an approved IA.
+  const addBseCandidate = (f) => {
+    const id = nextId('BSC', bseCandidates)
+    const c = {
+      id,
+      name: f.bse_name || '—',
+      ia: f.ia_name || '—',
+      state: f.state || '—',
+      district: f.district || '—',
+      mobile: f.mobile || '—',
+      email: f.email || '—',
+      qualification: f.qualification || '—',
+      experienceStatus: f.experience_status || '—',
+      experience: f.experience_status === 'Yes'
+        ? `${f.experience_years || 0}y ${f.experience_months || 0}m`
+        : '—',
+      employmentStatus: f.employment_status || '—',
+      currentSalary: parseFloat(f.current_salary) || null,
+      noticePeriod: f.notice_period || null,
+      lastDrawnSalary: parseFloat(f.last_drawn_salary) || null,
+      expectedSalary: parseFloat(f.expected_salary) || 0,
+      resumeStatus: f.resume_status || '—',
+      recommendation: f.recommendation || '—',
+      recommendationDate: f.recommendation_date || today(),
+      submitted: today(),
+      status: 'Proposed by GT',
+    }
+    setBseCandidates((prev) => [c, ...prev])
+    return id
+  }
+
   const value = {
-    ias, disbursals, attendance, visits, salaryRequests,
+    ias, disbursals, attendance, visits, salaryRequests, bseCandidates,
     addIA, submitAppraisal, setIAStatus, addDisbursal, setDisbursalStatus, setAttendanceStatus,
-    addSalary, addCapex, addSalaryRequest, reviewSalaryRequest,
+    addSalary, addCapex, addSalaryRequest, reviewSalaryRequest, addBseCandidate,
   }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }

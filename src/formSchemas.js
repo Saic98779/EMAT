@@ -154,6 +154,78 @@ export const inPrincipleSchema = {
   ],
 }
 
+// ── BSE Candidate Proposal (GT Field Manager — new BSE onboarding) ──────────
+// Factory: takes the list of IAs already cleared at In-Principle stage so the
+// association dropdown is populated with live data from the app store.
+export const makeBseCandidateSchema = (approvedIAs = []) => ({
+  key: 'bse-candidate',
+  sections: [
+    { n: 1, title: 'Location & Industry Association', fields: [
+      { name: 'state', label: 'State', type: 'select', options: STATES, span: 6, required: true },
+      { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true },
+      { name: 'ia_name', label: 'Name of Association (BSE Proposed For)', type: 'select',
+        options: approvedIAs.length ? approvedIAs : ['No In-Principle approved IA available'],
+        span: 12, required: true },
+    ] },
+    { n: 2, title: 'Candidate Details', fields: [
+      { name: 'bse_name', label: 'Name of Proposed BSE', type: 'text', span: 6, required: true },
+      { name: 'mobile', label: 'Mobile No', type: 'tel', span: 3, required: true },
+      { name: 'email', label: 'Email ID', type: 'email', span: 3, required: true, otp: true },
+      { name: 'qualification', label: 'Highest Educational Qualification', type: 'select', span: 12, required: true,
+        options: ['Under Graduate', 'Graduate', 'Post Graduate'] },
+    ] },
+    { n: 3, title: 'Experience', fields: [
+      { name: 'experience_status', label: 'Prior Experience', type: 'select', options: ['Yes', 'No'], span: 4, required: true },
+      { name: 'experience_years', label: 'Experience — Years', type: 'number', span: 4,
+        showIf: (v) => v.experience_status === 'Yes',
+        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+      { name: 'experience_months', label: 'Experience — Months', type: 'number', span: 4,
+        showIf: (v) => v.experience_status === 'Yes',
+        validate: (v) => {
+          if (v === '') return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          if (Number(v) > 11) return '0–11 months'
+          return ''
+        } },
+    ] },
+    { n: 4, title: 'Employment & Salary', fields: [
+      { name: 'employment_status', label: 'Employment Status', type: 'select', options: ['Working', 'Resigned'], span: 4, required: true },
+      { name: 'current_salary', label: 'Current Salary (₹ / month)', type: 'number', span: 4, prefix: '₹',
+        showIf: (v) => v.employment_status === 'Working', required: true },
+      { name: 'notice_period', label: 'Minimum Notice Period (Days)', type: 'number', span: 4,
+        showIf: (v) => v.employment_status === 'Working', required: true },
+      { name: 'last_drawn_salary', label: 'Last Drawn Salary (₹ / month)', type: 'number', span: 8, prefix: '₹',
+        showIf: (v) => v.employment_status === 'Resigned', required: true },
+      { name: 'resignation_doc', label: 'Resignation Acceptance / Relieving Letter', type: 'file', span: 12,
+        showIf: (v) => v.employment_status === 'Resigned', required: true },
+      { name: 'expected_salary', label: 'Expected Salary (₹ / month)', type: 'number', span: 4, prefix: '₹', required: true,
+        help: 'Must be ≥ current/last drawn salary and ≤ ₹50,000',
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (isNaN(n)) return 'Enter a valid amount'
+          if (n > 50000) return 'Cannot exceed ₹50,000 / month'
+          const base = values?.employment_status === 'Working'
+            ? Number(values.current_salary)
+            : Number(values?.last_drawn_salary)
+          if (!isNaN(base) && n < base) return 'Must be ≥ current / last drawn salary'
+          return ''
+        } },
+    ] },
+    { n: 5, title: 'Documents', fields: [
+      { name: 'resume_status', label: 'Resume Status', type: 'select', options: ['Received', 'Not Received'], span: 4, required: true },
+      { name: 'resume_file', label: 'Upload Resume (PDF)', type: 'file', span: 8,
+        showIf: (v) => v.resume_status === 'Received', required: true },
+      { name: 'salary_proof', label: 'Salary Slip / Bank Statement (proof of last drawn salary)', type: 'file', span: 12 },
+    ] },
+    { n: 6, title: 'GT Field Manager Recommendation', fields: [
+      { name: 'recommendation', label: 'Recommendation Status', type: 'radio',
+        options: ['Recommended', 'Not Recommended'], span: 6, required: true },
+      { name: 'recommendation_date', label: 'Recommendation Date', type: 'text', placeholder: 'DD/MM/YYYY', span: 6, required: true },
+    ] },
+  ],
+})
+
 // ── Disburse BSE Salary (GT — manpower agency salary voucher + Annexure I) ──
 const num = (v) => (v == null || v === '' ? NaN : parseFloat(v))
 

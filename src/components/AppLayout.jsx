@@ -13,19 +13,21 @@ import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import RouteOutlinedIcon from '@mui/icons-material/RouteOutlined'
+import PersonAddAltOutlinedIcon from '@mui/icons-material/PersonAddAltOutlined'
 import SearchIcon from '@mui/icons-material/Search'
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuIcon from '@mui/icons-material/Menu'
 import { useAuth } from '../auth'
 import Logo from './Logo'
+import sidbiLogo from '../assets/sidbi-logo.png'
 
-const DRAWER_WIDTH = 260
+const DRAWER_WIDTH = 288
 
 const ICONS = {
   home: HomeOutlinedIcon, doc: DescriptionOutlinedIcon, groups: GroupsOutlinedIcon,
   calendar: CalendarMonthOutlinedIcon, payments: PaymentsOutlinedIcon, inbox: InboxOutlinedIcon,
-  route: RouteOutlinedIcon,
+  route: RouteOutlinedIcon, personAdd: PersonAddAltOutlinedIcon,
 }
 
 // Per-role navigation. `meta` drives the top-bar overline/title per path.
@@ -34,6 +36,7 @@ export const NAV = {
     { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'Dashboard' },
     { icon: 'doc', label: 'IA Onboarding', path: '/gt/ias', overline: 'Industry Association Onboarding', title: 'Industry Association Onboarding' },
     { icon: 'groups', label: 'BSE Team', path: '/gt/team', overline: 'Team', title: 'BSE team' },
+    { icon: 'personAdd', label: 'BSE Onboarding', path: '/gt/team/candidate/new', overline: 'Team', title: 'Propose BSE Candidate' },
     { icon: 'inbox', label: 'Salary Requests', path: '/gt/salary-requests', badge: 1, overline: 'Disbursement', title: 'BSE Salary Requests' },
     { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', badge: 2, overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/gt/disbursals', badge: 2, overline: 'Field ops', title: 'Disbursals' },
@@ -72,10 +75,10 @@ export default function AppLayout() {
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Toolbar sx={{ gap: 1.25 }}>
-        <Logo size={40} />
+      <Toolbar sx={{ gap: 1.25, minHeight: '72px !important', py: 1 }}>
+        <Logo size={52} />
         <Box>
-          <Typography fontWeight={800} lineHeight={1} color="primary.dark">eMAT</Typography>
+          <Typography fontWeight={800} fontSize="1.1rem" lineHeight={1} color="primary.dark">eMAT</Typography>
           <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.14em' }}>PORTAL</Typography>
         </Box>
       </Toolbar>
@@ -141,6 +144,13 @@ export default function AppLayout() {
             <SearchIcon fontSize="small" color="disabled" />
             <InputBase placeholder="Search IAs, requests…" sx={{ fontSize: '0.9rem', flexGrow: 1 }} />
           </Stack>
+          <Box
+            component="img"
+            src={sidbiLogo}
+            alt="SIDBI"
+            sx={{ height: 48, width: 'auto', objectFit: 'contain', display: { xs: 'none', md: 'block' } }}
+          />
+          <Divider orientation="vertical" flexItem sx={{ my: 0.75, display: { xs: 'none', md: 'block' } }} />
           <IconButton>
             <Badge badgeContent={role === 'bse' ? 3 : 4} color="error"><NotificationsNoneIcon /></Badge>
           </IconButton>

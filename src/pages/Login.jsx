@@ -8,6 +8,7 @@ import {
 import { alpha } from '@mui/material/styles'
 import LoginIcon from '@mui/icons-material/Login'
 import Logo from '../components/Logo'
+import sidbiLogo from '../assets/sidbi-logo.png'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import GppGoodOutlinedIcon from '@mui/icons-material/GppGoodOutlined'
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
@@ -41,6 +42,10 @@ function Hero() {
         <Box>
           <Typography fontWeight={800} fontSize="1.35rem" lineHeight={1}>eMAT</Typography>
           <Typography variant="caption" sx={{ letterSpacing: '0.22em', color: alpha('#fff', 0.6) }}>PORTAL</Typography>
+        </Box>
+        <Box sx={{ height: 44, width: '1px', bgcolor: alpha('#fff', 0.25), mx: 1.5 }} />
+        <Box sx={{ bgcolor: '#fff', borderRadius: 2, p: 0.25, display: 'flex' }}>
+          <Box component="img" src={sidbiLogo} alt="SIDBI" sx={{ height: 54, width: 'auto', objectFit: 'contain', display: 'block' }} />
         </Box>
       </Stack>
 
@@ -114,6 +119,11 @@ export default function Login() {
             <TextField label="Email" placeholder="name@org.in" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
             <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth />
             <Button size="large" variant="contained" startIcon={<LoginIcon />} onClick={submit} fullWidth>Sign in to eMAT</Button>
+          </Stack>
+
+          <Stack direction="row" spacing={1.25} alignItems="center" justifyContent="center" sx={{ mt: 3, color: 'text.secondary' }}>
+            <Typography variant="caption" sx={{ letterSpacing: '0.14em' }}>IN ASSOCIATION WITH</Typography>
+            <Box component="img" src={sidbiLogo} alt="SIDBI" sx={{ height: 26, width: 'auto', objectFit: 'contain', display: 'block' }} />
           </Stack>
 
           <Card variant="outlined" sx={{ mt: 3, boxShadow: 'none' }}>

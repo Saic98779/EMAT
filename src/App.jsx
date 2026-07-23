@@ -11,6 +11,7 @@ import Appraisal from './pages/gt/Appraisal'
 import CapexNote from './pages/gt/CapexNote'
 import BseTeam from './pages/gt/BseTeam'
 import BseSalary from './pages/gt/BseSalary'
+import BseCandidate from './pages/gt/BseCandidate'
 import GtSalaryRequests from './pages/gt/GtSalaryRequests'
 import Attendance from './pages/gt/Attendance'
 import Disbursals from './pages/gt/Disbursals'
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/gt/ias/:id" element={<ProposalDetail />} />
         <Route path="/gt/team" element={<BseTeam />} />
         <Route path="/gt/team/salary" element={<BseSalary />} />
+        <Route path="/gt/team/candidate/new" element={<BseCandidate />} />
         <Route path="/gt/salary-requests" element={<GtSalaryRequests />} />
         <Route path="/gt/attendance" element={<Attendance />} />
         <Route path="/gt/disbursals" element={<Disbursals />} />

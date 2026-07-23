@@ -54,6 +54,15 @@ const theme = createTheme({
         },
       },
     },
+    MuiSelect: {
+      defaultProps: {
+        MenuProps: {
+          anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+          transformOrigin: { vertical: 'top', horizontal: 'left' },
+          slotProps: { paper: { sx: { maxHeight: 280, mt: 0.5 } } },
+        },
+      },
+    },
     MuiToggleButton: {
       styleOverrides: {
         root: {
