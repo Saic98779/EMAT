@@ -92,10 +92,23 @@ export const inPrincipleSchema = {
       { name: 'apex_designation', label: 'Designation', type: 'text', span: 3 },
       { name: 'apex_contact', label: 'Contact Number', type: 'tel', span: 3, required: true },
       { name: 'apex_email', label: 'Email ID', type: 'email', span: 3, required: true, otp: true },
-      { name: 'apex_kyc_doc', label: 'KYC Document (Address Proof)', type: 'select', span: 4,
+      { name: 'apex_kyc_doc', label: 'KYC Document (Address Proof)', type: 'select', span: 6,
         options: ['Voter ID card', 'Driving licence', 'Passport', 'Telephone bill', 'Electricity bill', 'Water consumption bill', 'Gas receipt / connection card'] },
-      { name: 'apex_id_proof', label: 'ID Proof', type: 'select', span: 4, options: ['PAN', 'Aadhaar', 'Passport', 'Driving Licence'] },
-      { name: 'apex_kyc_file', label: 'Upload KYC / ID documents', type: 'file', span: 4 },
+      { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 6,
+        placeholder: 'Enter document / bill number',
+        showIf: (v) => !!v.apex_kyc_doc },
+      { name: 'apex_id_proof', label: 'ID Proof', type: 'select', span: 6, options: ['PAN', 'Aadhaar', 'Passport', 'Driving Licence'] },
+      { name: 'apex_id_number', label: 'ID Proof Number', type: 'text', span: 6,
+        placeholder: 'Enter unique ID number',
+        showIf: (v) => !!v.apex_id_proof,
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const t = values?.apex_id_proof
+          if (t === 'PAN' && !/^[A-Z]{5}\d{4}[A-Z]$/.test(String(v).toUpperCase())) return 'PAN format: AAAAA9999A'
+          if (t === 'Aadhaar' && !/^\d{12}$/.test(String(v))) return '12-digit Aadhaar'
+          return ''
+        } },
+      { name: 'apex_kyc_file', label: 'Upload KYC / ID documents', type: 'file', span: 12 },
     ] },
     { n: 5, title: 'Details of Nodal Contact of IA', fields: [
       { name: 'nodal_name', label: 'Name', type: 'text', span: 3, required: true },
@@ -116,7 +129,13 @@ export const inPrincipleSchema = {
     { n: 7, title: 'Existing Infra Details', fields: [
       { name: 'members_gt200', label: 'No. of active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 5, required: true },
       { name: 'active_members', label: 'No. of active members in IA', type: 'number', span: 3, required: true,
-        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+        validate: (v, values) => {
+          if (v === '') return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          if (values?.members_gt200 === 'Yes' && Number(v) < 200) return 'Must be ≥ 200'
+          if (values?.members_gt200 === 'No' && Number(v) >= 200) return 'Must be < 200'
+          return ''
+        } },
       { name: 'member_directory', label: 'Member directory available', type: 'yesno', span: 4 },
       { name: 'members_justification', label: 'Justification for choosing IA if active member base < 200', type: 'textarea', span: 9, required: true,
         showIf: (v) => v.members_gt200 === 'No' || (v.active_members !== '' && v.active_members != null && Number(v.active_members) < 200) },
@@ -144,7 +163,14 @@ export const inPrincipleSchema = {
       { name: 'willingness_comments', label: "Comments on IA's willingness to take up Micro income-generating activities", type: 'textarea', span: 12, max: 500 },
       { name: 'worked_before', label: 'GT / SIDBI worked with IA before?', type: 'yesno', span: 4 },
       { name: 'grant_proposed', label: 'Grant Proposed (₹ Lakhs)', type: 'number', span: 4, prefix: '₹',
-        validate: (v) => (v === '' ? '' : (isNaN(Number(v)) || Number(v) < 0 ? 'Enter a valid amount' : '')) },
+        help: 'Maximum ₹14 Lakhs (₹14,00,000)',
+        validate: (v) => {
+          if (v === '') return ''
+          const n = Number(v)
+          if (isNaN(n) || n < 0) return 'Enter a valid amount'
+          if (n > 14) return 'Cannot exceed ₹14 Lakhs'
+          return ''
+        } },
       { name: 'grant_details', label: 'Grant Details proposed (BSE Salary ₹60,000/month from date of joining; Budget for IA Sustainability & Training Program ₹6,80,000)', type: 'textarea', span: 12 },
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
