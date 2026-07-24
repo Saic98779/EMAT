@@ -121,11 +121,6 @@ export default function Login() {
             <Button size="large" variant="contained" startIcon={<LoginIcon />} onClick={submit} fullWidth>Sign in to eMAT</Button>
           </Stack>
 
-          <Stack direction="row" spacing={1.25} alignItems="center" justifyContent="center" sx={{ mt: 3, color: 'text.secondary' }}>
-            <Typography variant="caption" sx={{ letterSpacing: '0.14em' }}>IN ASSOCIATION WITH</Typography>
-            <Box component="img" src={sidbiLogo} alt="SIDBI" sx={{ height: 26, width: 'auto', objectFit: 'contain', display: 'block' }} />
-          </Stack>
-
           <Card variant="outlined" sx={{ mt: 3, boxShadow: 'none' }}>
             <CardContent sx={{ py: 1 }}>
               <Typography variant="overline" color="text.secondary">Demo credentials — click to fill</Typography>
