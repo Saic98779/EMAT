@@ -100,7 +100,7 @@ export default function DocUpload({
 
   const download = async (item) => {
     try {
-      await downloadFile(registrationUuid, item.filename, { downloadUrl: item.downloadUrl })
+      await downloadFile(registrationUuid, item.filename)
     } catch (err) {
       setError(err.message || 'Download failed')
     }

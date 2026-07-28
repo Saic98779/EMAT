@@ -65,12 +65,13 @@ export function fileUrl(registrationUuid, filename) {
   return `${API_BASE}${PATH}/${encodeURIComponent(registrationUuid)}/${encodeURIComponent(filename)}`
 }
 
-// Fetches the file as a Blob and triggers a browser download. Uses the
-// server-provided `downloadUrl` when present, otherwise falls back to
-// GET /files/{uuid}/{filename}.
-export async function downloadFile(registrationUuid, filename, { downloadUrl } = {}) {
+// Fetches the file as a Blob and triggers a browser download. Ignores the
+// server-provided `downloadUrl` — backend currently returns a relative path
+// that resolves against the frontend origin (404). Always use fileUrl() so
+// the request hits API_BASE (the backend host).
+export async function downloadFile(registrationUuid, filename) {
   const bearer = getStoredToken()
-  const url = downloadUrl || fileUrl(registrationUuid, filename)
+  const url = fileUrl(registrationUuid, filename)
   const res = await fetch(url, {
     headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
   })
