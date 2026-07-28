@@ -19,6 +19,7 @@ import Disbursals from './pages/gt/Disbursals'
 
 import SdeDashboard from './pages/sde/SdeDashboard'
 import ApprovalQueue from './pages/sde/ApprovalQueue'
+import IaEdit from './pages/sde/IaEdit'
 
 import BseDashboard from './pages/bse/BseDashboard'
 import MyFieldVisits from './pages/bse/MyFieldVisits'
@@ -71,6 +72,8 @@ export default function App() {
         <Route path="/sde/queue" element={<ApprovalQueue />} />
         <Route path="/sde/ias" element={<IndustryAssociations basePath="/sde/ias" />} />
         <Route path="/sde/ias/:id" element={<ProposalDetail backPath="/sde/ias" />} />
+        <Route path="/sde/ias/:id/edit" element={<IaEdit />} />
+        <Route path="/sde/ias/:id/appraisal" element={<Appraisal backPath="/sde/ias" />} />
         <Route path="/sde/disbursals" element={<Disbursals role="sde" />} />
         <Route path="/sde/team/:uuid" element={<BseCandidateDetail backPath="/sde/queue" backLabel="Approval Queue" />} />
       </Route>

@@ -16,6 +16,7 @@ import {
   listIndustryAssociations,
   getIndustryAssociation,
   approveIndustryAssociation,
+  updateIndustryAssociation,
   fromDto as iaFromDto,
 } from './apis/industryAssociations'
 import {
@@ -130,6 +131,24 @@ export function useApproveIA() {
     onSuccess: (updated, { uuid }) => {
       // Push the response into the detail cache immediately so the page
       // reflects the new state without another network round-trip.
+      if (updated) {
+        qc.setQueryData(keys.ias.detail(uuid), (prev) =>
+          iaFromDto(updated, prev?.appraisal ?? null),
+        )
+      }
+      qc.invalidateQueries({ queryKey: keys.ias.lists() })
+    },
+  })
+}
+
+// SDE edit — PUT the full IA registration. Used pre-L1-approval to correct
+// any field GT captured. On success we swap the detail cache with the
+// returned DTO so the review page shows the edits without a re-fetch.
+export function useUpdateIA() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ uuid, values, extra }) => updateIndustryAssociation(uuid, values, extra),
+    onSuccess: (updated, { uuid }) => {
       if (updated) {
         qc.setQueryData(keys.ias.detail(uuid), (prev) =>
           iaFromDto(updated, prev?.appraisal ?? null),

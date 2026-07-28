@@ -8,12 +8,14 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EastIcon from '@mui/icons-material/East'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { StatusChip, SectionCard, Mono } from '../../components/shared'
 import DocUpload from '../../components/DocUpload'
 import {
   useIA, useApproveIA, useApproveAppraisal,
   useBranchesByState, useSdesByBranch,
 } from '../../queries'
+import { useAuth } from '../../auth'
 import { monoFont } from '../../theme'
 
 const STEPS = ['Basic appraisal (L1)', 'Detailed proposal', 'Final approval (L2)']
@@ -46,6 +48,9 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
   const navigate = useNavigate()
   const isGt = backPath.startsWith('/gt')
   const isSde = backPath.startsWith('/sde')
+
+  const { rawRole } = useAuth()
+  const isClusterExpert = rawRole === 'CLUSTER_EXPERT'
 
   const iaQ = useIA(id)
   const approveL1 = useApproveIA()
@@ -102,10 +107,28 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
           <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" mb={3}>
             <Typography variant="h5">{ia.name}</Typography>
             <StatusChip status={ia.status} />
+            {isSde && ia.stage === 0 && (
+              <Button variant="outlined" startIcon={<EditOutlinedIcon />} sx={{ ml: 'auto' }}
+                onClick={() => navigate(`/sde/ias/${ia.id}/edit`)}>
+                Edit registration
+              </Button>
+            )}
+            {isSde && ia.appraisal && !ia.appraisal.isSidbeApproved && (
+              <Button variant="outlined" startIcon={<EditOutlinedIcon />} sx={{ ml: 'auto' }}
+                onClick={() => navigate(`/sde/ias/${ia.id}/appraisal`)}>
+                Edit appraisal
+              </Button>
+            )}
             {isGt && ia.stage === 1 && (
               <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
                 onClick={() => navigate(`/gt/ias/${ia.id}/appraisal`)}>
                 {ia.status === 'Changes Requested' ? 'Revise detailed appraisal' : 'Continue detailed appraisal'}
+              </Button>
+            )}
+            {isClusterExpert && ia.appraisal && !ia.appraisal.isSidbeApproved && (
+              <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
+                onClick={() => navigate(`/sde/ias/${ia.id}/appraisal`)}>
+                Review & add comments
               </Button>
             )}
           </Stack>
