@@ -15,6 +15,7 @@ import {
   useIAs,
   useAppraisals,
   useBseByPmuStatus,
+  useBranchesByStates,
 } from '../../queries'
 
 // Queues shown here:
@@ -43,6 +44,8 @@ export default function ApprovalQueue() {
     () => (iasQ.data || []).filter((i) => (i.stage ?? 0) === 0),
     [iasQ.data],
   )
+  // Resolve branch UUIDs → branch names for the L1 tab display.
+  const { byUuid: branchNameByUuid } = useBranchesByStates(l1Pending.map((i) => i.state))
   // Appraisal DTOs don't carry the IA display name; join against the IA
   // list (already fetched) so rows show the association name, not a UUID.
   const iaNameByUuid = useMemo(() => {
@@ -128,7 +131,7 @@ export default function ApprovalQueue() {
               emptyMsg="Nothing pending L1 approval."
               renderItem={(ia) => ({
                 primary: ia.name,
-                secondary: [ia.city, ia.state].filter(Boolean).join(', ') + ' · ' + (ia.branch || '—'),
+                secondary: [ia.city, ia.state].filter(Boolean).join(', ') + ' · ' + (branchNameByUuid.get(ia.branch) || ia.branch || '—'),
                 meta: `Submitted ${ia.submitted}`,
                 onClick: () => navigate(`/sde/ias/${ia.id}`),
               })}

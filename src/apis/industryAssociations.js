@@ -241,11 +241,15 @@ function toIsoDate(v) {
 //   "Changes Requested"  → reserved (backend flag not exposed yet)
 export function fromDto(dto, appraisal = null) {
   const l1Approved = dto.isSidbeApproved === true
+  const l1Rejected = dto.isSidbeApproved === false
   const hasAppraisal = !!appraisal
   const l2Approved = appraisal?.isSidbeApproved === true
+  const l2Rejected = appraisal?.isSidbeApproved === false
 
   let status, stage
-  if (!l1Approved) { status = 'Basic · In Review'; stage = 0 }
+  if (l1Rejected) { status = 'Rejected (L1)'; stage = 0 }
+  else if (!l1Approved) { status = 'Basic · In Review'; stage = 0 }
+  else if (l2Rejected) { status = 'Rejected (L2)'; stage = 1 }
   else if (!hasAppraisal) { status = 'Detailed Pending'; stage = 1 }
   else if (!l2Approved) { status = 'Final Review (L2)'; stage = 1 }
   else { status = 'Approved'; stage = 2 }
