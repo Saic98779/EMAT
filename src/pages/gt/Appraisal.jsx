@@ -90,7 +90,7 @@ export default function Appraisal() {
           sx={{ bgcolor: 'primary.light', color: 'primary.dark', mb: 1.5, fontWeight: 700 }} />
         <Typography variant="h4">Detailed Appraisal</Typography>
         <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 640, mx: 'auto' }}>
-          {ia ? `${ia.name} · ${ia.id}` : 'Complete the full 15-point appraisal'} — basic proposal approved by SIDBI SDE.
+          {ia?.name || 'Complete the full 15-point appraisal'} — basic proposal approved by SIDBI SDE.
           Complete all points and submit for final approval.
         </Typography>
       </Box>

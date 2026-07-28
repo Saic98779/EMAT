@@ -10,7 +10,10 @@ import EastIcon from '@mui/icons-material/East'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import { StatusChip, SectionCard, Mono } from '../../components/shared'
 import DocUpload from '../../components/DocUpload'
-import { useIA, useApproveIA, useApproveAppraisal } from '../../queries'
+import {
+  useIA, useApproveIA, useApproveAppraisal,
+  useBranchesByState, useSdesByBranch,
+} from '../../queries'
 import { monoFont } from '../../theme'
 
 const STEPS = ['Basic appraisal (L1)', 'Detailed proposal', 'Final approval (L2)']
@@ -116,7 +119,7 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, md: 8 }}>
           <Stack spacing={2.5}>
-            <RegistrationDetails ia={ia} />
+            <RegistrationDetailsResolved ia={ia} />
             {ia.appraisal && <AppraisalDetails appraisal={ia.appraisal} />}
           </Stack>
         </Grid>
@@ -272,6 +275,28 @@ function Group({ title, children }) {
       <Grid container spacing={2}>{children}</Grid>
     </Box>
   )
+}
+
+// Fetches the branch + SDE dropdown lists needed to resolve UUIDs stored on
+// the registration DTO to their display names, then delegates to
+// RegistrationDetails with a raw object whose UUID fields have been swapped
+// for names. If a lookup misses, the original value stays (safe fallback).
+function RegistrationDetailsResolved({ ia }) {
+  const r = ia.raw || {}
+  const branchesQ = useBranchesByState(r.state)
+  const branchName = branchesQ.data?.find((b) => b.uuid === r.sidbiBranch)?.branchName
+  const sdesQ = useSdesByBranch(r.sidbiBranch)
+  const sdeName = sdesQ.data?.find((s) => s.uuid === r.sde)?.name
+
+  const resolved = {
+    ...ia,
+    raw: {
+      ...r,
+      sidbiBranch: branchName || r.sidbiBranch,
+      sde: sdeName || r.sde,
+    },
+  }
+  return <RegistrationDetails ia={resolved} />
 }
 
 function RegistrationDetails({ ia }) {

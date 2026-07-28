@@ -106,17 +106,22 @@ export default function InPrincipleApproval() {
       const created = await createIndustryAssociation(values)
       const regUuid = created?.uuid
 
-      // Upload every picked file under the new registration's UUID. Failures
-      // are reported but don't roll back the IA — the record is created and
-      // the user can retry uploads from the detail page.
+      // Upload picked files SEQUENTIALLY under the new registration's UUID.
+      // Parallel POSTs to the same parent were producing partial failures
+      // (backend serialises writes; duplicate filenames also collide).
+      // Sequential is a few seconds slower but consistently succeeds.
       const files = collectFiles()
       if (regUuid && files.length) {
-        const results = await Promise.allSettled(files.map((f) => uploadFile(regUuid, f)))
-        const failed = results.filter((r) => r.status === 'rejected').length
-        if (failed) {
+        const failures = []
+        for (const f of files) {
+          try { await uploadFile(regUuid, f) }
+          catch (err) { failures.push({ name: f.name, msg: err.message || 'unknown error' }) }
+        }
+        if (failures.length) {
+          const first = failures[0]
           setToast({
             severity: 'warning',
-            msg: `IA created but ${failed} of ${files.length} file${files.length === 1 ? '' : 's'} failed to upload. Retry from the IA page.`,
+            msg: `IA created. ${failures.length} of ${files.length} file${files.length === 1 ? '' : 's'} failed (e.g. "${first.name}": ${first.msg}). Retry from the IA page.`,
           })
         } else {
           setToast({ severity: 'success', msg: `${values.ia_name || 'New IA'} added — ${files.length} file${files.length === 1 ? '' : 's'} uploaded.` })

@@ -102,13 +102,14 @@ export function AuthProvider({ children }) {
   // useAuth() don't re-render whenever an unrelated parent re-renders.
   const value = useMemo(() => {
     const role = session?.role || null
+    const rawRole = session?.rawRole || null
     const user = session?.user || null
     const token = session?.token || null
     // Static metadata (label/tag/short) from ROLES; user info always from API.
     const roleInfo = role
       ? { ...(ROLES[role] || {}), user: user || ROLES[role]?.user || null }
       : null
-    return { role, user, token, roleInfo, login, logout }
+    return { role, rawRole, user, token, roleInfo, login, logout }
   }, [session, login, logout])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
