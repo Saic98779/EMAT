@@ -119,7 +119,7 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
     topThreeSectors: Array.isArray(values.top_three_sectors) ? values.top_three_sectors : [],
     financingScope: null,
     projectLocation: str(values.project_location),
-    clusterExpertComments: null,
+    clusterExpertComments: str(values.cluster_expert_comments),
 
     budgetAllocated: num(values.budget_allocated),
     utilizedAmount: num(values.budget_utilized),
@@ -158,6 +158,7 @@ export function toFormValues(dto = {}) {
     ready_referral: dto.referralArrangementComments ?? '',
     ready_bse: dto.bseReadinessComments ?? '',
     project_location: dto.projectLocation ?? '',
+    cluster_expert_comments: dto.clusterExpertComments ?? '',
     top_three_sectors: Array.isArray(dto.topThreeSectors) ? dto.topThreeSectors : [],
     budget_allocated: dto.budgetAllocated ?? '',
     budget_utilized: dto.utilizedAmount ?? '',

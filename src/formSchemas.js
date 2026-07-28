@@ -561,7 +561,10 @@ export const appraisalSchema = {
     { n: 14, title: 'Delegation of Power', fields: [
       { name: 'dop', label: 'Delegation of Power as per extant PDIV DoP dated', type: 'text', span: 7 },
     ] },
-    { n: 15, title: 'Recommendations', fields: [
+    { n: 15, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
+      { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4 },
+    ] },
+    { n: 16, title: 'Recommendations', fields: [
       { name: 'recommendations', label: 'Recommendations', type: 'textarea', span: 12 },
     ] },
   ],
