@@ -1,7 +1,8 @@
+import { memo, useCallback, useDeferredValue, useMemo, useRef } from 'react'
 import {
   Box, Card, Grid, Stack, Typography, TextField, MenuItem, InputAdornment,
   ToggleButtonGroup, ToggleButton, Avatar, Divider, RadioGroup, FormControlLabel,
-  Radio, FormGroup, Checkbox, Button, Chip, FormLabel, LinearProgress,
+  Radio, FormGroup, Checkbox, Button, Chip, LinearProgress,
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import FunctionsIcon from '@mui/icons-material/Functions'
@@ -59,6 +60,23 @@ export function fieldError(f, value, values) {
 
 const optsOf = (f, values) => (f.optionsFrom ? f.optionsFrom(values) : f.options) || []
 
+// Accepts either a plain string or `{ value, label }`. Returns
+// `{ value, label }`. Callers that need the raw string use `.value`.
+const asOption = (o) => (o && typeof o === 'object' && 'value' in o)
+  ? { value: o.value, label: o.label ?? String(o.value) }
+  : { value: o, label: String(o) }
+
+// Return `prev` if it has the same items as `next`, otherwise `next`. Keeps
+// options arrays reference-stable across renders so memoized `<Field>` inputs
+// don't re-render every keystroke when their options are derived from
+// `optionsFrom(values)`.
+function stableArray(prev, next) {
+  if (prev === next) return prev
+  if (!prev || prev.length !== next.length) return next
+  for (let i = 0; i < prev.length; i++) if (prev[i] !== next[i]) return next
+  return prev
+}
+
 // A labelled frame so choice controls sit as neat cards like the text fields.
 function Framed({ label, required, children }) {
   return (
@@ -70,21 +88,25 @@ function Framed({ label, required, children }) {
 }
 
 function YesNo({ value, onChange }) {
+  const handle = useCallback((_, v) => { if (v) onChange(v) }, [onChange])
   return (
-    <ToggleButtonGroup exclusive size="small" value={value ?? null} onChange={(_, v) => v && onChange(v)}>
+    <ToggleButtonGroup exclusive size="small" value={value ?? null} onChange={handle}>
       <ToggleButton value="yes" color="success" sx={{ px: 2.5, py: 0.35 }}>Yes</ToggleButton>
       <ToggleButton value="no" color="error" sx={{ px: 2.5, py: 0.35 }}>No</ToggleButton>
     </ToggleButtonGroup>
   )
 }
 
+// Stores actual `File` objects in form state so the parent page can upload
+// them after the parent record has a UUID. Chips display `.name`.
 function Uploader({ value, label, required, onChange }) {
   const docs = value || []
-  const pick = (e) => {
-    const names = Array.from(e.target.files || []).map((f) => f.name)
-    if (names.length) onChange([...docs, ...names])
+  const pick = useCallback((e) => {
+    const picked = Array.from(e.target.files || [])
+    if (picked.length) onChange([...(value || []), ...picked])
     e.target.value = ''
-  }
+  }, [value, onChange])
+  const removeAt = useCallback((idx) => onChange((value || []).filter((_, i) => i !== idx)), [value, onChange])
   return (
     <Framed label={label} required={required}>
       <Button component="label" size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ mt: 0.25 }}>
@@ -93,9 +115,10 @@ function Uploader({ value, label, required, onChange }) {
       </Button>
       {docs.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
-          {docs.map((n, i) => (
-            <Chip key={i} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />} label={n}
-              onDelete={() => onChange(docs.filter((_, idx) => idx !== i))} />
+          {docs.map((f, i) => (
+            <Chip key={i} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />}
+              label={typeof f === 'string' ? f : f.name}
+              onDelete={() => removeAt(i)} />
           ))}
         </Box>
       )}
@@ -103,7 +126,9 @@ function Uploader({ value, label, required, onChange }) {
   )
 }
 
-function Field({ f, value, values, computed, onChange, error }) {
+// Individual field. Wrapped in memo — receives primitives + stable callbacks
+// so a keystroke on field A won't cause field B to re-render.
+const Field = memo(function Field({ f, value, error, computed, options, verified, onChange, onVerify }) {
   if (f.type === 'subheading') {
     return (
       <Grid size={12}>
@@ -126,7 +151,9 @@ function Field({ f, value, values, computed, onChange, error }) {
       <Grid size={{ xs: 12, sm: f.span || 6 }}>
         <Framed label={f.label} required={f.required}>
           <RadioGroup row value={value ?? ''} onChange={(e) => onChange(e.target.value)} sx={{ my: -0.5 }}>
-            {optsOf(f, values).map((o) => <FormControlLabel key={o} value={o} control={<Radio size="small" />} label={o} />)}
+            {options.map((raw) => { const o = asOption(raw)
+              return <FormControlLabel key={o.value} value={o.value} control={<Radio size="small" />} label={o.label} />
+            })}
           </RadioGroup>
         </Framed>
       </Grid>
@@ -134,14 +161,14 @@ function Field({ f, value, values, computed, onChange, error }) {
   }
   if (f.type === 'checkboxes') {
     const arr = value || []
-    const toggle = (o) => onChange(arr.includes(o) ? arr.filter((x) => x !== o) : [...arr, o])
+    const toggle = (v) => onChange(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
     return (
       <Grid size={12}>
         <Framed label={f.label} required={f.required}>
           <FormGroup row sx={{ gap: 0.5 }}>
-            {optsOf(f, values).map((o) => (
-              <FormControlLabel key={o} sx={{ mr: 2 }} control={<Checkbox size="small" checked={arr.includes(o)} onChange={() => toggle(o)} />} label={o} />
-            ))}
+            {options.map((raw) => { const o = asOption(raw)
+              return <FormControlLabel key={o.value} sx={{ mr: 2 }} control={<Checkbox size="small" checked={arr.includes(o.value)} onChange={() => toggle(o.value)} />} label={o.label} />
+            })}
           </FormGroup>
         </Framed>
       </Grid>
@@ -165,10 +192,10 @@ function Field({ f, value, values, computed, onChange, error }) {
   }
 
   const isSelect = f.type === 'select'
-  const opts = isSelect ? optsOf(f, values) : []
-  const selVal = isSelect ? (opts.includes(value) ? value : '') : (value ?? '')
+  const selVal = isSelect
+    ? (options.some((o) => asOption(o).value === value) ? value : '')
+    : (value ?? '')
   const multiline = f.type === 'textarea'
-  const verified = f.otp && values[`${f.name}_verified`]
   const counter = f.max ? `${String(value ?? '').length} / ${f.max}` : null
 
   return (
@@ -179,7 +206,8 @@ function Field({ f, value, values, computed, onChange, error }) {
         placeholder={f.placeholder}
         helperText={error || counter || f.help}
         error={!!error}
-        type={['number', 'email', 'tel'].includes(f.type) && !isSelect ? f.type : 'text'}
+        type={['number', 'email', 'tel', 'date'].includes(f.type) && !isSelect ? f.type : 'text'}
+        InputLabelProps={f.type === 'date' ? { shrink: true } : undefined}
         multiline={multiline}
         minRows={multiline ? (f.rows || 2) : undefined}
         select={isSelect}
@@ -193,24 +221,26 @@ function Field({ f, value, values, computed, onChange, error }) {
             <InputAdornment position="end">
               {verified
                 ? <Chip size="small" color="success" icon={<VerifiedIcon />} label="Verified" />
-                : <Button size="small" disabled={!!error || !value} onClick={() => onChange.verify?.()}>Verify OTP</Button>}
+                : <Button size="small" disabled={!!error || !value} onClick={onVerify}>Verify OTP</Button>}
             </InputAdornment>
           ) : undefined,
         }}
         sx={f.readOnly ? { '& .MuiInputBase-root': { bgcolor: 'action.hover' } } : undefined}
         fullWidth
       >
-        {isSelect && opts.map((o) => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+        {isSelect && options.map((raw) => { const o = asOption(raw)
+          return <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+        })}
       </TextField>
     </Grid>
   )
-}
+})
 
 const isFilled = (v) => (Array.isArray(v) ? v.length > 0 : v != null && v !== '')
 
 const isVisible = (f, values) => !f.showIf || f.showIf(values)
 
-const sectionDone = (sec, values) => {
+function sectionDone(sec, values) {
   const inputs = sec.fields.filter((f) => !['subheading', 'computed'].includes(f.type) && isVisible(f, values))
   if (inputs.length === 0) return false
   const anyFilled = inputs.some((f) => isFilled(values[f.name]))
@@ -218,62 +248,165 @@ const sectionDone = (sec, values) => {
   return anyFilled && allValid
 }
 
-export default function FormRenderer({ schema, accent = 'primary', values, setValue }) {
+// Keys that a section reads from `values`. A section only needs to re-render
+// when one of these keys changes. Cached per `sec` object identity so the set
+// is computed once per schema build.
+const relevantKeysCache = new WeakMap()
+function relevantKeysFor(sec) {
+  const cached = relevantKeysCache.get(sec)
+  if (cached) return cached
+  const set = new Set()
+  for (const f of sec.fields) {
+    set.add(f.name)
+    if (f.otp) set.add(`${f.name}_verified`)
+    if (Array.isArray(f.sum)) f.sum.forEach((n) => set.add(n))
+  }
+  // Common cross-section refs used by optionsFrom / showIf in this codebase
+  // (e.g. district & cluster options depend on `state`). Cheap to always
+  // include — a stable-reference `values.state` still passes the equality check.
+  set.add('state')
+  const keys = [...set]
+  relevantKeysCache.set(sec, keys)
+  return keys
+}
+
+// Progress bar. Isolated so it can update on the deferred pass without
+// forcing a re-render of every section card.
+const ProgressCard = memo(function ProgressCard({ doneCount, total, pct, accent }) {
+  return (
+    <Card sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+        <Typography variant="subtitle2" color="text.secondary">Completion</Typography>
+        <Typography variant="subtitle2" color={`${accent}.main`}>{doneCount} / {total} sections</Typography>
+      </Stack>
+      <LinearProgress variant="determinate" value={pct} color={accent} sx={{ height: 8, borderRadius: 5, bgcolor: 'action.hover' }} />
+    </Card>
+  )
+})
+
+// One section = one memoized unit. Only re-renders when a value it actually
+// reads has changed, so typing in section A leaves sections B..H untouched.
+const SectionCard = memo(function SectionCard({
+  sec, values, done, accent, total, changeFor, verifyFor, optionsCacheRef,
+}) {
+  const Icon = sectionIcon(sec.title)
+
   const compute = (f) => {
     if (f.formula) { const r = f.formula(values); return r == null ? '' : r }
     if (f.sum.every((n) => values[n] == null || values[n] === '')) return ''
     return f.sum.reduce((a, n) => a + (parseFloat(values[n]) || 0), 0)
   }
 
+  return (
+    <Card sx={{ overflow: 'hidden' }}>
+      <Stack direction="row" alignItems="center" spacing={1.5}
+        sx={{ px: 2.5, py: 1.5, background: (t) => `linear-gradient(90deg, ${alpha(t.palette[accent].main, 0.1)}, ${alpha(t.palette[accent].main, 0.02)})`, borderBottom: '1px solid', borderColor: 'divider' }}>
+        <Avatar sx={{ bgcolor: `${accent}.main`, color: '#fff', width: 34, height: 34 }}><Icon sx={{ fontSize: 19 }} /></Avatar>
+        <Box sx={{ flexGrow: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>Step {sec.n} of {total}</Typography>
+          <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>{sec.title}</Typography>
+        </Box>
+        {done
+          ? <Chip size="small" color="success" icon={<CheckCircleIcon />} label="Done" sx={{ fontWeight: 700 }} />
+          : <Chip size="small" variant="outlined" label="Pending" sx={{ color: 'text.secondary' }} />}
+      </Stack>
+      <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+        {sec.desc && <Typography variant="body2" color="text.secondary" mb={2}>{sec.desc}</Typography>}
+        <Grid container spacing={2}>
+          {sec.fields.map((f) => {
+            if (!isVisible(f, values)) return null
+            const val = values[f.name]
+            let options
+            if (['select', 'radio', 'checkboxes'].includes(f.type)) {
+              const next = optsOf(f, values)
+              const cached = stableArray(optionsCacheRef.current[f.name], next)
+              optionsCacheRef.current[f.name] = cached
+              options = cached
+            }
+            return (
+              <Field
+                key={f.name}
+                f={f}
+                value={val}
+                error={fieldError(f, val, values)}
+                computed={f.type === 'computed' ? compute(f) : undefined}
+                options={options}
+                verified={f.otp ? !!values[`${f.name}_verified`] : undefined}
+                onChange={changeFor(f.name)}
+                onVerify={f.otp ? verifyFor(f.name) : undefined}
+              />
+            )
+          })}
+        </Grid>
+      </Box>
+    </Card>
+  )
+}, function sectionPropsEqual(prev, next) {
+  if (prev.sec !== next.sec) return false
+  if (prev.done !== next.done) return false
+  if (prev.accent !== next.accent) return false
+  if (prev.total !== next.total) return false
+  if (prev.changeFor !== next.changeFor) return false
+  if (prev.verifyFor !== next.verifyFor) return false
+  if (prev.optionsCacheRef !== next.optionsCacheRef) return false
+  const keys = relevantKeysFor(next.sec)
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i]
+    if (prev.values[k] !== next.values[k]) return false
+  }
+  return true
+})
+
+export default function FormRenderer({ schema, accent = 'primary', values, setValue }) {
+  // Cache one callback per field name so identities survive re-renders. Ref is
+  // used (not useMemo) because we want the closure to always read the latest
+  // setValue without invalidating each entry.
+  const setValueRef = useRef(setValue)
+  setValueRef.current = setValue
+  const changeCache = useRef({})
+  const verifyCache = useRef({})
+  const changeFor = useCallback((name) => {
+    if (!changeCache.current[name]) changeCache.current[name] = (v) => setValueRef.current(name, v)
+    return changeCache.current[name]
+  }, [])
+  const verifyFor = useCallback((name) => {
+    if (!verifyCache.current[name]) verifyCache.current[name] = () => setValueRef.current(`${name}_verified`, true)
+    return verifyCache.current[name]
+  }, [])
+
+  // Per-field options cache: keeps the same array reference when the *contents*
+  // haven't changed, so `Field.memo` can skip re-renders even when the field's
+  // options are derived from other form values.
+  const optionsCacheRef = useRef({})
+
+  // Section completion + progress are derived work that don't need to keep up
+  // with every keystroke. useDeferredValue lets React draw the input first and
+  // recompute in a follow-up commit, so typing stays on the fast path.
+  const deferredValues = useDeferredValue(values)
   const total = schema.sections.length
-  const doneCount = schema.sections.filter((s) => sectionDone(s, values)).length
+  const dones = useMemo(
+    () => schema.sections.map((s) => sectionDone(s, deferredValues)),
+    [schema, deferredValues],
+  )
+  const doneCount = useMemo(() => dones.reduce((n, d) => n + (d ? 1 : 0), 0), [dones])
   const pct = Math.round((doneCount / total) * 100)
 
   return (
     <Stack spacing={2}>
-      <Card sx={{ p: 2 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-          <Typography variant="subtitle2" color="text.secondary">Completion</Typography>
-          <Typography variant="subtitle2" color={`${accent}.main`}>{doneCount} / {total} sections</Typography>
-        </Stack>
-        <LinearProgress variant="determinate" value={pct} color={accent} sx={{ height: 8, borderRadius: 5, bgcolor: 'action.hover' }} />
-      </Card>
-
-      {schema.sections.map((sec) => {
-        const done = sectionDone(sec, values)
-        const Icon = sectionIcon(sec.title)
-        return (
-          <Card key={sec.n} sx={{ overflow: 'hidden', transition: 'box-shadow .2s', '&:hover': { boxShadow: '0 8px 24px rgba(15,23,42,0.07)' } }}>
-            <Stack direction="row" alignItems="center" spacing={1.5}
-              sx={{ px: 2.5, py: 1.5, background: (t) => `linear-gradient(90deg, ${alpha(t.palette[accent].main, 0.1)}, ${alpha(t.palette[accent].main, 0.02)})`, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Avatar sx={{ bgcolor: `${accent}.main`, color: '#fff', width: 34, height: 34 }}><Icon sx={{ fontSize: 19 }} /></Avatar>
-              <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>Step {sec.n} of {total}</Typography>
-                <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>{sec.title}</Typography>
-              </Box>
-              {done
-                ? <Chip size="small" color="success" icon={<CheckCircleIcon />} label="Done" sx={{ fontWeight: 700 }} />
-                : <Chip size="small" variant="outlined" label="Pending" sx={{ color: 'text.secondary' }} />}
-            </Stack>
-            <Box sx={{ p: { xs: 2, md: 2.5 } }}>
-              {sec.desc && <Typography variant="body2" color="text.secondary" mb={2}>{sec.desc}</Typography>}
-              <Grid container spacing={2}>
-                {sec.fields.map((f) => {
-                  if (!isVisible(f, values)) return null
-                  const change = (v) => setValue(f.name, v)
-                  if (f.otp) change.verify = () => setValue(`${f.name}_verified`, true)
-                  return (
-                    <Field key={f.name} f={f} value={values[f.name]} values={values}
-                      computed={f.type === 'computed' ? compute(f) : undefined}
-                      error={fieldError(f, values[f.name], values)}
-                      onChange={change} />
-                  )
-                })}
-              </Grid>
-            </Box>
-          </Card>
-        )
-      })}
+      <ProgressCard doneCount={doneCount} total={total} pct={pct} accent={accent} />
+      {schema.sections.map((sec, i) => (
+        <SectionCard
+          key={sec.n}
+          sec={sec}
+          values={values}
+          done={dones[i]}
+          accent={accent}
+          total={total}
+          changeFor={changeFor}
+          verifyFor={verifyFor}
+          optionsCacheRef={optionsCacheRef}
+        />
+      ))}
     </Stack>
   )
 }

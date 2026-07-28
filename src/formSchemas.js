@@ -1,7 +1,7 @@
 // Data-driven schemas for the onboarding & disbursement forms.
 // field: { name, label, type, options?/optionsFrom?, span?, required?, pattern?, otp?, help? }
 // types: text | number | email | tel | textarea | yesno | select | radio | checkboxes | file | computed | subheading
-import { STATES, districtsOf, sidbiBranchesOf, SDE_OFFICERS } from './geo'
+import { STATES, districtsOf } from './geo'
 import { clustersOf } from './clusters'
 
 const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
@@ -66,7 +66,20 @@ const infraFields = [
 ]
 
 // ── In-Principle Approval (GT capture, first level) — full validated format ──
-export const inPrincipleSchema = {
+// Factory: three cascading dropdowns are backend-driven now.
+//   `branchOptions`  — { value: branchUuid, label: branchName }[] for a state
+//                      (GET /branch/dropdown?state=)
+//   `sdeOptions`     — { value: sdeUuid,   label: name       }[] for a branch
+//                      (GET /sidbi-sde/dropdown?branchUuid=)
+//   `branchHelp` / `sdeHelp` — optional helper text shown under the field
+//                      (e.g. "Pick a state first", "No branches for this state").
+// The `sidbi_branch` field stores the branch UUID (previously the branch name).
+// The `select_sde` field stores the SDE UUID (previously "First Last — …").
+// Backend `sidbiBranch` and `sde` string fields receive those UUIDs.
+export const makeInPrincipleSchema = ({
+  branchOptions = [], sdeOptions = [],
+  branchHelp, sdeHelp,
+} = {}) => ({
   key: 'in-principle',
   sections: [
     { n: 1, title: 'State & Industry Association', fields: [
@@ -76,11 +89,13 @@ export const inPrincipleSchema = {
     { n: 2, title: 'Constitution of IA', fields: [
       { name: 'constitution_type', label: 'Constitution', type: 'select', span: 5, required: true,
         options: ['Societies Registration Act 1860', 'Section 8 Company', 'Trust', 'Other'] },
+      { name: 'constitution_other', label: 'If Other — specify', type: 'text', span: 7, required: true,
+        showIf: (v) => v.constitution_type === 'Other' },
       { name: 'ia_profit_type', label: 'Type of IA', type: 'select', span: 4, required: true, options: ['For Profit', 'Not for Profit'] },
-      { name: 'year_incorp', label: 'Year of Incorporation', type: 'number', span: 3, required: true,
-        validate: (v) => (v === '' ? '' : (!/^\d{4}$/.test(String(v)) ? '4-digit year' : (Number(v) < 1800 || Number(v) > 2026 ? 'Year 1800–2026' : ''))) },
-      { name: 'incorp_certificate', label: 'Incorporation Certificate', type: 'file', span: 6 },
-      { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 6 },
+      { name: 'incorporation_date', label: 'Date of Incorporation', type: 'date', span: 4, required: true,
+        validate: (v) => (!v ? '' : (isNaN(new Date(v).getTime()) ? 'Enter a valid date' : '')) },
+      { name: 'incorp_certificate', label: 'Incorporation Certificate', type: 'file', span: 4 },
+      { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 12 },
     ] },
     { n: 3, title: 'Address of IA', fields: [
       { name: 'address', label: 'Registered address', type: 'text', span: 5 },
@@ -117,14 +132,17 @@ export const inPrincipleSchema = {
       { name: 'nodal_email', label: 'Email ID', type: 'email', span: 3, required: true, otp: true },
     ] },
     { n: 6, title: 'Cluster / District Details', fields: [
-      { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'select', optionsFrom: (v) => sidbiBranchesOf(v.state), span: 6, required: true },
+      { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'select', options: branchOptions, span: 6, required: true,
+        help: branchHelp },
       { name: 'cluster_mapped', label: 'Mapped with any identified cluster?', type: 'yesno', span: 3 },
       { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 3 },
       { name: 'cluster_which', label: 'If yes, which cluster', type: 'select', span: 8,
         showIf: (v) => v.cluster_mapped === 'yes',
         optionsFrom: (v) => { const c = clustersOf(v.state).map((x) => x.name); return c.length ? c : ['No identified cluster listed for this State'] } },
-      { name: 'msme_count', label: 'No. of MSMEs (without traders) in district', type: 'number', span: 4,
-        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Numbers only' : '')) },
+      { name: 'district_msme_count', label: 'Total MSMEs in district', type: 'number', span: 3,
+        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+      { name: 'msme_count', label: 'MSMEs in district (excluding traders)', type: 'number', span: 3,
+        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
     ] },
     { n: 7, title: 'Existing Infra Details', fields: [
       { name: 'members_gt200', label: 'No. of active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 5, required: true },
@@ -143,9 +161,12 @@ export const inPrincipleSchema = {
         showIf: (v) => v.members_gt200 === 'No' || (v.active_members !== '' && v.active_members != null && Number(v.active_members) < 200) },
       { name: 'building', label: 'Building of IA', type: 'select', span: 4,
         options: ['Owned office', 'Rented office', 'Leased office', 'Office of office bearer'] },
-      { name: 'building_proof', label: 'Building proof (declaration / electricity / telephone bill)', type: 'file', span: 4 },
+      { name: 'declaration_signed', label: 'Building declaration signed by office bearer', type: 'yesno', span: 4 },
+      { name: 'electricity_bill', label: 'Electricity bill (proof)', type: 'file', span: 6 },
+      { name: 'telephone_bill', label: 'Telephone bill (proof)', type: 'file', span: 6 },
       { name: 'it_infra', label: 'IT infrastructure (Computer / Printer / Scanner)', type: 'yesno', span: 4 },
-      { name: 'it_infra_details', label: 'If yes, details', type: 'checkboxes', showIf: (v) => v.it_infra === 'yes',
+      { name: 'it_infra_details', label: 'If yes, primary infrastructure type', type: 'select', span: 8,
+        showIf: (v) => v.it_infra === 'yes',
         options: ['Computer', 'Laptop', 'Printer', 'Printer with Scanner', 'Internet Connection'] },
       { name: 'secretariat_staff', label: 'Availability of Secretariat Staff', type: 'yesno', span: 4 },
       { name: 'secretariat_details', label: 'If yes: Name · Contact No · Email ID', type: 'text', span: 8, showIf: (v) => v.secretariat_staff === 'yes' },
@@ -175,10 +196,11 @@ export const inPrincipleSchema = {
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12, max: 500 },
-      { name: 'select_sde', label: 'Select SDE', type: 'select', options: SDE_OFFICERS, span: 6, required: true },
+      { name: 'select_sde', label: 'Select SDE', type: 'select', options: sdeOptions, span: 6, required: true,
+        help: sdeHelp },
     ] },
   ],
-}
+})
 
 // ── BSE Candidate Proposal (GT Field Manager — new BSE onboarding) ──────────
 // Factory: takes the list of IAs already cleared at In-Principle stage so the
@@ -300,6 +322,127 @@ export const salarySchema = {
     ] },
   ],
 }
+
+// ── BSE — Disbursement Note for Reimbursement of CAPEX to IA ─────────────────
+// Only BSE-fillable / autofilled fields. SDE (Amount Recommended, Recommendation)
+// and GT FO (CAPEX verification comments) fields are excluded — they belong on
+// the reviewer screens.
+export const capexReimbursementSchema = {
+  key: 'capex-reimbursement',
+  sections: [
+    { n: 1, title: 'Industry Association & Sanction Details', fields: [
+      { name: 'ia_name', label: 'Industry Association Name', type: 'text', span: 8, readOnly: true,
+        help: 'Autofilled from your BSE profile' },
+      { name: 'ia_gstin', label: 'GSTIN of IA', type: 'text', span: 4, readOnly: true },
+      { name: 'ia_gstin_na_reason', label: 'If GSTIN not applicable — reason', type: 'text', span: 12, readOnly: true,
+        showIf: (v) => !v.ia_gstin },
+      { name: 'sidbi_gstin', label: 'GSTIN of SIDBI', type: 'text', span: 4, readOnly: true, default: '09AABCS3480N5ZS' },
+      { name: 'sanctioned_amount', label: 'Sanctioned Amount', type: 'number', prefix: '₹', span: 4, readOnly: true },
+      { name: 'disbursed_till_date', label: 'Disbursed till Date', type: 'number', prefix: '₹', span: 4, readOnly: true },
+      { name: 'disbursement_sought', label: 'Disbursement Sought', type: 'number', prefix: '₹', span: 6, required: true,
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (isNaN(n) || n <= 0) return 'Enter a valid amount'
+          const sanctioned = Number(values?.sanctioned_amount) || 0
+          const already = Number(values?.disbursed_till_date) || 0
+          const balance = sanctioned - already
+          if (balance > 0 && n > balance) return `Cannot exceed remaining balance ₹${balance.toLocaleString('en-IN')}`
+          return ''
+        } },
+      { name: 'nature_payment', label: 'Nature of Payment', type: 'textarea', span: 12, required: true,
+        rows: 5,
+        help: 'Editable — SDE may revise during review' },
+    ] },
+    { n: 2, title: 'Invoice Details', fields: [
+      { name: 'invoice_date', label: 'Invoice Date', type: 'text', span: 3, placeholder: 'DD/MM/YYYY', required: true },
+      { name: 'invoice_number', label: 'Invoice Number', type: 'text', span: 3, required: true },
+      { name: 'value_service', label: 'Value of service / Items supplied', type: 'number', span: 3, prefix: '₹', required: true },
+      { name: 'igst', label: 'IGST @18%', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 0.18).toFixed(2)) },
+      { name: 'total_amount', label: 'Total amount', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 1.18).toFixed(2)) },
+    ] },
+    { n: 3, title: 'TDS & Compliance', fields: [
+      { name: 'tds', label: 'Applicability of TDS', type: 'yesno', span: 4, help: 'Autofilled from IA profile' },
+      { name: 'tds_na_reason', label: 'If TDS not applicable — reason', type: 'text', span: 8, readOnly: true,
+        showIf: (v) => v.tds === 'no' },
+      { name: 'account_code', label: 'Account Code payment to be made', type: 'text', span: 6, default: 'EX1909010', readOnly: true },
+      { name: 'compliance', label: 'Compliance of Pre-disbursement Terms & Conditions', type: 'yesno', span: 6, required: true },
+    ] },
+  ],
+}
+
+// ── Manpower Agency — BSE Salary Disbursement Request ────────────────────────
+// Factory: BSE roster comes from the agency's onboarding profile so the
+// multi-select and Annexure I dropdown stay in sync with live data.
+export const makeMpaDisbursementSchema = (bseRoster = []) => ({
+  key: 'dia-disbursement',
+  sections: [
+    { n: 1, title: 'Agency, BSEs & Sanction Details', fields: [
+      { name: 'bse_names', label: 'Select Name of BSE (multi)', type: 'checkboxes',
+        options: bseRoster.length ? bseRoster : ['No BSE mapped to this agency'], span: 12, required: true },
+      { name: 'manpower_name', label: 'Manpower Agency Name', type: 'text', span: 6, readOnly: true,
+        help: 'Autofilled from login profile' },
+      { name: 'agency_gstin', label: 'GSTIN of the Agency', type: 'text', span: 6, readOnly: true,
+        help: 'Autofilled from login profile' },
+      { name: 'gstin_na_reason', label: 'If GSTIN not applicable — reason', type: 'text', span: 12, readOnly: true,
+        showIf: (v) => !v.agency_gstin },
+      { name: 'sidbi_gstin', label: 'GSTIN of SIDBI', type: 'text', span: 6, readOnly: true, default: '09AABCS3480N5ZS' },
+      { name: 'sanctioned_amount', label: 'Sanctioned Amount', type: 'number', prefix: '₹', span: 6, readOnly: true,
+        help: 'Autofilled from sanction letter' },
+      { name: 'disbursed_till_date', label: 'Disbursed till Date', type: 'number', prefix: '₹', span: 6, readOnly: true,
+        help: 'Autofilled from ledger' },
+      { name: 'disbursement_sought', label: 'Disbursement Sought', type: 'number', prefix: '₹', span: 6, required: true,
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (isNaN(n) || n <= 0) return 'Enter a valid amount'
+          const sanctioned = Number(values?.sanctioned_amount) || 0
+          const already = Number(values?.disbursed_till_date) || 0
+          const balance = sanctioned - already
+          if (balance > 0 && n > balance) return `Cannot exceed remaining balance ₹${balance.toLocaleString('en-IN')}`
+          return ''
+        } },
+      { name: 'nature_payment', label: 'Nature of Payment', type: 'textarea', span: 12, readOnly: true,
+        default: 'Payment towards Salary for the month <<MMM-YYYY>> of ____ BSEs. BSE-wise Details in Annexure I.' },
+    ] },
+    { n: 2, title: 'Invoice Details', fields: [
+      { name: 'invoice_date', label: 'Invoice Date', type: 'text', span: 3, placeholder: 'DD/MM/YYYY', required: true },
+      { name: 'invoice_number', label: 'Invoice Number', type: 'text', span: 3, required: true },
+      { name: 'value_service', label: 'Value of service / Items supplied', type: 'number', span: 3, prefix: '₹', required: true },
+      { name: 'igst', label: 'IGST @18%', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 0.18).toFixed(2)) },
+      { name: 'total_amount', label: 'Total amount', type: 'computed', prefix: '₹', span: 3,
+        formula: (v) => (isNaN(num(v.value_service)) ? '' : +(num(v.value_service) * 1.18).toFixed(2)) },
+    ] },
+    { n: 3, title: 'TDS & Compliance', fields: [
+      { name: 'tds', label: 'Applicability of TDS', type: 'yesno', span: 4, help: 'Autofilled from agency profile' },
+      { name: 'tds_na_reason', label: 'If TDS not applicable — reason', type: 'text', span: 8, readOnly: true,
+        showIf: (v) => v.tds === 'no' },
+      { name: 'account_code', label: 'Account Code payment to be made', type: 'text', span: 6, default: 'EX1909010', readOnly: true },
+      { name: 'compliance', label: 'Compliance of Pre-disbursement Terms & Conditions', type: 'yesno', span: 6, required: true },
+    ] },
+    { n: 4, title: 'Annexure I — BSE-wise Details', fields: [
+      { name: 'annex_ia_name', label: 'IA Name', type: 'text', span: 4, required: true },
+      { name: 'annex_bse_name', label: 'BSE Name', type: 'select', optionsFrom: (v) => v.bse_names || [], span: 4, required: true,
+        help: 'Choose from BSEs selected above' },
+      { name: 'salary_month', label: 'Month for which salary is disbursed', type: 'text', span: 4, placeholder: 'MM-YYYY', required: true },
+      { name: 'monthly_salary', label: 'Monthly Salary of BSE', type: 'number', span: 3, prefix: '₹', readOnly: true,
+        help: 'Auto based on IA + BSE master' },
+      { name: 'salary_days', label: 'No. of days salary is paid', type: 'number', span: 3, readOnly: true,
+        help: 'Auto from attendance dashboard' },
+      { name: 'additional_amount', label: 'Any additional amount to BSE', type: 'number', span: 3, prefix: '₹' },
+      { name: 'additional_reason', label: 'Reason for such payment', type: 'text', span: 3 },
+      { name: 'payment_bse', label: 'Payment to be disbursed to BSE', type: 'computed', prefix: '₹', span: 4,
+        formula: (v) => {
+          const s = num(v.monthly_salary), d = num(v.salary_days), add = num(v.additional_amount) || 0
+          if (isNaN(s) || isNaN(d)) return isNaN(add) ? '' : add
+          return Math.round((s * d) / 30) + add
+        } },
+    ] },
+  ],
+})
 
 // ── BSE Salary Request (raised by the Industry Association) ──────────────────
 export const salaryRequestSchema = {

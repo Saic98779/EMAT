@@ -29,111 +29,55 @@ export const ROLES = {
     short: 'IA',
     user: { name: 'Lakshmi Iyer', initials: 'LI', title: 'Coimbatore Textile Mfrs. Assn.', email: 'nodal@ctma.org' },
   },
+  dia: {
+    key: 'dia',
+    label: 'DIA',
+    tag: 'SIDBI',
+    short: 'DIA',
+    user: { name: 'Ramesh Sharma', initials: 'RS', title: 'DIA · Manpower Disbursement', email: 'dia@sidbi.in' },
+  },
 }
 
-export const DEMO_CREDS = [
-  { role: 'gt', name: 'GT Field Team', email: 'anita.gt@emat.in', password: 'demo123' },
-  { role: 'sde', name: 'SIDBI SDE · Appraisal', email: 'rajesh.sde@sidbi.in', password: 'demo123' },
-  { role: 'bse', name: 'BSE · Field Officer', email: 'ravi.bse@emat.in', password: 'demo123' },
-  { role: 'ia', name: 'Industry Association', email: 'nodal@ctma.org', password: 'demo123' },
-]
+// Autofilled BSE profile — the IA this BSE is deployed to, sanction status, TDS.
+// Used to prefill BSE-facing disbursement / reimbursement forms.
+export const bseProfile = {
+  ia_name: 'Coimbatore Textile Manufacturers Assn.',
+  ia_gstin: '33AABCC1234A1Z1',
+  ia_gstin_na_reason: '',
+  sidbi_gstin: '09AABCS3480N5ZS',
+  sanctioned_amount: 2100000,
+  disbursed_till_date: 950000,
+  tds_applicable: 'no',
+  tds_na_reason: 'IA is a not-for-profit entity — not liable',
+  account_code: 'EX1909010',
+  nature_payment: 'Payment towards CAPEX purchase.\n\nIA has been sanctioned Rs.______/- towards the purchase of ___________. Out of this Rs.__________/- has already been disbursed towards the purchase of ____________. The present disbursement is of Rs.__________/- towards the purchase of ____________.',
+}
+
+// Autofilled agency profile — comes from the MPA's KYC/onboarding record.
+export const manpowerProfile = {
+  agency_name: 'Skillforce Manpower Pvt. Ltd.',
+  agency_gstin: '27AAAAA0000A1Z5',
+  gstin_na_reason: '',
+  sanctioned_amount: 720000,
+  disbursed_till_date: 384000,
+  tds_applicable: 'no',
+  tds_na_reason: 'Below deduction threshold as per FY declaration',
+  sidbi_gstin: '09AABCS3480N5ZS',
+  account_code: 'EX1909010',
+  nature_payment: 'Payment towards Salary for the month <<MMM-YYYY>> of ____ BSEs. BSE-wise Details in Annexure I.',
+  bse_roster: ['Ravi Kumar', 'Meena Joshi', 'Arjun Nair'],
+  // Salary + attendance seeded per BSE — used to auto-fill Annexure I.
+  bse_master: {
+    'Ravi Kumar': { ia: 'Coimbatore Textile Manufacturers Assn.', monthly_salary: 32000, days_this_cycle: 26 },
+    'Meena Joshi': { ia: 'Pune Auto Components Cluster', monthly_salary: 30000, days_this_cycle: 24 },
+    'Arjun Nair': { ia: 'Surat Diamond & Gems Federation', monthly_salary: 28000, days_this_cycle: 25 },
+  },
+}
 
 // Salary disbursement requests raised by the IA (seed).
 export const salaryRequests = [
   { id: 'SR-101', agency: 'Skillforce Manpower Pvt. Ltd.', bse: 'Ravi Kumar', month: 'May-2026', amount: 32000, invoiceNo: 'INV-5567', date: '02 Jun 2026', status: 'Approved by GT', docs: ['Invoice-INV-5567.pdf', 'Attendance-May.xlsx'] },
   { id: 'SR-102', agency: 'Skillforce Manpower Pvt. Ltd.', bse: 'Ravi Kumar', month: 'Jun-2026', amount: 32000, invoiceNo: 'INV-5601', date: '01 Jul 2026', status: 'Submitted to GT', docs: ['Invoice-INV-5601.pdf'] },
-]
-
-// Status → MUI chip color mapping helpers live in StatusChip.jsx.
-export const industryAssociations = [
-  {
-    id: 'IA-2048',
-    name: 'Coimbatore Textile Manufacturers Assn.',
-    sector: 'Textiles & Apparel',
-    city: 'Coimbatore',
-    state: 'Tamil Nadu',
-    branch: 'SIDBI Coimbatore',
-    status: 'Final Review (L2)',
-    stage: 2,
-    est: 1987,
-    address: '14 Avinashi Road, Peelamedu, Coimbatore 641004',
-    apex: { name: 'S. Raghavan', role: 'President', phone: '+91 98430 11234', email: 'president@ctma.org' },
-    nodal: { name: 'Lakshmi Iyer', role: 'Hon. Secretary', phone: '+91 99940 55621', email: 'secretary@ctma.org' },
-    detailed: {
-      memberUnits: 420,
-      turnover: '₹38.5 Cr',
-      fundingAsk: '₹2.10 Cr',
-      employment: '6,800',
-      womenWorkforce: '31%',
-      purpose: 'Common effluent treatment plant upgrade & skilling centre for 800 workers.',
-    },
-    trail: [
-      { title: 'Basic proposal submitted', by: 'Anita Desai · GT', date: '02 Jun 2026' },
-      { title: 'Basic approved (L1)', by: 'Rajesh Menon · SDE', date: '05 Jun 2026', note: 'Strong, well-governed cluster. Proceed to detailed appraisal.' },
-      { title: 'Detailed proposal submitted', by: 'Anita Desai · GT', date: '14 Jun 2026' },
-    ],
-  },
-  {
-    id: 'IA-2047', name: 'Pune Auto Components Cluster', sector: 'Auto Components',
-    city: 'Pune', state: 'Maharashtra', branch: 'SIDBI Pune', status: 'Detailed Pending', stage: 1, est: 1998,
-    address: 'Plot 22, Bhosari MIDC, Pune 411026',
-    apex: { name: 'M. Kulkarni', role: 'Chairman', phone: '+91 98220 40011', email: 'chair@pacc.org' },
-    nodal: { name: 'Sunil Rao', role: 'Secretary', phone: '+91 98220 40022', email: 'sec@pacc.org' },
-    detailed: null,
-    trail: [
-      { title: 'Basic proposal submitted', by: 'Anita Desai · GT', date: '03 Jun 2026' },
-      { title: 'Basic approved (L1)', by: 'Rajesh Menon · SDE', date: '07 Jun 2026', note: 'Proceed to detailed appraisal.' },
-    ],
-  },
-  {
-    id: 'IA-2051', name: 'Surat Diamond & Gems Federation', sector: 'Gems & Jewellery',
-    city: 'Surat', state: 'Gujarat', branch: 'SIDBI Surat', status: 'Basic · In Review', stage: 0, est: 2004,
-    address: 'Mahidharpura, Surat 395003',
-    apex: { name: 'H. Shah', role: 'President', phone: '+91 99250 10001', email: 'pres@sdgf.org' },
-    nodal: { name: 'Nikhil Patel', role: 'Secretary', phone: '+91 99250 10002', email: 'sec@sdgf.org' },
-    detailed: null,
-    submitted: '19 Jun 2026',
-    trail: [{ title: 'Basic proposal submitted', by: 'Anita Desai · GT', date: '19 Jun 2026' }],
-  },
-  {
-    id: 'IA-2052', name: 'Morbi Ceramics Association', sector: 'Ceramics',
-    city: 'Morbi', state: 'Gujarat', branch: 'SIDBI Rajkot', status: 'Basic · In Review', stage: 0, est: 1995,
-    address: '8-A Ceramic Zone, Morbi 363642',
-    apex: { name: 'D. Patel', role: 'President', phone: '+91 98240 30001', email: 'pres@mca.org' },
-    nodal: { name: 'Kiran Joshi', role: 'Secretary', phone: '+91 98240 30002', email: 'sec@mca.org' },
-    detailed: null,
-    submitted: '20 Jun 2026',
-    trail: [{ title: 'Basic proposal submitted', by: 'Anita Desai · GT', date: '20 Jun 2026' }],
-  },
-  {
-    id: 'IA-2044', name: 'Rajkot Engineering Cluster', sector: 'Engineering & Machine Tools',
-    city: 'Rajkot', state: 'Gujarat', branch: 'SIDBI Rajkot', status: 'Changes Requested', stage: 1, est: 1991,
-    address: 'Aji Industrial Estate, Rajkot 360003',
-    apex: { name: 'V. Mehta', role: 'Chairman', phone: '+91 98252 20001', email: 'chair@rec.org' },
-    nodal: { name: 'Alpesh Doshi', role: 'Secretary', phone: '+91 98252 20002', email: 'sec@rec.org' },
-    detailed: null,
-    trail: [
-      { title: 'Basic proposal submitted', by: 'Anita Desai · GT', date: '01 Jun 2026' },
-      { title: 'Changes requested', by: 'Rajesh Menon · SDE', date: '06 Jun 2026', note: 'Governance docs incomplete — resubmit with audited financials.' },
-    ],
-  },
-  {
-    id: 'IA-2039', name: 'Ludhiana Knitwear & Hosiery Assn.', sector: 'Knitwear & Hosiery',
-    city: 'Ludhiana', state: 'Punjab', branch: 'SIDBI Ludhiana', status: 'Approved', stage: 3, est: 1985,
-    address: 'Industrial Area A, Ludhiana 141003',
-    apex: { name: 'G. Singh', role: 'President', phone: '+91 98155 60001', email: 'pres@lkha.org' },
-    nodal: { name: 'Harpreet Kaur', role: 'Secretary', phone: '+91 98155 60002', email: 'sec@lkha.org' },
-    detailed: {
-      memberUnits: 610, turnover: '₹52.0 Cr', fundingAsk: '₹3.40 Cr', employment: '9,200', womenWorkforce: '44%',
-      purpose: 'Shared dyeing facility and design studio for hosiery units.',
-    },
-    trail: [
-      { title: 'Basic proposal submitted', by: 'Anita Desai · GT', date: '10 May 2026' },
-      { title: 'Basic approved (L1)', by: 'Rajesh Menon · SDE', date: '14 May 2026' },
-      { title: 'Detailed proposal submitted', by: 'Anita Desai · GT', date: '22 May 2026' },
-      { title: 'Final sanctioned (L2)', by: 'Rajesh Menon · SDE', date: '28 May 2026', note: 'Sanctioned ₹3.40 Cr.' },
-    ],
-  },
 ]
 
 export const disbursals = [

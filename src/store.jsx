@@ -1,9 +1,12 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useCallback, useContext, useState } from 'react'
 import {
-  industryAssociations as seedIAs, disbursals as seedDisbursals,
+  disbursals as seedDisbursals,
   attendanceRequests as seedAttendance, fieldVisits as seedVisits,
   salaryRequests as seedSalaryRequests,
 } from './data'
+import { listIndustryAssociations, fromDto as iaFromDto } from './apis/industryAssociations'
+import { listAppraisals } from './apis/industryAssociationAppraisals'
+import { listBseRecommendations, fromDto as bseFromDto } from './apis/bseRecommendations'
 
 const DataContext = createContext(null)
 
@@ -20,37 +23,72 @@ const money = (v) => {
   return isNaN(n) ? '—' : `₹${n} L`
 }
 
+// Backends may return a raw array, a Spring Page (`{ content: [] }`), or the
+// generic `{ items: [] }` shape — accept all three.
+function unwrapList(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.content)) return data.content
+  if (Array.isArray(data?.items)) return data.items
+  return []
+}
+
 export function DataProvider({ children }) {
-  const [ias, setIas] = useState(seedIAs)
+  const [ias, setIas] = useState([])
+  const [iasLoading, setIasLoading] = useState(false)
+  const [iasError, setIasError] = useState(null)
+
+  // Load Industry Association registrations from the backend + the linked
+  // detailed appraisals so the derived status can advance to L2 / Approved.
+  // Both fetches run in parallel; appraisals are matched to registrations by
+  // `registrationUuid`. Appraisal failure is non-fatal — the list still
+  // renders with L1 statuses.
+  const refreshIAs = useCallback(async ({ signal } = {}) => {
+    setIasLoading(true)
+    setIasError(null)
+    try {
+      const [regRaw, apprRaw] = await Promise.all([
+        listIndustryAssociations({ signal }),
+        listAppraisals({ signal }).catch(() => []),
+      ])
+      const regs = unwrapList(regRaw)
+      const apprs = unwrapList(apprRaw)
+      const byReg = new Map(apprs.map((a) => [a.registrationUuid, a]).filter(([k]) => !!k))
+      setIas(regs.map((r) => iaFromDto(r, byReg.get(r.uuid) || null)))
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      setIasError(err.message || 'Failed to load Industry Associations')
+    } finally {
+      setIasLoading(false)
+    }
+  }, [])
   const [disbursals, setDisbursals] = useState(seedDisbursals)
   const [attendance, setAttendance] = useState(seedAttendance)
   const [visits, setVisits] = useState(seedVisits)
   const [salaryRequests, setSalaryRequests] = useState(seedSalaryRequests)
   const [bseCandidates, setBseCandidates] = useState([])
+  const [bseCandidatesLoading, setBseCandidatesLoading] = useState(false)
+  const [bseCandidatesError, setBseCandidatesError] = useState(null)
 
-  // GT captures an In-Principle Approval → new IA enters the pipeline.
-  const addIA = (f) => {
-    const id = nextId('IA', ias)
-    const ia = {
-      id,
-      name: f.ia_name || 'New Industry Association',
-      sector: f.sector || '—',
-      city: f.district || '—',
-      state: f.state || '—',
-      branch: f.sidbi_branch || '—',
-      status: 'Basic · In Review',
-      stage: 0,
-      est: f.year_incorp || '—',
-      address: f.address || '—',
-      apex: { name: f.apex_name || '—', role: f.apex_designation || '—', phone: f.apex_contact || '—', email: f.apex_email || '—' },
-      nodal: { name: f.nodal_name || '—', role: f.nodal_designation || '—', phone: f.nodal_contact || '—', email: f.nodal_email || '—' },
-      detailed: null,
-      submitted: today(),
-      trail: [{ title: 'Basic proposal submitted', by: 'Anita Desai · GT', date: today() }],
+  // Load BSE candidate recommendations from the backend. Mirrors refreshIAs:
+  // callers decide when to trigger (on mount, after a mutation, etc.).
+  const refreshBseCandidates = useCallback(async ({ signal } = {}) => {
+    setBseCandidatesLoading(true)
+    setBseCandidatesError(null)
+    try {
+      const data = await listBseRecommendations({ signal })
+      const list = Array.isArray(data)
+        ? data
+        : (Array.isArray(data?.content) ? data.content
+          : (Array.isArray(data?.items) ? data.items : []))
+      setBseCandidates(list.map(bseFromDto))
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      setBseCandidatesError(err.message || 'Failed to load BSE candidates')
+    } finally {
+      setBseCandidatesLoading(false)
     }
-    setIas((prev) => [ia, ...prev])
-    return id
-  }
+  }, [])
+  const [mpaRequests, setMpaRequests] = useState([])
 
   // GT submits the detailed appraisal → advances the IA to final (L2) review.
   const submitAppraisal = (id, f) => {
@@ -188,10 +226,49 @@ export function DataProvider({ children }) {
     return id
   }
 
+  // BSE raises a CAPEX reimbursement note for the IA they are deployed to.
+  const addBseCapexRequest = (f) => {
+    const id = nextId('DSB', disbursals)
+    const d = {
+      id,
+      amount: parseFloat(f.disbursement_sought) || 0,
+      title: `CAPEX Reimbursement — ${f.ia_name || 'IA'}${f.invoice_number ? ` · Inv ${f.invoice_number}` : ''}`,
+      who: f.ia_name || 'IA',
+      category: 'CAPEX',
+      date: today(),
+      status: 'GT Approval (L1)',
+      flow: 'Awaiting GT (L1) → SIDBI (L2)',
+    }
+    setDisbursals((prev) => [d, ...prev])
+    return id
+  }
+
+  // Manpower Agency submits a salary disbursement request (per pay cycle).
+  const addMpaRequest = (f) => {
+    const id = nextId('MPA', mpaRequests)
+    const req = {
+      id,
+      agency: f.manpower_name || '—',
+      bses: (f.bse_names || []).length,
+      bseList: f.bse_names || [],
+      month: f.salary_month || '—',
+      sought: parseFloat(f.disbursement_sought) || 0,
+      total: parseFloat(f.total_amount) || 0,
+      invoiceNo: f.invoice_number || '—',
+      invoiceDate: f.invoice_date || '—',
+      date: today(),
+      status: 'Submitted to HO Maker',
+    }
+    setMpaRequests((prev) => [req, ...prev])
+    return id
+  }
+
   const value = {
-    ias, disbursals, attendance, visits, salaryRequests, bseCandidates,
-    addIA, submitAppraisal, setIAStatus, addDisbursal, setDisbursalStatus, setAttendanceStatus,
-    addSalary, addCapex, addSalaryRequest, reviewSalaryRequest, addBseCandidate,
+    ias, iasLoading, iasError, refreshIAs,
+    bseCandidatesLoading, bseCandidatesError, refreshBseCandidates,
+    disbursals, attendance, visits, salaryRequests, bseCandidates, mpaRequests,
+    submitAppraisal, setIAStatus, addDisbursal, setDisbursalStatus, setAttendanceStatus,
+    addSalary, addCapex, addSalaryRequest, reviewSalaryRequest, addBseCandidate, addMpaRequest, addBseCapexRequest,
   }
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
