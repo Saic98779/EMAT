@@ -13,11 +13,13 @@ import { monoFont } from '../theme'
 // inline (not in data.js) because it's a dev-only convenience and the roster
 // changes with backend seed data — treat this list as configuration, not code.
 const DEMO_CREDS = [
-  { role: 'GT Field Team', username: 'gt.demo', password: 'demo123' },
-  { role: 'SIDBI SDE', username: 'sde.demo', password: 'demo123' },
-  { role: 'BSE', username: 'bse.demo', password: 'demo123' },
-  { role: 'Industry Association', username: 'ia.demo', password: 'demo123' },
-  { role: 'DIA / MPA', username: 'dia.demo', password: 'demo123' },
+  { role: 'DIA', username: 'dia_user', password: 'Password@123' },
+  { role: 'BSE', username: 'bse_user', password: 'Password@123' },
+  { role: 'GT Field Team', username: 'gt_field_team', password: 'Password@123' },
+  { role: 'GT PMU', username: 'gt_pmu', password: 'Password@123' },
+  { role: 'SIDBI SDE', username: 'sidbi_sde', password: 'Password@123' },
+  { role: 'SIDBI RO', username: 'sidbi_ro', password: 'Password@123' },
+  { role: 'SIDBI HO Maker', username: 'sidbi_ho_maker', password: 'Password@123' },
 ]
 
 export default function Login() {
