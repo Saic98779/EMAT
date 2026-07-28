@@ -11,7 +11,8 @@
 //   2. Add a `useX` (query) or `useXMutation` hook.
 //   3. In the mutation's onSuccess, call qc.invalidateQueries({ queryKey: keys.X })
 //      for anything that could be affected.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import {
   listIndustryAssociations,
   getIndustryAssociation,
@@ -342,6 +343,30 @@ export function useBranchesByState(state) {
     queryKey: keys.branches.byState(state),
     enabled: !!state,
     queryFn: ({ signal }) => listBranchesByState(state, { signal }),
+  })
+}
+
+// Bulk variant — fetches branch dropdowns for every unique state in the
+// input list and returns a single Map<branchUuid, branchName>. Useful for
+// list views that render `sidbiBranch` UUIDs from many different states.
+export function useBranchesByStates(states = []) {
+  const unique = useMemo(
+    () => Array.from(new Set((states || []).filter(Boolean))),
+    [states],
+  )
+  return useQueries({
+    queries: unique.map((state) => ({
+      queryKey: keys.branches.byState(state),
+      queryFn: ({ signal }) => listBranchesByState(state, { signal }),
+      staleTime: 5 * 60_000,
+    })),
+    combine: (results) => {
+      const byUuid = new Map()
+      for (const r of results) {
+        if (Array.isArray(r.data)) for (const b of r.data) byUuid.set(b.uuid, b.branchName)
+      }
+      return { byUuid, isLoading: results.some((r) => r.isLoading) }
+    },
   })
 }
 

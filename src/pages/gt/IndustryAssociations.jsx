@@ -15,7 +15,7 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
 import { deleteIndustryAssociation } from '../../apis/industryAssociations'
-import { useIAs, keys } from '../../queries'
+import { useIAs, useBranchesByStates, keys } from '../../queries'
 
 // Contextual primary action per IA status (GT). Kept as small outlined
 // buttons so long labels don't wrap onto two lines and no single colour
@@ -46,6 +46,9 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const qc = useQueryClient()
   const { data: ias = [], isLoading: iasLoading, isFetching, error: iasErrorObj, refetch } = useIAs()
   const iasError = iasErrorObj?.message || null
+  // Fetch branch dropdowns for every state present in the list, then use the
+  // combined map to resolve each row's `sidbiBranch` UUID → branchName.
+  const { byUuid: branchNameByUuid } = useBranchesByStates(ias.map((i) => i.state))
   const isGt = basePath.startsWith('/gt')
   const [confirm, setConfirm] = useState(null) // IA pending soft-delete
   const [deleting, setDeleting] = useState(false)
@@ -139,7 +142,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                   <Mono>{[ia.city, ia.state].filter((x) => x && x !== '—').join(' · ') || '—'}</Mono>
                 </TableCell>
                 <TableCell><Typography variant="body2">{ia.sector}</Typography></TableCell>
-                <TableCell><Typography variant="body2">{ia.branch}</Typography></TableCell>
+                <TableCell><Typography variant="body2">{branchNameByUuid.get(ia.branch) || ia.branch}</Typography></TableCell>
                 <TableCell><StatusChip status={ia.status} /></TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
