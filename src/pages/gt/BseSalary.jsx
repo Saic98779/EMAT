@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box, Stack, Typography, Button, Snackbar, Alert, Chip, Paper } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -13,7 +13,7 @@ export default function BseSalary() {
   const { addSalary } = useData()
   const [values, setValues] = useState(() => defaultsFor(salarySchema))
   const [toast, setToast] = useState(false)
-  const setValue = (name, v) => setValues((p) => ({ ...p, [name]: v }))
+  const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
 
   const submit = () => { addSalary(values); setToast(true); setTimeout(() => navigate('/gt/disbursals'), 1200) }
 

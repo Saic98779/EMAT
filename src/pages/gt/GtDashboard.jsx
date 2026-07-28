@@ -1,18 +1,48 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Grid, Box, Stack, Typography, Button, Card, CardContent, Avatar, Chip, Divider,
+  CircularProgress,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import EastIcon from '@mui/icons-material/East'
+import PersonSearchOutlinedIcon from '@mui/icons-material/PersonSearchOutlined'
 import { BarChart } from '@mui/x-charts/BarChart'
 import { StatCard, StatBars, SectionCard, GreetingBanner, iconMap, statusColor } from '../../components/shared'
 import { gtStats } from '../../data'
 import { useAuth } from '../../auth'
+import {
+  listBseRecommendationsByGtStatus,
+  fromDto as bseFromDto,
+} from '../../apis/bseRecommendations'
+
+// The backend's initial gt-recommendation status. Adjust if the enum uses a
+// different label ("PENDING", "None", etc.).
+const GT_PENDING_STATUS = 'Pending'
 
 export default function GtDashboard() {
   const navigate = useNavigate()
   const { roleInfo } = useAuth()
   const s = gtStats
+
+  const [pendingBse, setPendingBse] = useState([])
+  const [pendingBseLoading, setPendingBseLoading] = useState(false)
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    setPendingBseLoading(true)
+    listBseRecommendationsByGtStatus(GT_PENDING_STATUS, { signal: ctrl.signal })
+      .then((data) => {
+        const list = Array.isArray(data)
+          ? data
+          : (Array.isArray(data?.content) ? data.content
+            : (Array.isArray(data?.items) ? data.items : []))
+        setPendingBse(list.map(bseFromDto))
+      })
+      .catch((err) => { if (err.name !== 'AbortError') setPendingBse([]) })
+      .finally(() => setPendingBseLoading(false))
+    return () => ctrl.abort()
+  }, [])
 
   return (
     <Box>
@@ -35,6 +65,41 @@ export default function GtDashboard() {
       </Grid>
 
       <Grid container spacing={2.5} mt={1}>
+        <Grid size={12}>
+          <SectionCard
+            title="BSE candidates awaiting your recommendation"
+            subtitle={`Filtered by gt-recommendation status = “${GT_PENDING_STATUS}”.`}
+            action={<Button size="small" endIcon={<EastIcon />} onClick={() => navigate('/gt/team')}>BSE Team</Button>}
+          >
+            {pendingBseLoading && pendingBse.length === 0 ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress size={22} />
+              </Box>
+            ) : pendingBse.length === 0 ? (
+              <Typography color="text.secondary">No BSE candidates pending your recommendation.</Typography>
+            ) : (
+              <Stack divider={<Divider />} spacing={0}>
+                {pendingBse.slice(0, 6).map((c) => (
+                  <Stack key={c.uuid} direction="row" alignItems="center" spacing={2}
+                    onClick={() => navigate(`/gt/team/${c.uuid}`)}
+                    sx={{ py: 1.5, px: 1, mx: -1, borderRadius: 2, cursor: 'pointer', transition: 'background .15s', '&:hover': { bgcolor: 'action.hover' } }}>
+                    <Avatar variant="rounded" sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 40, height: 40 }}>
+                      <PersonSearchOutlinedIcon fontSize="small" />
+                    </Avatar>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography fontWeight={600} fontSize="0.92rem">{c.name}</Typography>
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {c.ia} · {c.qualification} · {c.experience}
+                      </Typography>
+                    </Box>
+                    <Chip label={c.status} size="small" sx={{ bgcolor: 'primary.light', color: 'primary.dark', fontWeight: 700 }} />
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </SectionCard>
+        </Grid>
+
         <Grid size={{ xs: 12, md: 7 }}>
           <SectionCard title="Needs your attention" action={<Button size="small" endIcon={<EastIcon />} onClick={() => navigate('/gt/ias')}>All IAs</Button>}>
             <Stack divider={<Divider />} spacing={0}>

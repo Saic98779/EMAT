@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box, Stack, Typography, Button, Snackbar, Alert, Chip, Paper } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -17,7 +17,7 @@ export default function IaSalaryRequest() {
   const [values, setValues] = useState(() => ({ ...defaultsFor(salaryRequestSchema), ia_name: roleInfo.user.title }))
   const [docs, setDocs] = useState([])
   const [toast, setToast] = useState('')
-  const setValue = (name, v) => setValues((p) => ({ ...p, [name]: v }))
+  const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
 
   const submit = () => {
     if (docs.length === 0) { setToast('Please attach the Invoice before submitting.'); return }

@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Typography, Button, Snackbar, Alert, Chip, Paper } from '@mui/material'
+import { Box, Typography, Button, Snackbar, Alert, Chip, Paper, CircularProgress } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EastIcon from '@mui/icons-material/East'
 import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { makeBseCandidateSchema } from '../../formSchemas'
+import { createBseRecommendation } from '../../apis/bseRecommendations'
 import { useData } from '../../store'
 
 // First unmet requirement (missing required field or a validation error), if any.
@@ -24,24 +25,64 @@ function firstProblem(schema, values) {
 
 export default function BseCandidate() {
   const navigate = useNavigate()
-  const { ias, addBseCandidate } = useData()
+  const { ias, refreshIAs, addBseCandidate } = useData()
   const [values, setValues] = useState({})
-  const [toast, setToast] = useState('')
-  const setValue = (name, v) => setValues((p) => ({ ...p, [name]: v }))
+  const [toast, setToast] = useState({ severity: '', msg: '' })
+  const [busy, setBusy] = useState(false)
+  const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
 
-  // Only IAs whose In-Principle Approval is cleared (stage >= 1) are eligible.
+  // The IA list is loaded lazily by the `/gt/ias` page — refetch here so this
+  // page works when opened directly (deep link / navigation from dashboard).
+  useEffect(() => {
+    const ctrl = new AbortController()
+    refreshIAs({ signal: ctrl.signal })
+    return () => ctrl.abort()
+  }, [refreshIAs])
+
+  // Only IAs whose In-Principle Approval is cleared (stage >= 1) are eligible,
+  // and only records that carry a backend `uuid` — we can't POST without one.
   const approvedIAs = useMemo(
-    () => ias.filter((i) => (i.stage ?? 0) >= 1).map((i) => i.name),
+    () => ias.filter((i) => (i.stage ?? 0) >= 1 && i.uuid),
     [ias],
   )
-  const schema = useMemo(() => makeBseCandidateSchema(approvedIAs), [approvedIAs])
+  const schema = useMemo(
+    () => makeBseCandidateSchema(approvedIAs.map((i) => i.name)),
+    [approvedIAs],
+  )
 
-  const submit = () => {
+  const submit = async () => {
+    if (busy) return
+    if (approvedIAs.length === 0) {
+      setToast({ severity: 'warning', msg: 'No In-Principle approved IA is available yet. Approve an IA before proposing a BSE.' })
+      return
+    }
     const problem = firstProblem(schema, values)
-    if (problem) { setToast(problem); return }
-    addBseCandidate(values)
-    setToast('done')
-    setTimeout(() => navigate('/gt/team'), 1100)
+    if (problem) { setToast({ severity: 'warning', msg: problem }); return }
+
+    // Backend expects the IA's registrationUuid, but the form only carries the
+    // display name — resolve it from the approved IA list.
+    const ia = approvedIAs.find((i) => i.name === values.ia_name)
+    if (!ia?.uuid) {
+      setToast({ severity: 'error', msg: 'Selected IA is missing a registration reference. Refresh and try again.' })
+      return
+    }
+
+    setBusy(true)
+    try {
+      const created = await createBseRecommendation(values, ia.uuid)
+      // Keep the local store in sync so the BSE Team page reflects the new candidate.
+      addBseCandidate(values)
+      setToast({
+        severity: 'success',
+        msg: `${values.bse_name || 'Candidate'} proposed for ${values.ia_name || 'IA'}.`,
+      })
+      const nextPath = created?.uuid ? `/gt/team/${created.uuid}` : '/gt/team'
+      setTimeout(() => navigate(nextPath), 1100)
+    } catch (err) {
+      setToast({ severity: 'error', msg: err.message || 'Failed to submit. Please try again.' })
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -58,13 +99,25 @@ export default function BseCandidate() {
       <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
-        <Button color="inherit" onClick={() => navigate('/gt/team')}>Cancel</Button>
-        <Button variant="contained" endIcon={<EastIcon />} onClick={submit}>Submit Proposal</Button>
+        <Button color="inherit" onClick={() => navigate('/gt/team')} disabled={busy}>Cancel</Button>
+        <Button
+          variant="contained"
+          endIcon={busy ? <CircularProgress size={16} color="inherit" /> : <EastIcon />}
+          onClick={submit}
+          disabled={busy}
+        >
+          {busy ? 'Submitting…' : 'Submit Proposal'}
+        </Button>
       </Paper>
 
-      <Snackbar open={!!toast} autoHideDuration={3000} onClose={() => setToast('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert severity={toast === 'done' ? 'success' : 'warning'} variant="filled">
-          {toast === 'done' ? `${values.bse_name || 'Candidate'} proposed for ${values.ia_name || 'IA'}.` : toast}
+      <Snackbar
+        open={!!toast.msg}
+        autoHideDuration={3500}
+        onClose={() => setToast({ severity: '', msg: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={toast.severity || 'info'} variant="filled" onClose={() => setToast({ severity: '', msg: '' })}>
+          {toast.msg}
         </Alert>
       </Snackbar>
     </Box>

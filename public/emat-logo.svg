@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="eMAT">
+  <defs>
+    <linearGradient id="emat-ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#39A9C4"/>
+      <stop offset="100%" stop-color="#12466A"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="60" cy="60" r="49" fill="none" stroke="url(#emat-ring)" stroke-width="5" stroke-linecap="round" stroke-dasharray="250 58" transform="rotate(-108 60 60)"/>
+
+  <g transform="translate(16 52) rotate(-25) scale(1.05)"><path fill="#7FC241" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(22 34) rotate(-5) scale(0.95)"><path fill="#43A047" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(34 22) rotate(20) scale(0.9)"><path fill="#7FC241" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(50 14) rotate(35) scale(0.85)"><path fill="#43A047" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(70 12) rotate(-20) scale(0.9)"><path fill="#F6A21E" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(92 22) rotate(40) scale(0.95)"><path fill="#2E7D32" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(104 44) rotate(65) scale(1)"><path fill="#43A047" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(104 74) rotate(110) scale(1)"><path fill="#2E7D32" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(40 104) rotate(200) scale(0.95)"><path fill="#43A047" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+  <g transform="translate(20 86) rotate(165) scale(0.9)"><path fill="#7FC241" d="M0 0 C 7 -3 11 -10 8 -19 C 1 -15 -3 -7 0 0 Z"/><path stroke="rgba(255,255,255,0.55)" stroke-width="0.7" fill="none" d="M1 -1 C 3 -6 5 -10 7 -16"/></g>
+
+  <g transform="translate(60 44) scale(0.8) rotate(0)"><circle cx="0" cy="-19" r="7.2" fill="#F6A21E"/><path fill="#F6A21E" d="M -3 -9 C -9 -13 -18 -22 -23 -19 C -19 -13 -11 -9 -5 -5 L -4 4 L -9 23 L -3.5 23 L 0 9 L 3.5 23 L 9 23 L 4 4 L 5 -5 C 11 -9 19 -13 23 -19 C 18 -22 9 -13 3 -9 Z"/></g>
+  <g transform="translate(37 74) scale(0.64) rotate(-16)"><circle cx="0" cy="-19" r="7.2" fill="#35AECB"/><path fill="#35AECB" d="M -3 -9 C -9 -13 -18 -22 -23 -19 C -19 -13 -11 -9 -5 -5 L -4 4 L -9 23 L -3.5 23 L 0 9 L 3.5 23 L 9 23 L 4 4 L 5 -5 C 11 -9 19 -13 23 -19 C 18 -22 9 -13 3 -9 Z"/></g>
+  <g transform="translate(83 74) scale(0.64) rotate(16)"><circle cx="0" cy="-19" r="7.2" fill="#E2381F"/><path fill="#E2381F" d="M -3 -9 C -9 -13 -18 -22 -23 -19 C -19 -13 -11 -9 -5 -5 L -4 4 L -9 23 L -3.5 23 L 0 9 L 3.5 23 L 9 23 L 4 4 L 5 -5 C 11 -9 19 -13 23 -19 C 18 -22 9 -13 3 -9 Z"/></g>
+  <g transform="translate(60 82) scale(0.82) rotate(0)"><circle cx="0" cy="-19" r="7.2" fill="#2E5F8F"/><path fill="#2E5F8F" d="M -3 -9 C -9 -13 -18 -22 -23 -19 C -19 -13 -11 -9 -5 -5 L -4 4 L -9 23 L -3.5 23 L 0 9 L 3.5 23 L 9 23 L 4 4 L 5 -5 C 11 -9 19 -13 23 -19 C 18 -22 9 -13 3 -9 Z"/></g>
+</svg>

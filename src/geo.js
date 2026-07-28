@@ -62,12 +62,3 @@ export const SIDBI_BRANCHES = {
 }
 
 export const sidbiBranchesOf = (state) => SIDBI_BRANCHES[state] || (state ? ['SIDBI Regional Office'] : [])
-
-// SDEs available for appraisal (Select SDE dropdown).
-export const SDE_OFFICERS = [
-  'Rajesh Menon — SIDBI Coimbatore',
-  'Priya Nair — SIDBI Chennai',
-  'Amit Deshpande — SIDBI Pune',
-  'Sunita Rao — SIDBI Bengaluru',
-  'Vikram Shah — SIDBI Ahmedabad',
-]

@@ -21,6 +21,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import { useAuth } from '../auth'
 import Logo from './Logo'
 import sidbiLogo from '../assets/sidbi-logo.png'
+import { useIAs, useAppraisals } from '../queries'
 
 const DRAWER_WIDTH = 288
 
@@ -43,19 +44,24 @@ export const NAV = {
   ],
   sde: [
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'Dashboard' },
-    { icon: 'inbox', label: 'Approval Queue', path: '/sde/queue', badge: 4, overline: 'Approvals', title: 'Approval queue' },
+    { icon: 'inbox', label: 'Approval Queue', path: '/sde/queue', overline: 'Approvals', title: 'Approval queue' },
     { icon: 'doc', label: 'Industry Associations', path: '/sde/ias', overline: 'Industry Associations', title: 'Industry Associations' },
-    { icon: 'payments', label: 'Disbursals', path: '/sde/disbursals', badge: 1, overline: 'Field ops', title: 'Disbursals' },
+    { icon: 'payments', label: 'Disbursals', path: '/sde/disbursals', overline: 'Field ops', title: 'Disbursals' },
   ],
   bse: [
     { icon: 'home', label: 'Dashboard', path: '/bse', overline: 'Overview', title: 'Dashboard' },
     { icon: 'route', label: 'My Field Visits', path: '/bse/visits', overline: 'Field ops', title: 'My field visits' },
     { icon: 'calendar', label: 'Attendance', path: '/bse/attendance', overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/bse/disbursals', overline: 'Field ops', title: 'Disbursals' },
+    { icon: 'doc', label: 'CAPEX Reimbursement', path: '/bse/capex/new', overline: 'Disbursement', title: 'Reimbursement of CAPEX to IA' },
   ],
   ia: [
     { icon: 'home', label: 'Dashboard', path: '/ia', overline: 'Overview', title: 'Dashboard' },
     { icon: 'payments', label: 'Salary Requests', path: '/ia/requests', overline: 'Disbursement', title: 'BSE Salary Requests' },
+  ],
+  dia: [
+    { icon: 'home', label: 'Dashboard', path: '/dia', overline: 'Overview', title: 'Dashboard' },
+    { icon: 'payments', label: 'Raise Disbursement', path: '/dia/disburse', overline: 'Disbursement', title: 'Salary Disbursement Request' },
   ],
 }
 
@@ -67,7 +73,14 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [anchor, setAnchor] = useState(null)
 
-  const nav = NAV[role] || []
+  // Live sidebar badges — same query hooks other pages use, so caches are
+  // shared and counts stay in sync when approvals happen anywhere.
+  const badges = useLiveBadges(role)
+
+  const nav = (NAV[role] || []).map((item) => {
+    const live = badges[item.path]
+    return live ? { ...item, badge: live } : item
+  })
   // Longest-prefix match so detail routes keep their parent highlighted.
   const active = [...nav].sort((a, b) => b.path.length - a.path.length)
     .find((n) => location.pathname === n.path || location.pathname.startsWith(n.path + '/'))
@@ -100,7 +113,7 @@ export default function AppLayout() {
               >
                 <ListItemIcon sx={{ minWidth: 40, color: selected ? 'primary.dark' : 'text.secondary' }}><Icon fontSize="small" /></ListItemIcon>
                 <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: selected ? 700 : 500, fontSize: '0.9rem' }} />
-                {item.badge && <Chip label={item.badge} size="small" color={selected ? 'primary' : 'default'} />}
+                {item.badge > 0 && <Chip label={item.badge} size="small" color={selected ? 'primary' : 'default'} />}
               </ListItemButton>
             </ListItem>
           )
@@ -185,4 +198,23 @@ export default function AppLayout() {
       </Box>
     </Box>
   )
+}
+
+// Live badge counts, computed from cached query data. Only queries relevant
+// to the current role fire (`enabled`), and every mutation that changes a
+// list already invalidates the cache — so these counts stay in sync without
+// any per-page wiring.
+function useLiveBadges(role) {
+  const isSde = role === 'sde'
+  const iasQ = useIAs({ enabled: isSde })
+  const apprsQ = useAppraisals({ enabled: isSde })
+
+  if (isSde) {
+    const ias = iasQ.data || []
+    const apprs = apprsQ.data || []
+    const l1 = ias.filter((i) => (i.stage ?? 0) === 0).length
+    const l2 = apprs.filter((a) => !a.approved).length
+    return { '/sde/queue': l1 + l2 }
+  }
+  return {}
 }

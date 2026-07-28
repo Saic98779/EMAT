@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Box, Stack, Typography, Button, Snackbar, Alert, Chip, Paper } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -15,7 +15,7 @@ export default function CapexNote() {
   const ia = ias.find((x) => x.id === id)
   const [values, setValues] = useState(() => ({ ...defaultsFor(capexSchema), ...(ia ? { ia_name: ia.name } : {}) }))
   const [toast, setToast] = useState(false)
-  const setValue = (name, v) => setValues((p) => ({ ...p, [name]: v }))
+  const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
 
   const submit = () => { addCapex(values); setToast(true); setTimeout(() => navigate('/gt/disbursals'), 1200) }
 
