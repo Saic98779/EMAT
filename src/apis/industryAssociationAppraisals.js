@@ -61,80 +61,75 @@ export function deleteAppraisal(uuid, { signal } = {}) {
 
 // ── Create payload adapter ─────────────────────────────────────────────────
 // Frontend form values (`appraisalSchema` in formSchemas.js) → backend
-// `CreateIndustryAssociationAppraisalRequest`. Best-effort mapping; the form
-// captures a superset in some places and a subset in others.
+// `CreateIndustryAssociationAppraisalRequest`. Every DTO column has a matching
+// form field now (see appraisalSchema in formSchemas.js). Missing fields
+// still get null so the request stays predictable.
 //
-// Field mapping notes:
-//   dd_ia_cibil    → cibilReportReferenceNo   (form has a single text; DTO
-//                                              splits ref-no / date / rank /
-//                                              remarks — we send ref-no only)
-//   dd_ia_darpan   → ngoDarpanNumber
-//   dd_ia_nabard   → nabardBlacklisted        (form is a free-text "status";
-//                                              coerced to boolean)
-//   dd_ia_smart    → smartReportReferenceNo
-//   dd_holder_cibil → cibilRemarks
-//   dd_holder_smart → smartReportRemarks
-//   dd_owner_cibil  → beneficialOwnerCibilRemarks
-//   dd_owner_smart  → beneficialOwnerSmartRemarks
-//   ready_*         → formalizationComments / referralArrangementComments /
-//                     bseReadinessComments
-//   budget_*        → budgetAllocated / utilizedAmount / availableBudget
-//   terms           → termsAndConditions
-//   dop             → dopDate (ISO)
-//   recommendations → recommendationRemarks
-//
-// Fields with no form input (cibilReportDate, cibilRanking, smartReportDate,
-// webSearchVerified, webSearchDocument, majorSourcesOfIncome, activitiesLastYear,
-// topThreeSectors, financingScope, clusterExpertComments, recommendation,
-// createdBy) are omitted / null — extend the form to capture them.
+// Top-3 sectors are collected as sector_1 / sector_2 / sector_3 text inputs
+// and joined into `topThreeSectors: string[]` before send. Reverse mapping
+// splits them back.
 export function toCreatePayload(values = {}, registrationUuid = null) {
+  const sectors = [values.sector_1, values.sector_2, values.sector_3]
+    .map((s) => (s == null ? '' : String(s).trim()))
+    .filter(Boolean)
+
   return {
     registrationUuid: str(registrationUuid),
 
-    cibilReportReferenceNo: str(values.dd_ia_cibil),
-    cibilReportDate: null,
-    cibilRanking: null,
-    cibilRemarks: str(values.dd_holder_cibil),
+    // Section 7 — Comments on Due Diligence (IA)
+    cibilReportReferenceNo: str(values.cibil_ref_no),
+    cibilReportDate: toIsoDate(values.cibil_date),
+    cibilRanking: str(values.cibil_ranking),
+    cibilRemarks: str(values.cibil_remarks),
 
-    ngoDarpanNumber: str(values.dd_ia_darpan),
-    nabardBlacklisted: bool(values.dd_ia_nabard),
+    ngoDarpanNumber: str(values.ngo_darpan_no),
+    nabardBlacklisted: bool(values.nabard_blacklisted),
 
-    smartReportReferenceNo: str(values.dd_ia_smart),
-    smartReportDate: null,
-    smartReportRemarks: str(values.dd_holder_smart),
+    smartReportReferenceNo: str(values.smart_ref_no),
+    smartReportDate: toIsoDate(values.smart_date),
+    smartReportRemarks: str(values.smart_remarks),
 
-    webSearchVerified: null,
-    webSearchDocument: null,
+    webSearchVerified: bool(values.web_search_verified),
+    webSearchDocument: firstFileName(values.web_search_document),
 
-    beneficialOwnerCibilRemarks: str(values.dd_owner_cibil),
-    beneficialOwnerSmartRemarks: str(values.dd_owner_smart),
+    // Beneficial owner
+    beneficialOwnerCibilRemarks: str(values.owner_cibil_remarks),
+    beneficialOwnerSmartRemarks: str(values.owner_smart_remarks),
 
-    majorSourcesOfIncome: null,
-    activitiesLastYear: null,
+    // Section 10 — Existing Infra (extras beyond IA-mirrored fields)
+    majorSourcesOfIncome: str(values.major_sources_of_income),
+    activitiesLastYear: str(values.activities_last_year),
 
+    // Section 11 — DIA Specific
     formalizationComments: str(values.ready_formalization),
     referralArrangementComments: str(values.ready_referral),
     bseReadinessComments: str(values.ready_bse),
 
-    topThreeSectors: Array.isArray(values.top_three_sectors) ? values.top_three_sectors : [],
-    financingScope: null,
+    topThreeSectors: sectors,
+    financingScope: str(values.financing_scope),
     projectLocation: str(values.project_location),
+
+    // Section 12 — Cluster Expert
     clusterExpertComments: str(values.cluster_expert_comments),
 
+    // Section 14 — Budget (availableBudget is derived; also sent so backend
+    // has an explicit value if it stores rather than recomputes).
     budgetAllocated: num(values.budget_allocated),
     utilizedAmount: num(values.budget_utilized),
-    availableBudget: num(values.budget_available),
+    availableBudget: computeAvailable(values),
 
+    // Section 13 — Terms
     termsAndConditions: str(values.terms),
-    dopDate: toIsoDate(values.dop),
+    // Section 15 — Delegation of Power
+    dopDate: toIsoDate(values.dop_date),
 
-    recommendation: null,
-    recommendationRemarks: str(values.recommendations),
+    // Section 16 — Recommendation
+    recommendation: str(values.recommendation),
+    recommendationRemarks: str(values.recommendation_remarks),
   }
 }
 
-// Update payload = same shape as create for now. When backend adds fields
-// only updatable post-submit (cluster expert comments, etc.), branch here.
+// Update payload = same shape as create.
 export function toUpdatePayload(values, registrationUuid) {
   return toCreatePayload(values, registrationUuid)
 }
@@ -143,30 +138,70 @@ export function toUpdatePayload(values, registrationUuid) {
 // Used to prefill the L2 form when an appraisal already exists (revise flow).
 export function toFormValues(dto = {}) {
   if (!dto || typeof dto !== 'object') return {}
+  const sectors = Array.isArray(dto.topThreeSectors) ? dto.topThreeSectors : []
   return {
-    dd_ia_cibil: dto.cibilReportReferenceNo ?? '',
-    dd_ia_darpan: dto.ngoDarpanNumber ?? '',
-    dd_ia_nabard: dto.nabardBlacklisted == null
-      ? ''
-      : (dto.nabardBlacklisted ? 'Blacklisted' : 'Clear'),
-    dd_ia_smart: dto.smartReportReferenceNo ?? '',
-    dd_holder_cibil: dto.cibilRemarks ?? '',
-    dd_holder_smart: dto.smartReportRemarks ?? '',
-    dd_owner_cibil: dto.beneficialOwnerCibilRemarks ?? '',
-    dd_owner_smart: dto.beneficialOwnerSmartRemarks ?? '',
+    // Section 7
+    cibil_ref_no: dto.cibilReportReferenceNo ?? '',
+    cibil_date: (dto.cibilReportDate ?? '').slice(0, 10),
+    cibil_ranking: dto.cibilRanking ?? '',
+    cibil_remarks: dto.cibilRemarks ?? '',
+
+    ngo_darpan_no: dto.ngoDarpanNumber ?? '',
+    nabard_blacklisted: dto.nabardBlacklisted == null ? '' : (dto.nabardBlacklisted ? 'yes' : 'no'),
+
+    smart_ref_no: dto.smartReportReferenceNo ?? '',
+    smart_date: (dto.smartReportDate ?? '').slice(0, 10),
+    smart_remarks: dto.smartReportRemarks ?? '',
+
+    web_search_verified: dto.webSearchVerified == null ? '' : (dto.webSearchVerified ? 'yes' : 'no'),
+    // web_search_document is a File-typed input; the DTO carries a filename
+    // string. We leave the picker empty on load — user can re-attach if they
+    // need to replace it. Existing file remains referenced by the DTO field.
+
+    owner_cibil_remarks: dto.beneficialOwnerCibilRemarks ?? '',
+    owner_smart_remarks: dto.beneficialOwnerSmartRemarks ?? '',
+
+    // Section 10 extras
+    major_sources_of_income: dto.majorSourcesOfIncome ?? '',
+    activities_last_year: dto.activitiesLastYear ?? '',
+
+    // Section 11
     ready_formalization: dto.formalizationComments ?? '',
     ready_referral: dto.referralArrangementComments ?? '',
     ready_bse: dto.bseReadinessComments ?? '',
+    sector_1: sectors[0] ?? '',
+    sector_2: sectors[1] ?? '',
+    sector_3: sectors[2] ?? '',
+    financing_scope: dto.financingScope ?? '',
     project_location: dto.projectLocation ?? '',
+
+    // Section 12
     cluster_expert_comments: dto.clusterExpertComments ?? '',
-    top_three_sectors: Array.isArray(dto.topThreeSectors) ? dto.topThreeSectors : [],
+
+    // Section 13, 14, 15
+    terms: dto.termsAndConditions ?? '',
     budget_allocated: dto.budgetAllocated ?? '',
     budget_utilized: dto.utilizedAmount ?? '',
-    budget_available: dto.availableBudget ?? '',
-    terms: dto.termsAndConditions ?? '',
-    dop: dto.dopDate ?? '',
-    recommendations: dto.recommendationRemarks ?? '',
+    // budget_available is a computed field; nothing to seed.
+    dop_date: (dto.dopDate ?? '').slice(0, 10),
+
+    // Section 16
+    recommendation: dto.recommendation ?? '',
+    recommendation_remarks: dto.recommendationRemarks ?? '',
   }
+}
+
+// Small helpers used by the adapter.
+function firstFileName(v) {
+  if (!Array.isArray(v) || v.length === 0) return null
+  const f = v[0]
+  return typeof f === 'string' ? f : (f && f.name) || null
+}
+function computeAvailable(v) {
+  const a = Number(v?.budget_allocated)
+  const u = Number(v?.budget_utilized)
+  if (!Number.isFinite(a) && !Number.isFinite(u)) return null
+  return (Number.isFinite(a) ? a : 0) - (Number.isFinite(u) ? u : 0)
 }
 
 // ── Coercion helpers ──────────────────────────────────────────────────────

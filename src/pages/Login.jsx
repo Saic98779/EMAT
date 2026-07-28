@@ -15,9 +15,9 @@ import { monoFont } from '../theme'
 const DEMO_CREDS = [
   { role: 'DIA', username: 'dia_user', password: 'Password@123' },
   { role: 'BSE', username: 'bse_user', password: 'Password@123' },
-  { role: 'GT Field Team', username: 'gt_field_team', password: 'Password@123' },
+  { role: 'GT Field Team', username: 'Ravikant.Rai@IN.GT.COM', password: 'Password@123' },
   { role: 'GT PMU', username: 'gt_pmu', password: 'Password@123' },
-  { role: 'SIDBI SDE', username: 'sidbi_sde', password: 'Password@123' },
+  { role: 'SIDBI SDE', username: 'pushpendrat@sidbi.in', password: 'Password@123' },
   { role: 'SIDBI RO', username: 'sidbi_ro', password: 'Password@123' },
   { role: 'SIDBI HO Maker', username: 'sidbi_ho_maker', password: 'Password@123' },
 ]

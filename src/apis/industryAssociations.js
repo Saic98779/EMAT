@@ -134,6 +134,67 @@ export function toUpdatePayload(v = {}, extra = {}) {
   return payload
 }
 
+// Reverse mapping: backend DTO → form values shape used by makeInPrincipleSchema.
+// Used by SDE edit mode to prefill the form with the current record. File
+// fields are omitted — file objects live in state only until the parent record
+// is created; on edit they can be re-uploaded via DocUpload.
+export function toFormValues(dto = {}) {
+  const yn = (b) => (b === true ? 'yes' : b === false ? 'no' : '')
+  const YN = (b) => (b === true ? 'Yes' : b === false ? 'No' : '')
+  const num = (n) => (n == null ? '' : String(n))
+  return {
+    state: dto.state ?? '',
+    ia_name: dto.industryAssociationName ?? '',
+    constitution_type: dto.constitutionType ?? '',
+    constitution_other: dto.constitutionOther ?? '',
+    incorporation_date: (dto.incorporationDate ?? '').slice(0, 10),
+    ia_profit_type: dto.iaType ?? '',
+    district: dto.district ?? '',
+    pincode: dto.pincode ?? '',
+    apex_name: dto.apexHolderName ?? '',
+    apex_designation: dto.apexHolderDesignation ?? '',
+    apex_contact: dto.apexHolderMobile ?? '',
+    apex_email: dto.apexHolderEmail ?? '',
+    apex_kyc_doc: dto.addressProofType ?? '',
+    apex_kyc_number: dto.addressProof ?? '',
+    apex_id_proof: dto.idProofType ?? '',
+    apex_id_number: dto.idProof ?? '',
+    nodal_name: dto.nodalName ?? '',
+    nodal_designation: dto.nodalDesignation ?? '',
+    nodal_contact: dto.nodalMobile ?? '',
+    nodal_email: dto.nodalEmail ?? '',
+    sidbi_branch: dto.sidbiBranch ?? '',        // UUID; branch dropdown resolves
+    cluster_mapped: yn(dto.mappedWithCluster),
+    cluster_which: dto.clusterName ?? '',
+    district_mapped: yn(dto.mappedWithImportantDistrict),
+    district_msme_count: num(dto.districtMsmeCount),
+    msme_count: num(dto.msmeCountWithoutTraders),
+    members_gt200: YN(dto.activeMembersAbove200),
+    active_members: num(dto.activeMembersCount),
+    members_justification: dto.justification ?? '',
+    member_directory: yn(dto.memberDirectoryAvailable),
+    building: dto.buildingType ?? '',
+    declaration_signed: yn(dto.declarationSigned),
+    it_infra: yn(dto.itInfrastructureAvailable),
+    it_infra_details: dto.infrastructureType ?? '',
+    secretariat_staff: yn(dto.secretariatStaffAvailable),
+    website: yn(dto.websiteAvailable),
+    website_url: dto.websiteUrl ?? '',
+    paid_services: yn(dto.paidServicesAvailable),
+    adverse_remarks: yn(dto.adverseRemarksAvailable),
+    adverse_details: dto.adverseRemarks ?? '',
+    basis_of_selection: Array.isArray(dto.selectionCriteria) ? dto.selectionCriteria : [],
+    willingness_comments: dto.willingnessComments ?? '',
+    worked_before: yn(dto.workedWithSidbiBefore),
+    grant_proposed: num(dto.grantProposed),
+    grant_details: dto.grantDetails ?? '',
+    envisaged_output: dto.envisagedOutput ?? '',
+    envisaged_outcome: dto.envisagedOutcome ?? '',
+    envisaged_impact: dto.envisagedImpact ?? '',
+    select_sde: dto.sde ?? '',                  // UUID; SDE dropdown resolves
+  }
+}
+
 // ── Coercion helpers ────────────────────────────────────────────────────────
 const str = (v) => (v == null || v === '' ? null : String(v))
 const int = (v) => {

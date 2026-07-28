@@ -13,56 +13,28 @@ const apexNodal = (prefix) => [
   { name: `${prefix}_email`, label: 'Email ID', type: 'email', span: 3 },
 ]
 
-const clusterFields = [
-  { name: 'cluster_mapped', label: 'Is it mapped with any identified cluster?', type: 'yesno', span: 5 },
-  { name: 'cluster_which', label: 'If yes, which cluster — specify', type: 'text', span: 7 },
-]
-
-const grantFields = [
-  { name: '_capex', label: 'CAPEX = Capacity Building (IA Members + IA Officials)', type: 'subheading', span: 12 },
-  { name: 'grant_cb_member', label: 'Cap. Building — IA Members', type: 'number', span: 4 },
-  { name: 'grant_cb_officials', label: 'Cap. Building — IA Officials', type: 'number', span: 4 },
-  { name: 'grant_capex', label: 'CAPEX', type: 'computed', sum: ['grant_cb_member', 'grant_cb_officials'], span: 4 },
-  { name: '_other_grant', label: 'Other grant components (₹ Lakhs)', type: 'subheading', span: 12 },
-  { name: 'grant_bse_salary', label: 'BSE Salary', type: 'number', span: 3 },
-  { name: 'grant_other', label: 'Any other', type: 'number', span: 3 },
-  { name: 'grant_proposed', label: 'Total Grant Proposed', type: 'number', span: 3 },
-]
-
-const envisaged = [
-  { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12 },
-  { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12 },
-  { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12 },
-]
-
+// Appraisal-only identity — sections 1–6 pulled autofetched from the parent
+// IA registration. Sections 1–4 are strictly read-only (spec says
+// "Autofetched from In-Principle approval format"). Sections 5–6 are seeded
+// but modifiable ("Subject to Approval by Reporting Officer").
 const identity = [
-  { n: 1, title: 'State', fields: [{ name: 'state', label: 'State', type: 'text', span: 4 }] },
-  { n: 2, title: 'Industry Association (IA)', fields: [{ name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 8 }] },
+  { n: 1, title: 'State', fields: [
+    { name: 'state', label: 'State', type: 'text', span: 4, readOnly: true, help: 'Auto-fetched from In-Principle registration' },
+  ] },
+  { n: 2, title: 'Industry Association (IA)', fields: [
+    { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 8, readOnly: true },
+  ] },
   { n: 3, title: 'Constitution of IA', fields: [
-    { name: 'year_incorp', label: 'Year of Incorporation', type: 'number', span: 3 },
-    { name: 'proof_constitution', label: 'Proof of Constitution', type: 'text', span: 5, placeholder: 'Registration certificate / deed' },
+    { name: 'year_incorp', label: 'Year of Incorporation', type: 'number', span: 3, readOnly: true },
+    { name: 'ia_profit_type', label: 'Type of IA', type: 'text', span: 4, readOnly: true },
+    { name: 'proof_constitution', label: 'Proof of Constitution', type: 'text', span: 5, readOnly: true },
   ] },
   { n: 4, title: 'Address of IA', fields: [
-    { name: 'address', label: 'Registered address', type: 'text', span: 12 },
-    { name: 'district', label: 'District', type: 'text', span: 4 },
-    { name: 'pincode', label: 'Pincode', type: 'number', span: 3 },
+    { name: 'district', label: 'District', type: 'text', span: 4, readOnly: true },
+    { name: 'pincode', label: 'Pincode', type: 'text', span: 3, readOnly: true },
   ] },
-  { n: 5, title: 'Apex Office Holder Details of IA', fields: apexNodal('apex') },
-  { n: 6, title: 'Nodal Person Details of IA', fields: apexNodal('nodal') },
-]
-
-const infraFields = [
-  { name: 'active_members', label: 'No. of active members (should be > 300)', type: 'number', span: 4 },
-  { name: 'members_justification', label: 'Justification if active member base is less than 300', type: 'text', span: 8 },
-  { name: 'own_building', label: 'Own Building of IA', type: 'yesno', span: 4 },
-  { name: 'own_building_details', label: 'If yes, details thereof', type: 'text', span: 8 },
-  { name: 'it_infra', label: 'IT infrastructure (Computer / Printer / Scanner etc.)', type: 'yesno', span: 4 },
-  { name: 'it_infra_details', label: 'If yes, details thereof', type: 'text', span: 8 },
-  { name: 'secretariat_staff', label: 'Availability of Secretariat Staff', type: 'yesno', span: 4 },
-  { name: 'secretariat_details', label: 'If yes, details thereof', type: 'text', span: 8 },
-  { name: 'website', label: 'Website Availability', type: 'yesno', span: 4 },
-  { name: 'paid_services', label: 'Paid services offered to members', type: 'yesno', span: 4 },
-  { name: 'paid_services_details', label: 'Details of Paid Services', type: 'text', span: 12 },
+  { n: 5, title: 'Apex Office Holder Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('apex') },
+  { n: 6, title: 'Nodal Person Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('nodal') },
 ]
 
 // ── In-Principle Approval (GT capture, first level) — full validated format ──
@@ -135,7 +107,8 @@ export const makeInPrincipleSchema = ({
       { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'select', options: branchOptions, span: 6, required: true,
         help: branchHelp },
       { name: 'cluster_mapped', label: 'Mapped with any identified cluster?', type: 'yesno', span: 3 },
-      { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 3 },
+      { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 3,
+        help: 'Auto-fill pending backend important-districts list' },
       { name: 'cluster_which', label: 'If yes, which cluster', type: 'select', span: 8,
         showIf: (v) => v.cluster_mapped === 'yes',
         optionsFrom: (v) => { const c = clustersOf(v.state).map((x) => x.name); return c.length ? c : ['No identified cluster listed for this State'] } },
@@ -145,7 +118,9 @@ export const makeInPrincipleSchema = ({
         validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
     ] },
     { n: 7, title: 'Existing Infra Details', fields: [
-      { name: 'members_gt200', label: 'No. of active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 5, required: true },
+      { name: 'msme_count_mirror', label: 'MSMEs in district (auto from Cluster / District)', type: 'computed', span: 6,
+        formula: (v) => (v.msme_count === '' || v.msme_count == null ? '' : v.msme_count) },
+      { name: 'members_gt200', label: 'No. of active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 6, required: true },
       { name: 'active_members', label: 'No. of active members in IA', type: 'number', span: 3, required: true,
         validate: (v, values) => {
           if (v === '') return ''
@@ -165,11 +140,16 @@ export const makeInPrincipleSchema = ({
       { name: 'electricity_bill', label: 'Electricity bill (proof)', type: 'file', span: 6 },
       { name: 'telephone_bill', label: 'Telephone bill (proof)', type: 'file', span: 6 },
       { name: 'it_infra', label: 'IT infrastructure (Computer / Printer / Scanner)', type: 'yesno', span: 4 },
-      { name: 'it_infra_details', label: 'If yes, primary infrastructure type', type: 'select', span: 8,
+      { name: 'it_infra_details', label: 'If yes, primary infrastructure type', type: 'radio', span: 8,
         showIf: (v) => v.it_infra === 'yes',
         options: ['Computer', 'Laptop', 'Printer', 'Printer with Scanner', 'Internet Connection'] },
       { name: 'secretariat_staff', label: 'Availability of Secretariat Staff', type: 'yesno', span: 4 },
-      { name: 'secretariat_details', label: 'If yes: Name · Contact No · Email ID', type: 'text', span: 8, showIf: (v) => v.secretariat_staff === 'yes' },
+      { name: 'secretariat_name', label: 'Secretariat staff — Name', type: 'text', span: 3,
+        showIf: (v) => v.secretariat_staff === 'yes', required: true },
+      { name: 'secretariat_contact', label: 'Secretariat staff — Contact', type: 'tel', span: 3,
+        showIf: (v) => v.secretariat_staff === 'yes', required: true },
+      { name: 'secretariat_email', label: 'Secretariat staff — Email', type: 'email', span: 2,
+        showIf: (v) => v.secretariat_staff === 'yes', required: true },
       { name: 'website', label: 'Website availability', type: 'yesno', span: 4 },
       { name: 'website_url', label: 'If yes, website URL', type: 'text', span: 8, showIf: (v) => v.website === 'yes' },
       { name: 'paid_services', label: 'Paid services offered to members', type: 'yesno', span: 4 },
@@ -527,45 +507,97 @@ export const appraisalSchema = {
     ...identity,
     { n: 7, title: 'Comments on Due Diligence', fields: [
       { name: '_dd_ia', label: 'Due Diligence of IA', type: 'subheading', span: 12 },
-      { name: 'dd_ia_cibil', label: 'CIBIL', type: 'text', span: 3 },
-      { name: 'dd_ia_darpan', label: 'NGO Darpan', type: 'text', span: 3 },
-      { name: 'dd_ia_nabard', label: 'NABARD Blacklist', type: 'text', span: 3 },
-      { name: 'dd_ia_smart', label: 'DD report from SMART', type: 'text', span: 3 },
-      { name: '_dd_holder', label: 'Due Diligence of IA office holder/s', type: 'subheading', span: 12 },
-      { name: 'dd_holder_cibil', label: 'CIBIL', type: 'text', span: 3 },
-      { name: 'dd_holder_smart', label: 'DD report from SMART', type: 'text', span: 4 },
-      { name: '_dd_owner', label: 'Due Diligence of IA beneficial owner/s (extant KYC policy)', type: 'subheading', span: 12 },
-      { name: 'dd_owner_cibil', label: 'CIBIL', type: 'text', span: 3 },
-      { name: 'dd_owner_smart', label: 'DD report from SMART', type: 'text', span: 4 },
+      { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
+      { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
+      { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation' },
+      { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3 },
+      { name: 'cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
+
+      { name: '_dd_ia_darpan', label: 'NGO Darpan', type: 'subheading', span: 12 },
+      { name: 'ngo_darpan_no', label: 'NGO Darpan Number', type: 'text', span: 6 },
+
+      { name: '_dd_ia_nabard', label: 'NABARD Blacklist', type: 'subheading', span: 12 },
+      { name: 'nabard_blacklisted', label: 'NABARD Blacklisted?', type: 'yesno', span: 6 },
+
+      { name: '_dd_ia_smart', label: 'SMART Report — IA', type: 'subheading', span: 12 },
+      { name: 'smart_ref_no', label: 'SMART Report Reference No.', type: 'text', span: 6 },
+      { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation' },
+      { name: 'smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12 },
+
+      { name: '_dd_ia_web', label: 'Web Search', type: 'subheading', span: 12 },
+      { name: 'web_search_verified', label: 'Web Search Verified?', type: 'yesno', span: 6 },
+      { name: 'web_search_document', label: 'Web Search Document (upload)', type: 'file', span: 6, showIf: (v) => v.web_search_verified === 'yes' },
+
+      { name: '_dd_owner', label: 'Due Diligence — IA Beneficial Owner/s (extant KYC policy)', type: 'subheading', span: 12 },
+      { name: 'owner_cibil_remarks', label: 'CIBIL — Remarks', type: 'textarea', span: 12 },
+      { name: 'owner_smart_remarks', label: 'SMART — Remarks', type: 'textarea', span: 12 },
     ] },
-    { n: 8, title: 'Nearest SIDBI Branch Office', fields: [{ name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'text', span: 6 }] },
-    { n: 9, title: 'Cluster Details', fields: clusterFields },
-    { n: 10, title: 'Existing Infra Details', fields: infraFields },
+    { n: 8, title: 'Nearest SIDBI Branch Office', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
+      { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'text', span: 6 },
+    ] },
+    { n: 9, title: 'Cluster / District Details', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
+      { name: 'cluster_mapped', label: 'Mapped with an identified cluster?', type: 'yesno', span: 3 },
+      { name: 'cluster_which', label: 'If yes, which cluster', type: 'text', span: 5 },
+      { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 4 },
+      { name: 'msme_count', label: 'MSMEs (without traders) in district', type: 'number', span: 4 },
+    ] },
+    { n: 10, title: 'Existing Infra Details', desc: 'Autofetched and modifiable', fields: [
+      { name: 'members_gt200', label: 'Active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 6 },
+      { name: 'active_members', label: 'No. of active members in IA', type: 'number', span: 3 },
+      { name: 'members_justification', label: 'Justification if active member base is less than 200', type: 'textarea', span: 12,
+        showIf: (v) => v.members_gt200 === 'No' },
+      { name: 'own_building', label: 'Building of IA available?', type: 'yesno', span: 4 },
+      { name: 'own_building_details', label: 'If yes, details / facilities', type: 'text', span: 8, showIf: (v) => v.own_building === 'yes' },
+      { name: 'it_infra', label: 'IT infrastructure (Computer / Printer / Scanner)?', type: 'yesno', span: 4 },
+      { name: 'it_infra_details', label: 'If yes, details', type: 'text', span: 8, showIf: (v) => v.it_infra === 'yes' },
+      { name: 'secretariat_staff', label: 'Availability of Secretariat Staff?', type: 'yesno', span: 4 },
+      { name: 'secretariat_details', label: 'If yes, details', type: 'text', span: 8, showIf: (v) => v.secretariat_staff === 'yes' },
+      { name: 'website', label: 'Website availability?', type: 'yesno', span: 4 },
+      { name: 'paid_services', label: 'Paid services offered to members?', type: 'yesno', span: 4 },
+      { name: 'paid_services_details', label: 'Details of paid services', type: 'text', span: 12, showIf: (v) => v.paid_services === 'yes' },
+      { name: 'major_sources_of_income', label: 'Major sources of income', type: 'textarea', span: 12 },
+      { name: 'activities_last_year', label: 'List of activities done in the last year', type: 'textarea', span: 12 },
+    ] },
     { n: 11, title: 'DIA Specific Details', fields: [
-      { name: 'ready_formalization', label: "Comments on IA's readiness to undertake the formalization process", type: 'textarea', span: 12 },
-      { name: 'ready_referral', label: 'Readiness to enter referral arrangement with SIDBI for business leads', type: 'textarea', span: 12 },
-      { name: 'ready_bse', label: 'Readiness to place SIDBI Business Support Executives', type: 'textarea', span: 12 },
+      { name: 'ready_formalization', label: "IA's readiness to undertake the formalization process", type: 'textarea', span: 12, max: 500 },
+      { name: 'ready_referral', label: "IA's readiness to enter referral arrangement with SIDBI (Yes / No — with remarks)", type: 'textarea', span: 12, max: 500 },
+      { name: 'ready_bse', label: "IA's readiness to place SIDBI Business Support Executives (Yes / No — with remarks)", type: 'textarea', span: 12, max: 500 },
+      { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
+      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4 },
+      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4 },
+      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4 },
+      { name: 'financing_scope', label: 'Scope for financing (50–75 words) — include scope in ₹ crore', type: 'textarea', span: 12, max: 500 },
       { name: 'project_location', label: 'Location where the project is being proposed', type: 'text', span: 6 },
-      { name: 'why_selected', label: 'Why IA should be selected', type: 'textarea', span: 12 },
-      ...grantFields,
-      ...envisaged,
+      { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'checkboxes', span: 12,
+        options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
+      { name: 'grant_proposed', label: 'Grant Proposed (₹ Lakhs)', type: 'number', prefix: '₹', span: 4, help: 'Autofetched — modifiable' },
+      { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, help: 'Autofetched — modifiable' },
+      { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
+      { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
+      { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12, max: 500 },
     ] },
-    { n: 12, title: 'Terms of Assistance', fields: [
-      { name: 'terms', label: 'Terms of assistance including disbursement pattern and condition', type: 'textarea', span: 12, placeholder: 'As per Annexure', help: 'As per Annexure' },
-    ] },
-    { n: 13, title: 'Budget', fields: [
-      { name: 'budget_allocated', label: 'Budget allocated FY-202_', type: 'number', span: 3 },
-      { name: 'budget_utilized', label: 'Utilization so far', type: 'number', span: 3 },
-      { name: 'budget_available', label: 'Available Budget', type: 'number', span: 3 },
-    ] },
-    { n: 14, title: 'Delegation of Power', fields: [
-      { name: 'dop', label: 'Delegation of Power as per extant PDIV DoP dated', type: 'text', span: 7 },
-    ] },
-    { n: 15, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
+    { n: 12, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
       { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4 },
     ] },
-    { n: 16, title: 'Recommendations', fields: [
-      { name: 'recommendations', label: 'Recommendations', type: 'textarea', span: 12 },
+    { n: 13, title: 'Terms of Assistance', fields: [
+      { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'textarea', span: 12, placeholder: 'As per Annexure' },
+    ] },
+    { n: 14, title: 'Budget', fields: [
+      { name: 'budget_allocated', label: 'Budget allocated (₹)', type: 'number', prefix: '₹', span: 4 },
+      { name: 'budget_utilized', label: 'Utilization so far (₹)', type: 'number', prefix: '₹', span: 4 },
+      { name: 'budget_available', label: 'Available Budget (₹)', type: 'computed', prefix: '₹', span: 4,
+        formula: (v) => {
+          const a = Number(v.budget_allocated) || 0
+          const u = Number(v.budget_utilized) || 0
+          return a - u
+        } },
+    ] },
+    { n: 15, title: 'Delegation of Power', fields: [
+      { name: 'dop_date', label: 'DoP date (as per extant PDIV DoP)', type: 'date', span: 6 },
+    ] },
+    { n: 16, title: 'Recommendation', fields: [
+      { name: 'recommendation', label: 'Recommendation', type: 'radio', options: ['Recommended', 'Not Recommended'], span: 6, required: true },
+      { name: 'recommendation_remarks', label: 'Remarks', type: 'textarea', span: 12 },
     ] },
   ],
 }
