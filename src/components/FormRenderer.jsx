@@ -49,8 +49,13 @@ const PATTERNS = {
   pincode: { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' },
 }
 
-export function fieldError(f, value, values) {
+// `showRequired` — treat a required field as errored when empty. Off by
+// default so users don't see "Required" red text before they've even
+// touched the field. Turn on after the first submit attempt.
+export function fieldError(f, value, values, { showRequired = false } = {}) {
   const v = value ?? ''
+  const filled = Array.isArray(v) ? v.length > 0 : v !== ''
+  if (showRequired && f.required && !filled) return 'Required'
   if (f.validate) { const e = f.validate(v, values); if (e) return e }
   if (v === '') return ''
   const p = f.pattern || (f.type === 'email' && PATTERNS.email) || (f.type === 'tel' && PATTERNS.phone)
@@ -287,7 +292,7 @@ const ProgressCard = memo(function ProgressCard({ doneCount, total, pct, accent 
 // One section = one memoized unit. Only re-renders when a value it actually
 // reads has changed, so typing in section A leaves sections B..H untouched.
 const SectionCard = memo(function SectionCard({
-  sec, values, done, accent, total, changeFor, verifyFor, optionsCacheRef,
+  sec, values, done, accent, total, changeFor, verifyFor, optionsCacheRef, showAllErrors,
 }) {
   const Icon = sectionIcon(sec.title)
 
@@ -328,7 +333,7 @@ const SectionCard = memo(function SectionCard({
                 key={f.name}
                 f={f}
                 value={val}
-                error={fieldError(f, val, values)}
+                error={fieldError(f, val, values, { showRequired: showAllErrors })}
                 computed={f.type === 'computed' ? compute(f) : undefined}
                 options={options}
                 verified={f.otp ? !!values[`${f.name}_verified`] : undefined}
@@ -349,6 +354,7 @@ const SectionCard = memo(function SectionCard({
   if (prev.changeFor !== next.changeFor) return false
   if (prev.verifyFor !== next.verifyFor) return false
   if (prev.optionsCacheRef !== next.optionsCacheRef) return false
+  if (prev.showAllErrors !== next.showAllErrors) return false
   const keys = relevantKeysFor(next.sec)
   for (let i = 0; i < keys.length; i++) {
     const k = keys[i]
@@ -357,7 +363,7 @@ const SectionCard = memo(function SectionCard({
   return true
 })
 
-export default function FormRenderer({ schema, accent = 'primary', values, setValue }) {
+export default function FormRenderer({ schema, accent = 'primary', values, setValue, showAllErrors = false }) {
   // Cache one callback per field name so identities survive re-renders. Ref is
   // used (not useMemo) because we want the closure to always read the latest
   // setValue without invalidating each entry.
@@ -405,6 +411,7 @@ export default function FormRenderer({ schema, accent = 'primary', values, setVa
           changeFor={changeFor}
           verifyFor={verifyFor}
           optionsCacheRef={optionsCacheRef}
+          showAllErrors={showAllErrors}
         />
       ))}
     </Stack>

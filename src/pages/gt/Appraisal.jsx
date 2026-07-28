@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Box, Stack, Typography, Button, Snackbar, Alert, Chip, Paper, CircularProgress } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EastIcon from '@mui/icons-material/East'
-import FormRenderer from '../../components/FormRenderer'
+import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { appraisalSchema } from '../../formSchemas'
 import {
   useIA,
@@ -18,6 +18,22 @@ import {
   toFormValues,
 } from '../../apis/industryAssociationAppraisals'
 import { useAuth } from '../../auth'
+
+// Same validation walk used across all form pages — returns the first
+// missing-required / bad-pattern field or null if the form is submittable.
+function firstProblem(schema, values) {
+  for (const sec of schema.sections) {
+    for (const f of sec.fields) {
+      if (f.showIf && !f.showIf(values)) continue
+      const v = values[f.name]
+      const filled = Array.isArray(v) ? v.length > 0 : v != null && v !== ''
+      if (f.required && !filled) return `${sec.title}: “${f.label}” is required`
+      const err = fieldError(f, v, values)
+      if (err) return `${sec.title}: ${f.label} — ${err}`
+    }
+  }
+  return null
+}
 
 // Two schema shapes derived from the base appraisalSchema:
 //   CLUSTER_EXPERT → everything read-only except cluster_expert_comments.
@@ -68,6 +84,7 @@ export default function Appraisal({ backPath = '/gt/ias' } = {}) {
 
   const [values, setValues] = useState({})
   const [toast, setToast] = useState({ severity: '', msg: '' })
+  const [showAllErrors, setShowAllErrors] = useState(false)
   const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
 
   // Seed the form once IA + appraisal + branches have loaded. The seed comes
@@ -136,6 +153,12 @@ export default function Appraisal({ backPath = '/gt/ias' } = {}) {
   const ia = iaQ.data
 
   const submit = async () => {
+    const problem = firstProblem(schema, values)
+    if (problem) {
+      setShowAllErrors(true)
+      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
+      return
+    }
     try {
       if (existing?.uuid) {
         await updateM.mutateAsync({ uuid: existing.uuid, body: toUpdatePayload(values, id) })
@@ -201,7 +224,7 @@ export default function Appraisal({ backPath = '/gt/ias' } = {}) {
         </Typography>
       </Box>
 
-      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} />
+      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors} />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
         <Button color="inherit" onClick={() => navigate(`${backPath}/${id}`)} disabled={busy}>Cancel</Button>

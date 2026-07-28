@@ -31,6 +31,7 @@ export default function InPrincipleApproval() {
   const [values, setValues] = useState({})
   const [toast, setToast] = useState({ severity: '', msg: '' })
   const [busy, setBusy] = useState(false)
+  const [showAllErrors, setShowAllErrors] = useState(false)
 
   // Cascade: when `state` changes we reset the dependent branch + SDE fields
   // so stale UUIDs don't accidentally submit. Handled inline in setValue.
@@ -100,7 +101,11 @@ export default function InPrincipleApproval() {
   const submit = async () => {
     if (busy) return
     const problem = firstProblem(schema, values)
-    if (problem) { setToast({ severity: 'warning', msg: problem }); return }
+    if (problem) {
+      setShowAllErrors(true)
+      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
+      return
+    }
     setBusy(true)
     try {
       const created = await createIndustryAssociation(values)
@@ -152,7 +157,7 @@ export default function InPrincipleApproval() {
         </Typography>
       </Box>
 
-      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} />
+      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors} />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
         <Button color="inherit" onClick={() => navigate('/gt/ias')} disabled={busy}>Cancel</Button>

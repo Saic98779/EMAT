@@ -36,6 +36,7 @@ export default function IaEdit() {
 
   const [values, setValues] = useState({})
   const [toast, setToast] = useState({ severity: '', msg: '' })
+  const [showAllErrors, setShowAllErrors] = useState(false)
   const seeded = Boolean(values._seeded)
 
   // Cascade behaviour — mirrors InPrincipleApproval.
@@ -91,7 +92,11 @@ export default function IaEdit() {
   const submit = async () => {
     if (busy) return
     const problem = firstProblem(schema, values)
-    if (problem) { setToast({ severity: 'warning', msg: problem }); return }
+    if (problem) {
+      setShowAllErrors(true)
+      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
+      return
+    }
     try {
       await updateM.mutateAsync({
         uuid: id,
@@ -129,7 +134,7 @@ export default function IaEdit() {
         </Typography>
       </Box>
 
-      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} />
+      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors} />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
         <Button color="inherit" onClick={() => navigate(`/sde/ias/${id}`)} disabled={busy}>Cancel</Button>
