@@ -57,29 +57,44 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
   const approveL2 = useApproveAppraisal()
 
   const [toast, setToast] = useState({ severity: '', msg: '' })
-  const [approveLevel, setApproveLevel] = useState(null) // 1 | 2 | null
+  // Open dialog carries both the stage (1 = L1 registration, 2 = L2 appraisal)
+  // and the intent (approve / reject) — both flow through the same PATCH
+  // endpoint with `isSidbeApproved: true|false`.
+  const [decisionOpen, setDecisionOpen] = useState(null) // { level: 1|2, action: 'approve'|'reject' } | null
 
   const ia0 = iaQ.data
-  const canApproveL1 = isSde && ia0?.stage === 0
-  const canApproveL2 = isSde && ia0?.stage === 1 && ia0?.appraisal && !ia0.appraisal.isSidbeApproved
-  const activeMutation = approveLevel === 1 ? approveL1 : approveL2
+  // Hide DecisionCard once a decision has already been recorded, whether
+  // approved or rejected. `isSidbeApproved !== null` means the SDE has
+  // acted on the record.
+  const l1Decided = ia0?.raw?.isSidbeApproved != null
+  const l2Decided = ia0?.appraisal?.isSidbeApproved != null
+  const canApproveL1 = isSde && ia0?.stage === 0 && !l1Decided
+  const canApproveL2 = isSde && ia0?.stage === 1 && ia0?.appraisal && !l2Decided
   const approving = approveL1.isPending || approveL2.isPending
 
-  // SDE approvals — both mutations swap the detail cache in place, so this
+  // SDE decisions — both mutations swap the detail cache in place, so this
   // page updates without a follow-up GET.
-  const approve = async () => {
-    if (approving || !ia0) return
+  const runDecision = async () => {
+    if (approving || !ia0 || !decisionOpen) return
+    const { level, action } = decisionOpen
+    const isSidbeApproved = action === 'approve'
     try {
-      if (approveLevel === 1) {
-        await approveL1.mutateAsync({ uuid: ia0.uuid })
-        setToast({ severity: 'success', msg: `${ia0.name} — approved (L1).` })
-      } else if (approveLevel === 2 && ia0.appraisal?.uuid) {
-        await approveL2.mutateAsync({ uuid: ia0.appraisal.uuid, registrationUuid: ia0.uuid })
-        setToast({ severity: 'success', msg: `${ia0.name} — approved (L2).` })
+      if (level === 1) {
+        await approveL1.mutateAsync({ uuid: ia0.uuid, isSidbeApproved })
+      } else if (level === 2 && ia0.appraisal?.uuid) {
+        await approveL2.mutateAsync({
+          uuid: ia0.appraisal.uuid,
+          registrationUuid: ia0.uuid,
+          isSidbeApproved,
+        })
       }
-      setApproveLevel(null)
+      setToast({
+        severity: 'success',
+        msg: `${ia0.name} — ${action === 'approve' ? 'approved' : 'rejected'} (L${level}).`,
+      })
+      setDecisionOpen(null)
     } catch (err) {
-      setToast({ severity: 'error', msg: err.message || 'Failed to approve.' })
+      setToast({ severity: 'error', msg: err.message || `Failed to ${action}.` })
     }
   }
 
@@ -153,7 +168,8 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
               <DecisionCard
                 level={canApproveL1 ? 1 : 2}
                 approving={approving}
-                onApprove={() => setApproveLevel(canApproveL1 ? 1 : 2)}
+                onApprove={() => setDecisionOpen({ level: canApproveL1 ? 1 : 2, action: 'approve' })}
+                onReject={() => setDecisionOpen({ level: canApproveL1 ? 1 : 2, action: 'reject' })}
               />
             )}
             <DocUpload registrationUuid={ia.uuid} />
@@ -183,14 +199,16 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
       </Grid>
 
       <Dialog
-        open={!!approveLevel}
-        onClose={() => !approving && setApproveLevel(null)}
+        open={!!decisionOpen}
+        onClose={() => !approving && setDecisionOpen(null)}
         maxWidth="xs"
         fullWidth
         PaperProps={{ sx: { borderRadius: '6px' } }}
       >
         <DialogTitle sx={{ pb: 0.5, fontWeight: 700 }}>
-          {approveLevel === 1 ? 'Approve In-Principle (L1)?' : 'Approve Final (L2)?'}
+          {decisionOpen?.action === 'reject'
+            ? (decisionOpen?.level === 1 ? 'Reject In-Principle (L1)?' : 'Reject Final (L2)?')
+            : (decisionOpen?.level === 1 ? 'Approve In-Principle (L1)?' : 'Approve Final (L2)?')}
         </DialogTitle>
         <DialogContent sx={{ pb: 1 }}>
           <Typography fontWeight={600}>{ia.name}</Typography>
@@ -199,16 +217,20 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-          <Button onClick={() => setApproveLevel(null)} disabled={approving} color="inherit" size="small">
+          <Button onClick={() => setDecisionOpen(null)} disabled={approving} color="inherit" size="small">
             Cancel
           </Button>
           <Button
-            variant="contained" color="primary" size="small"
-            onClick={approve}
+            variant="contained"
+            color={decisionOpen?.action === 'reject' ? 'error' : 'primary'}
+            size="small"
+            onClick={runDecision}
             disabled={approving}
-            startIcon={approving ? <CircularProgress size={14} color="inherit" /> : <CheckCircleOutlineIcon />}
+            startIcon={approving ? <CircularProgress size={14} color="inherit" /> : undefined}
           >
-            {approving ? 'Approving…' : 'Approve'}
+            {approving
+              ? (decisionOpen?.action === 'reject' ? 'Rejecting…' : 'Approving…')
+              : (decisionOpen?.action === 'reject' ? 'Reject' : 'Approve')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -227,25 +249,36 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
   )
 }
 
-// Small sidebar action card. Just a label + a button.
-function DecisionCard({ level, approving, onApprove }) {
-  const label = level === 1 ? 'Approve L1' : 'Approve L2'
+// Small sidebar action card. Label + Approve + Reject.
+function DecisionCard({ level, approving, onApprove, onReject }) {
   return (
     <Card>
       <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
         <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
           {level === 1 ? 'In-Principle Approval' : 'Final Approval'}
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          fullWidth
-          disableElevation
-          onClick={onApprove}
-          disabled={approving}
-        >
-          {approving ? 'Approving…' : label}
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            color="error"
+            disableElevation
+            onClick={onReject}
+            disabled={approving}
+            sx={{ flex: 1 }}
+          >
+            Reject
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            disableElevation
+            onClick={onApprove}
+            disabled={approving}
+            sx={{ flex: 1 }}
+          >
+            {approving ? '…' : `Approve L${level}`}
+          </Button>
+        </Stack>
       </CardContent>
     </Card>
   )
@@ -275,6 +308,15 @@ function fmtMoney(v) {
   if (v == null || v === '') return '—'
   const n = Number(v)
   return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : String(v)
+}
+// Grant proposed is stored in ₹ Lakhs (per the input label). Show both units
+// so viewers don't confuse "14" as ₹14 vs ₹14 Lakhs.
+function fmtLakhs(v) {
+  if (v == null || v === '') return '—'
+  const n = Number(v)
+  if (!Number.isFinite(n)) return String(v)
+  const rupees = (n * 100000).toLocaleString('en-IN')
+  return `₹${n} Lakhs (₹${rupees})`
 }
 
 // One "field row" in the compact key/value grid.
@@ -397,7 +439,7 @@ function RegistrationDetails({ ia }) {
         </Group>
 
         <Group title="Grant & envisaged impact">
-          <Row label="Grant proposed" value={fmtMoney(r.grantProposed)} />
+          <Row label="Grant proposed" value={fmtLakhs(r.grantProposed)} />
           <Row label="Grant details" value={fmt(r.grantDetails)} span={{ xs: 12, sm: 8 }} />
           <Row label="Envisaged output" value={fmt(r.envisagedOutput)} span={12} />
           <Row label="Envisaged outcome" value={fmt(r.envisagedOutcome)} span={12} />
