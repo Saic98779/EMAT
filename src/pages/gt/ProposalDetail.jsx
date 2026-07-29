@@ -309,14 +309,16 @@ function fmtMoney(v) {
   const n = Number(v)
   return Number.isFinite(n) ? `₹${n.toLocaleString('en-IN')}` : String(v)
 }
-// Grant proposed is stored in ₹ Lakhs (per the input label). Show both units
-// so viewers don't confuse "14" as ₹14 vs ₹14 Lakhs.
+// Grant proposed is stored as the full rupee amount. Show ₹ formatted with
+// the Indian grouping (e.g. ₹12,60,000), and also the Lakhs equivalent as a
+// secondary hint when it's a whole/near-whole number of lakhs.
 function fmtLakhs(v) {
   if (v == null || v === '') return '—'
   const n = Number(v)
   if (!Number.isFinite(n)) return String(v)
-  const rupees = (n * 100000).toLocaleString('en-IN')
-  return `₹${n} Lakhs (₹${rupees})`
+  const rupees = n.toLocaleString('en-IN')
+  const lakhs = n / 100000
+  return `₹${rupees} (₹${Number(lakhs.toFixed(2))} Lakhs)`
 }
 
 // One "field row" in the compact key/value grid.

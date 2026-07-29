@@ -5,6 +5,12 @@ import { STATES, districtsOf } from './geo'
 import { clustersOf } from './clusters'
 
 const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
+// Accepts optional http/https, a domain with at least one dot, optional port,
+// and an optional path/query/fragment. Practical rather than RFC-strict.
+const URL_PATTERN = {
+  re: /^(https?:\/\/)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(:\d+)?(\/[^\s]*)?$/i,
+  msg: 'Enter a valid URL (e.g. https://example.com)',
+}
 
 const apexNodal = (prefix) => [
   { name: `${prefix}_name`, label: 'Name', type: 'text', span: 3 },
@@ -178,7 +184,10 @@ export const makeInPrincipleSchema = ({
       { name: '_online', label: 'Online presence & services', type: 'subheading', span: 12 },
       { name: 'website', label: 'Website availability', type: 'yesno', span: 6, required: true },
       { name: 'paid_services', label: 'Paid services offered to members', type: 'yesno', span: 6, required: true },
-      { name: 'website_url', label: 'Website URL', type: 'text', span: 12, required: true, showIf: (v) => v.website === 'yes' },
+      { name: 'website_url', label: 'Website URL', type: 'text', span: 12, required: true,
+        showIf: (v) => v.website === 'yes',
+        placeholder: 'https://example.com',
+        pattern: URL_PATTERN },
       { name: 'paid_services_details', label: 'Details of paid services', type: 'text', span: 12, required: true, showIf: (v) => v.paid_services === 'yes' },
 
       { name: '_adverse', label: 'Adverse remarks', type: 'subheading', span: 12 },
@@ -193,13 +202,14 @@ export const makeInPrincipleSchema = ({
 
       { name: '_grant', label: 'Grant proposal', type: 'subheading', span: 12 },
       { name: 'worked_before', label: 'GT / SIDBI worked with IA before?', type: 'yesno', span: 6, required: true },
-      { name: 'grant_proposed', label: 'Grant Proposed (₹ Lakhs)', type: 'number', span: 6, prefix: '₹', required: true,
-        help: 'Maximum ₹14 Lakhs (₹14,00,000)',
+      { name: 'grant_proposed', label: 'Grant Proposed (₹)', type: 'number', span: 6, prefix: '₹', required: true,
+        placeholder: 'e.g. 1400000',
+        help: 'Enter full amount in rupees. Maximum ₹14,00,000 (₹14 Lakhs)',
         validate: (v) => {
           if (v === '') return ''
           const n = Number(v)
-          if (isNaN(n) || n < 0) return 'Enter a valid amount'
-          if (n > 14) return 'Cannot exceed ₹14 Lakhs'
+          if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
+          if (n > 1400000) return 'Cannot exceed ₹14,00,000 (₹14 Lakhs)'
           return ''
         } },
       { name: 'grant_details', label: 'Grant Details proposed (BSE Salary ₹60,000/month from date of joining; Budget for IA Sustainability & Training Program ₹6,80,000)', type: 'textarea', span: 12, required: true },
@@ -604,7 +614,8 @@ export const appraisalSchema = {
       { name: 'project_location', label: 'Location where the project is being proposed', type: 'text', span: 6 },
       { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'checkboxes', span: 12,
         options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
-      { name: 'grant_proposed', label: 'Grant Proposed (₹ Lakhs)', type: 'number', prefix: '₹', span: 4, help: 'Autofetched — modifiable' },
+      { name: 'grant_proposed', label: 'Grant Proposed (₹)', type: 'number', prefix: '₹', span: 4,
+        help: 'Autofetched — modifiable. Full amount in rupees.' },
       { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, help: 'Autofetched — modifiable' },
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
