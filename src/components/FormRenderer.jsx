@@ -90,11 +90,24 @@ function stableArray(prev, next) {
 }
 
 // A labelled frame so choice controls sit as neat cards like the text fields.
-function Framed({ label, required, children }) {
+// `error` — when truthy the border/label/message go red, matching how the
+// TextField-based fields signal validation problems.
+function Framed({ label, required, error, children }) {
   return (
-    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1.75, py: 1.25, height: '100%', bgcolor: 'background.paper' }}>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>{label}{required && ' *'}</Typography>
+    <Box sx={{
+      border: '1px solid',
+      borderColor: error ? 'error.main' : 'divider',
+      borderRadius: 2, px: 1.75, py: 1.25, height: '100%', bgcolor: 'background.paper',
+    }}>
+      <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mb: 0.75 }}>
+        {label}{required && ' *'}
+      </Typography>
       {children}
+      {error && (
+        <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 0.5 }}>
+          {error}
+        </Typography>
+      )}
     </Box>
   )
 }
@@ -116,7 +129,7 @@ function YesNo({ value, onChange }) {
 const ALLOWED_UPLOAD_EXT_RE = /\.(docx?|jpe?g|png)$/i
 const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.jpg,.jpeg,.png,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-function Uploader({ value, label, required, onChange }) {
+function Uploader({ value, label, required, error, onChange }) {
   const [rejected, setRejected] = useState([])
   const docs = value || []
   const pick = useCallback((e) => {
@@ -130,7 +143,7 @@ function Uploader({ value, label, required, onChange }) {
   }, [value, onChange])
   const removeAt = useCallback((idx) => onChange((value || []).filter((_, i) => i !== idx)), [value, onChange])
   return (
-    <Framed label={label} required={required}>
+    <Framed label={label} required={required} error={error}>
       <Button component="label" size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ mt: 0.25 }}>
         Upload
         <input type="file" hidden multiple accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
@@ -259,14 +272,14 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   if (f.type === 'yesno') {
     return (
       <Grid size={{ xs: 12, sm: f.span || 6 }}>
-        <Framed label={f.label} required={f.required}><YesNo value={value} onChange={onChange} /></Framed>
+        <Framed label={f.label} required={f.required} error={error}><YesNo value={value} onChange={onChange} /></Framed>
       </Grid>
     )
   }
   if (f.type === 'radio') {
     return (
       <Grid size={{ xs: 12, sm: f.span || 6 }}>
-        <Framed label={f.label} required={f.required}>
+        <Framed label={f.label} required={f.required} error={error}>
           <RadioGroup row value={value ?? ''} onChange={(e) => onChange(e.target.value)} sx={{ my: -0.5 }}>
             {options.map((raw) => { const o = asOption(raw)
               return <FormControlLabel key={o.value} value={o.value} control={<Radio size="small" />} label={o.label} />
@@ -300,7 +313,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     }
     return (
       <Grid size={12}>
-        <Framed label={f.label} required={f.required}>
+        <Framed label={f.label} required={f.required} error={error}>
           <FormGroup row sx={{ gap: 0.5 }}>
             {options.map((raw) => { const o = asOption(raw)
               return <FormControlLabel key={o.value} sx={{ mr: 2 }} control={<Checkbox size="small" checked={arr.includes(o.value)} onChange={() => toggle(o.value)} />} label={o.label} />
@@ -311,7 +324,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     )
   }
   if (f.type === 'file') {
-    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} required={f.required} onChange={onChange} /></Grid>
+    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} required={f.required} error={error} onChange={onChange} /></Grid>
   }
   if (f.type === 'repeater') {
     return (

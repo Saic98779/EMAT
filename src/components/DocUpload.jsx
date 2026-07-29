@@ -6,7 +6,9 @@ import {
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import DownloadIcon from '@mui/icons-material/Download'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { listFiles, uploadFile, deleteFile, downloadFile } from '../apis/files'
+import { decodeFilename } from '../fileFieldLabels'
 
 // Attach supporting documents (Invoice, attendance, etc.).
 //
@@ -37,7 +39,15 @@ export default function DocUpload({
     setError('')
     try {
       const data = await listFiles(registrationUuid, { signal })
-      setFiles(Array.isArray(data) ? data : [])
+      // Backend response is *usually* a bare `UploadedFileResponse[]`, but
+      // Spring Page (`{content: [...]}`) or `{items: []}` / `{files: []}`
+      // shapes have shown up too — accept all of them.
+      const list = Array.isArray(data)
+        ? data
+        : (Array.isArray(data?.content) ? data.content
+          : (Array.isArray(data?.items) ? data.items
+            : (Array.isArray(data?.files) ? data.files : [])))
+      setFiles(list)
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message || 'Failed to load files')
     } finally {
@@ -107,9 +117,17 @@ export default function DocUpload({
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // Decode slug-prefixed filenames into { label, name } so each chip can show
+  // "Incorporation Certificate · mycert.pdf" instead of the raw stored name.
   const items = apiMode
-    ? files.map((f) => ({ key: f.id ?? f.filename, label: f.filename, meta: f }))
-    : (docs || []).map((name, i) => ({ key: `${name}-${i}`, label: name, meta: null }))
+    ? files.map((f) => {
+        const { label: slotLabel, name } = decodeFilename(f.filename)
+        return { key: f.id ?? f.filename, slotLabel, name, meta: f }
+      })
+    : (docs || []).map((raw, i) => {
+        const { label: slotLabel, name } = decodeFilename(raw)
+        return { key: `${raw}-${i}`, slotLabel, name, meta: null }
+      })
 
   return (
     <Card sx={{ overflow: 'hidden' }}>
@@ -132,20 +150,45 @@ export default function DocUpload({
         {error && <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
         {items.length > 0 && (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-            {items.map((it, i) => (
-              <Chip
-                key={it.key}
-                icon={<DescriptionOutlinedIcon />}
-                label={apiMode ? `${it.label}${it.meta?.size ? ` · ${formatSize(it.meta.size)}` : ''}` : it.label}
-                onDelete={() => remove(i, it.meta ?? { filename: it.label })}
-                deleteIcon={apiMode ? undefined : undefined}
-                variant="outlined"
-                onClick={apiMode ? () => download(it.meta) : undefined}
-                sx={apiMode ? { cursor: 'pointer' } : undefined}
-              />
-            ))}
-          </Box>
+          <Stack spacing={1} sx={{ mt: 2 }}>
+            {items.map((it, i) => {
+              const sizePart = apiMode && it.meta?.size ? ` · ${formatSize(it.meta.size)}` : ''
+              return (
+                <Box
+                  key={it.key}
+                  onClick={apiMode ? () => download(it.meta) : undefined}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: 1.25,
+                    p: 1, pl: 1.25, borderRadius: 1,
+                    border: '1px solid', borderColor: 'divider',
+                    cursor: apiMode ? 'pointer' : 'default',
+                    transition: 'background-color .12s, border-color .12s',
+                    ':hover': apiMode ? { bgcolor: 'action.hover', borderColor: 'primary.light' } : undefined,
+                  }}
+                >
+                  <DescriptionOutlinedIcon color="action" fontSize="small" />
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    {it.slotLabel && (
+                      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
+                        {it.slotLabel}
+                      </Typography>
+                    )}
+                    <Typography variant="body2" fontWeight={600} noWrap>
+                      {it.name}{sizePart}
+                    </Typography>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={(e) => { e.stopPropagation(); remove(i, it.meta ?? { filename: it.name }) }}
+                    aria-label="Delete file"
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              )
+            })}
+          </Stack>
         )}
 
         {apiMode && items.length > 0 && (

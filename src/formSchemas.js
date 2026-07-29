@@ -5,11 +5,13 @@ import { STATES, districtsOf } from './geo'
 import { clustersOf } from './clusters'
 
 const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
-// Accepts optional http/https, a domain with at least one dot, optional port,
-// and an optional path/query/fragment. Practical rather than RFC-strict.
+// Accepts optional http/https, an optional `www.` (or any subdomain) prefix,
+// a domain with at least one dot, optional port, and an optional path /
+// query / fragment. Intentionally forgiving — allows hyphens, underscores
+// and uppercase in host labels so intranet-style URLs aren't rejected.
 const URL_PATTERN = {
-  re: /^(https?:\/\/)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(:\d+)?(\/[^\s]*)?$/i,
-  msg: 'Enter a valid URL (e.g. https://example.com)',
+  re: /^\s*(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(:\d+)?([/?#][^\s]*)?\s*$/i,
+  msg: 'Enter a valid URL (e.g. www.example.com or https://example.com)',
 }
 
 const apexNodal = (prefix) => [
