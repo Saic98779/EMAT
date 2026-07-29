@@ -15,6 +15,10 @@ export const FILE_FIELD_LABELS = {
   adverse_report: 'Adverse Report',
   // Appraisal
   web_search_document: 'Web Search Document',
+  ngo_darpan_file: 'NGO Darpan Copy',
+  nabard_blacklist_file: 'NABARD Blacklist Document',
+  holder_cibil_file: 'Office Holder — CIBIL Report',
+  owner_cibil_file: 'Beneficial Owner — CIBIL Report',
 }
 
 // Separator between slug and original filename. Chosen to be unlikely inside

@@ -14,6 +14,24 @@ const URL_PATTERN = {
   msg: 'Enter a valid URL (e.g. www.example.com or https://example.com)',
 }
 
+// Validator for CIBIL/SMART report dates on the appraisal — spec says they
+// must be dated after the parent In-Principle registration was created.
+// The parent IA's createdAt is threaded into form values under
+// `_ia_created_at` by AppraisalForm on seed.
+const afterIaCreation = (v, values) => {
+  if (!v) return ''
+  const iaIso = values?._ia_created_at
+  if (!iaIso) return ''
+  const d = new Date(v)
+  const iaD = new Date(iaIso)
+  if (isNaN(d.getTime()) || isNaN(iaD.getTime())) return ''
+  // Normalize IA timestamp to start-of-day so a same-day report is not
+  // rejected on hour-of-day differences.
+  const iaDay = new Date(iaD.getFullYear(), iaD.getMonth(), iaD.getDate())
+  if (d < iaDay) return 'Must be on or after In-Principle creation date'
+  return ''
+}
+
 const apexNodal = (prefix) => [
   { name: `${prefix}_name`, label: 'Name', type: 'text', span: 3 },
   { name: `${prefix}_designation`, label: 'Designation', type: 'text', span: 3 },
@@ -547,36 +565,77 @@ export const capexSchema = {
 }
 
 // ── Appraisal (SIDBI SDE, second level — full 15-point) ─────────────────────
+// Turn every editable input field in a section list required.
+// Skips subheadings, computed fields (derived), and any field already flagged
+// `readOnly` — those are autofetched and users can't fill them, so requiring
+// them would only surface false positives when seed data is thin.
+function requireAllInputs(sections) {
+  return sections.map((sec) => ({
+    ...sec,
+    fields: sec.fields.map((f) =>
+      ['subheading', 'computed'].includes(f.type) || f.readOnly
+        ? f
+        : { ...f, required: true },
+    ),
+  }))
+}
+
 export const appraisalSchema = {
   key: 'appraisal',
-  sections: [
+  sections: requireAllInputs([
     ...identity,
     { n: 7, title: 'Comments on Due Diligence', fields: [
       { name: '_dd_ia', label: 'Due Diligence of IA', type: 'subheading', span: 12 },
       { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
       { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
-      { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation' },
+      { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
       { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3 },
       { name: 'cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
 
       { name: '_dd_ia_darpan', label: 'NGO Darpan', type: 'subheading', span: 12 },
       { name: 'ngo_darpan_no', label: 'NGO Darpan Number', type: 'text', span: 6 },
+      { name: 'ngo_darpan_file', label: 'NGO Darpan copy (upload)', type: 'file', span: 6 },
 
       { name: '_dd_ia_nabard', label: 'NABARD Blacklist', type: 'subheading', span: 12 },
       { name: 'nabard_blacklisted', label: 'NABARD Blacklisted?', type: 'yesno', span: 6 },
+      { name: 'nabard_blacklist_file', label: 'Blacklist document (upload)', type: 'file', span: 6,
+        showIf: (v) => v.nabard_blacklisted === 'yes' },
 
       { name: '_dd_ia_smart', label: 'SMART Report — IA', type: 'subheading', span: 12 },
-      { name: 'smart_ref_no', label: 'SMART Report Reference No.', type: 'text', span: 6 },
-      { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation' },
-      { name: 'smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12 },
+      { name: 'smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
+      { name: 'smart_ref_no', label: 'SMART Report Reference No.', type: 'text', span: 6, showIf: (v) => v.smart_verified === 'yes' },
+      { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.smart_verified === 'yes' },
 
       { name: '_dd_ia_web', label: 'Web Search', type: 'subheading', span: 12 },
       { name: 'web_search_verified', label: 'Web Search Verified?', type: 'yesno', span: 6 },
       { name: 'web_search_document', label: 'Web Search Document (upload)', type: 'file', span: 6, showIf: (v) => v.web_search_verified === 'yes' },
 
-      { name: '_dd_owner', label: 'Due Diligence — IA Beneficial Owner/s (extant KYC policy)', type: 'subheading', span: 12 },
-      { name: 'owner_cibil_remarks', label: 'CIBIL — Remarks', type: 'textarea', span: 12 },
-      { name: 'owner_smart_remarks', label: 'SMART — Remarks', type: 'textarea', span: 12 },
+      { name: '_dd_holder', label: 'Comments on Due Diligence of IA Office Holder', type: 'subheading', span: 12 },
+      { name: '_dd_holder_cibil', label: 'IA Office Holder — CIBIL', type: 'subheading', span: 12 },
+      { name: 'holder_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
+      { name: 'holder_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'holder_cibil_score', label: 'CIBIL Score', type: 'text', span: 3 },
+      { name: 'holder_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
+      { name: 'holder_cibil_file', label: 'CIBIL Report (upload)', type: 'file', span: 12 },
+
+      { name: '_dd_holder_smart', label: 'IA Office Holder — SMART', type: 'subheading', span: 12 },
+      { name: 'holder_smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
+      { name: 'holder_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.holder_smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'holder_smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.holder_smart_verified === 'yes' },
+
+      { name: '_dd_owner', label: 'Comments on Due Diligence of IA Beneficial Owner/s', type: 'subheading', span: 12 },
+      { name: '_dd_owner_cibil', label: 'IA Beneficial Owner/s — CIBIL (extant KYC policy)', type: 'subheading', span: 12 },
+      { name: 'owner_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
+      { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3 },
+      { name: 'owner_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
+      { name: 'owner_cibil_file', label: 'CIBIL Report (upload)', type: 'file', span: 12 },
+
+      { name: '_dd_owner_smart', label: 'IA Beneficial Owner/s — SMART', type: 'subheading', span: 12 },
+      { name: 'owner_smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
+      { name: 'owner_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.owner_smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'owner_smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.owner_smart_verified === 'yes' },
     ] },
     { n: 8, title: 'Nearest SIDBI Branch Office', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
       { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'text', span: 6 },
@@ -610,9 +669,13 @@ export const appraisalSchema = {
       { name: 'ready_bse', label: "IA's readiness to place SIDBI Business Support Executives (Yes / No — with remarks)", type: 'textarea', span: 12, max: 500 },
       { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
       { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4 },
+      { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
       { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4 },
+      { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
       { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4 },
-      { name: 'financing_scope', label: 'Scope for financing (50–75 words) — include scope in ₹ crore', type: 'textarea', span: 12, max: 500 },
+      { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
+      { name: 'financing_scope', label: 'Scope for financing — description (50–75 words)', type: 'textarea', span: 8, max: 500 },
+      { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5' },
       { name: 'project_location', label: 'Location where the project is being proposed', type: 'text', span: 6 },
       { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'checkboxes', span: 12,
         options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
@@ -646,5 +709,5 @@ export const appraisalSchema = {
       { name: 'recommendation', label: 'Recommendation', type: 'radio', options: ['Recommended', 'Not Recommended'], span: 6, required: true },
       { name: 'recommendation_remarks', label: 'Remarks', type: 'textarea', span: 12 },
     ] },
-  ],
+  ]),
 }
