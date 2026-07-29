@@ -693,9 +693,20 @@ export const appraisalSchema = {
       { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'textarea', span: 12, placeholder: 'As per Annexure' },
     ] },
     { n: 14, title: 'Budget', fields: [
-      { name: 'budget_allocated', label: 'Budget allocated (₹)', type: 'number', prefix: '₹', span: 4 },
-      { name: 'budget_utilized', label: 'Utilization so far (₹)', type: 'number', prefix: '₹', span: 4 },
-      { name: 'budget_available', label: 'Available Budget (₹)', type: 'computed', prefix: '₹', span: 4,
+      // Backend stores this as a LocalDate; we key each option on the
+      // April-1 start-date so it round-trips cleanly.
+      { name: 'financial_year', label: 'Financial Year', type: 'select', span: 3,
+        options: [
+          { value: '2023-04-01', label: 'FY 2023-24' },
+          { value: '2024-04-01', label: 'FY 2024-25' },
+          { value: '2025-04-01', label: 'FY 2025-26' },
+          { value: '2026-04-01', label: 'FY 2026-27' },
+          { value: '2027-04-01', label: 'FY 2027-28' },
+          { value: '2028-04-01', label: 'FY 2028-29' },
+        ] },
+      { name: 'budget_allocated', label: 'Budget allocated (₹)', type: 'number', prefix: '₹', span: 3 },
+      { name: 'budget_utilized', label: 'Utilization so far (₹)', type: 'number', prefix: '₹', span: 3 },
+      { name: 'budget_available', label: 'Available Budget (₹)', type: 'computed', prefix: '₹', span: 3,
         formula: (v) => {
           const a = Number(v.budget_allocated) || 0
           const u = Number(v.budget_utilized) || 0
