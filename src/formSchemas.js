@@ -68,7 +68,13 @@ export const makeInPrincipleSchema = ({
         maxDate: 'today',
         validate: (v) => {
           if (!v) return ''
-          const d = new Date(v)
+          // Parse "YYYY-MM-DD" as a LOCAL date. `new Date("YYYY-MM-DD")`
+          // parses as UTC midnight, which in IST (UTC+5:30) becomes the
+          // next-day local morning — comparing that against a local-midnight
+          // "today" incorrectly flags today as a future date.
+          const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v))
+          if (!m) return 'Enter a valid date'
+          const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
           if (isNaN(d.getTime())) return 'Enter a valid date'
           const today = new Date(); today.setHours(0, 0, 0, 0)
           if (d.getTime() > today.getTime()) return 'Cannot be a future date'
