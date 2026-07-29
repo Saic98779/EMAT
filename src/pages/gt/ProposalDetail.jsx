@@ -11,6 +11,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { StatusChip, SectionCard, Mono } from '../../components/shared'
 import DocUpload from '../../components/DocUpload'
+import AppraisalForm from '../../components/AppraisalForm'
 import {
   useIA, useApproveIA, useApproveAppraisal,
   useBranchesByState, useSdesByBranch,
@@ -128,12 +129,6 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
                 Edit registration
               </Button>
             )}
-            {isSde && ia.appraisal && !ia.appraisal.isSidbeApproved && (
-              <Button variant="outlined" startIcon={<EditOutlinedIcon />} sx={{ ml: 'auto' }}
-                onClick={() => navigate(`/sde/ias/${ia.id}/appraisal`)}>
-                Edit appraisal
-              </Button>
-            )}
             {isGt && ia.stage === 1 && (
               <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
                 onClick={() => navigate(`/gt/ias/${ia.id}/appraisal`)}>
@@ -157,8 +152,19 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, md: 8 }}>
           <Stack spacing={2.5}>
-            <RegistrationDetailsResolved ia={ia} />
-            {ia.appraisal && <AppraisalDetails appraisal={ia.appraisal} />}
+            {isSde ? (
+              <SectionCard title="Detailed appraisal & Due Diligence" subtitle="Modify GT-submitted fields and add your Due Diligence comments. Saves via PUT to the appraisal.">
+                <AppraisalForm
+                  registrationUuid={ia.uuid}
+                  onSaved={(msg, severity) => setToast({ severity, msg })}
+                />
+              </SectionCard>
+            ) : (
+              <>
+                <RegistrationDetailsResolved ia={ia} />
+                {ia.appraisal && <AppraisalDetails appraisal={ia.appraisal} />}
+              </>
+            )}
           </Stack>
         </Grid>
 

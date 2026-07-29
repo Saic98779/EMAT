@@ -40,12 +40,25 @@ export default function ApprovalQueue() {
   const apprsQ = useAppraisals()
   const pmuQ = useBseByPmuStatus(PMU_PENDING_STATUS)
 
+  // L1 buckets keyed off isSidbeApproved:
+  //   null      → pending (SDE hasn't acted)
+  //   true      → approved
+  //   false     → rejected
   const l1Pending = useMemo(
-    () => (iasQ.data || []).filter((i) => (i.stage ?? 0) === 0),
+    () => (iasQ.data || []).filter((i) => i.raw?.isSidbeApproved == null),
     [iasQ.data],
   )
-  // Resolve branch UUIDs → branch names for the L1 tab display.
-  const { byUuid: branchNameByUuid } = useBranchesByStates(l1Pending.map((i) => i.state))
+  const l1Approved = useMemo(
+    () => (iasQ.data || []).filter((i) => i.raw?.isSidbeApproved === true),
+    [iasQ.data],
+  )
+  const l1Rejected = useMemo(
+    () => (iasQ.data || []).filter((i) => i.raw?.isSidbeApproved === false),
+    [iasQ.data],
+  )
+  // Resolve branch UUIDs → branch names across all L1 buckets so any row can
+  // render its branch name.
+  const { byUuid: branchNameByUuid } = useBranchesByStates((iasQ.data || []).map((i) => i.state))
   // Appraisal DTOs don't carry the IA display name; join against the IA
   // list (already fetched) so rows show the association name, not a UUID.
   const iaNameByUuid = useMemo(() => {
@@ -69,6 +82,13 @@ export default function ApprovalQueue() {
   const totalPending = counts.l1 + counts.l2 + counts.bse
 
   const [tab, setTab] = useState('l1')
+  const [l1SubTab, setL1SubTab] = useState('pending') // 'pending' | 'approved' | 'rejected'
+  const L1_BUCKETS = {
+    pending:  { list: l1Pending,  emptyMsg: 'Nothing pending L1 approval.' },
+    approved: { list: l1Approved, emptyMsg: 'No L1-approved IAs yet.' },
+    rejected: { list: l1Rejected, emptyMsg: 'No L1-rejected IAs.' },
+  }
+  const activeL1 = L1_BUCKETS[l1SubTab]
 
   return (
     <Box>
@@ -122,20 +142,46 @@ export default function ApprovalQueue() {
 
         <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
           {tab === 'l1' && (
-            <QueueList
-              icon={BusinessOutlinedIcon}
-              iconAccent="warning"
-              loading={iasQ.isLoading}
-              error={iasQ.error}
-              items={l1Pending}
-              emptyMsg="Nothing pending L1 approval."
-              renderItem={(ia) => ({
-                primary: ia.name,
-                secondary: [ia.city, ia.state].filter(Boolean).join(', ') + ' · ' + (branchNameByUuid.get(ia.branch) || ia.branch || '—'),
-                meta: `Submitted ${ia.submitted}`,
-                onClick: () => navigate(`/sde/ias/${ia.id}`),
-              })}
-            />
+            <>
+              <Tabs
+                value={l1SubTab}
+                onChange={(_, v) => setL1SubTab(v)}
+                sx={{ mb: 1.5, minHeight: 36, '& .MuiTab-root': { minHeight: 36, textTransform: 'none', fontWeight: 600 } }}
+              >
+                <Tab value="pending" label={
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <span>Pending</span>
+                    <CountPill count={l1Pending.length} accent="warning" muted={l1SubTab !== 'pending'} />
+                  </Stack>
+                } />
+                <Tab value="approved" label={
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <span>Approved</span>
+                    <CountPill count={l1Approved.length} accent="success" muted={l1SubTab !== 'approved'} />
+                  </Stack>
+                } />
+                <Tab value="rejected" label={
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <span>Rejected</span>
+                    <CountPill count={l1Rejected.length} accent="error" muted={l1SubTab !== 'rejected'} />
+                  </Stack>
+                } />
+              </Tabs>
+              <QueueList
+                icon={BusinessOutlinedIcon}
+                iconAccent={l1SubTab === 'approved' ? 'success' : l1SubTab === 'rejected' ? 'error' : 'warning'}
+                loading={iasQ.isLoading}
+                error={iasQ.error}
+                items={activeL1.list}
+                emptyMsg={activeL1.emptyMsg}
+                renderItem={(ia) => ({
+                  primary: ia.name,
+                  secondary: [ia.city, ia.state].filter(Boolean).join(', ') + ' · ' + (branchNameByUuid.get(ia.branch) || ia.branch || '—'),
+                  meta: `Submitted ${ia.submitted}`,
+                  onClick: () => navigate(`/sde/ias/${ia.id}`),
+                })}
+              />
+            </>
           )}
           {tab === 'l2' && (
             <QueueList
