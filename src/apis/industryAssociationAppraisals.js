@@ -77,9 +77,20 @@ export function deleteAppraisal(uuid, { signal } = {}) {
 //   - Structured IA Beneficial Owner CIBIL/SMART ref no / date / ranking /
 //     file (form-only). Only *_remarks fields round-trip.
 export function toCreatePayload(values = {}, registrationUuid = null) {
-  const sectors = [values.sector_1, values.sector_2, values.sector_3]
-    .map((s) => (s == null ? '' : String(s).trim()))
-    .filter(Boolean)
+  // Backend expects Map<String,String>: sector name → 3-5 key problems text.
+  // Only include a slot when the sector name is non-empty (otherwise the
+  // problems would attach to an empty key).
+  const sectorPairs = [
+    [values.sector_1, values.sector_1_problems],
+    [values.sector_2, values.sector_2_problems],
+    [values.sector_3, values.sector_3_problems],
+  ]
+  const topThreeSectors = {}
+  for (const [name, problems] of sectorPairs) {
+    const key = name == null ? '' : String(name).trim()
+    if (!key) continue
+    topThreeSectors[key] = problems == null ? '' : String(problems).trim()
+  }
 
   return {
     registrationUuid: str(registrationUuid),
@@ -148,7 +159,7 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
     referralArrangementComments: str(values.ready_referral),
     bseReadinessComments: str(values.ready_bse),
 
-    topThreeSectors: sectors,
+    topThreeSectors,
     financingScope: str(values.financing_scope),
     // Separate scope-in-crore number; backend column pending, sent as extra
     // key so it lands once the column exists.
@@ -166,6 +177,7 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
     clusterExpertComments: str(values.cluster_expert_comments),
 
     // ── Section 14 — Budget (availableBudget derived; sent for safety) ───
+    financialYear: toIsoDate(values.financial_year),
     budgetAllocated: num(values.budget_allocated),
     utilizedAmount: num(values.budget_utilized),
     availableBudget: computeAvailable(values),
@@ -196,7 +208,13 @@ export function toUpdatePayload(values, registrationUuid) {
 // it, but the IA seed is preserved when the appraisal hasn't touched it.
 export function toFormValues(dto = {}) {
   if (!dto || typeof dto !== 'object') return {}
-  const sectors = Array.isArray(dto.topThreeSectors) ? dto.topThreeSectors : []
+  // topThreeSectors is now a Map<name, problems>. Legacy List<String> shape
+  // still handled for safety in case a partially-migrated record comes back.
+  const sectorEntries = Array.isArray(dto.topThreeSectors)
+    ? dto.topThreeSectors.map((n) => [n, ''])
+    : (dto.topThreeSectors && typeof dto.topThreeSectors === 'object'
+        ? Object.entries(dto.topThreeSectors)
+        : [])
 
   const out = {
     // ── Section 7 — Due Diligence (IA) ────────────────────────────────
@@ -228,9 +246,12 @@ export function toFormValues(dto = {}) {
     ready_formalization: dto.formalizationComments ?? '',
     ready_referral: dto.referralArrangementComments ?? '',
     ready_bse: dto.bseReadinessComments ?? '',
-    sector_1: sectors[0] ?? '',
-    sector_2: sectors[1] ?? '',
-    sector_3: sectors[2] ?? '',
+    sector_1: sectorEntries[0]?.[0] ?? '',
+    sector_1_problems: sectorEntries[0]?.[1] ?? '',
+    sector_2: sectorEntries[1]?.[0] ?? '',
+    sector_2_problems: sectorEntries[1]?.[1] ?? '',
+    sector_3: sectorEntries[2]?.[0] ?? '',
+    sector_3_problems: sectorEntries[2]?.[1] ?? '',
     financing_scope: dto.financingScope ?? '',
     financing_scope_crore: dto.financingScopeCrore ?? '',
     project_location: dto.projectLocation ?? '',
@@ -240,6 +261,7 @@ export function toFormValues(dto = {}) {
 
     // ── Section 13, 14, 15 ───────────────────────────────────────────
     terms: dto.termsAndConditions ?? '',
+    financial_year: (dto.financialYear ?? '').slice(0, 10),
     budget_allocated: dto.budgetAllocated ?? '',
     budget_utilized: dto.utilizedAmount ?? '',
     dop_date: (dto.dopDate ?? '').slice(0, 10),

@@ -13,13 +13,16 @@ import { monoFont } from '../theme'
 // inline (not in data.js) because it's a dev-only convenience and the roster
 // changes with backend seed data — treat this list as configuration, not code.
 const DEMO_CREDS = [
-  { role: 'DIA', username: 'dia_user', password: 'Password@123' },
-  { role: 'BSE', username: 'bse_user', password: 'Password@123' },
+  // Only GT Field Team + SIDBI SDE are wired end-to-end against the live
+  // backend right now. Other roles are commented out until seed data /
+  // backend endpoints for them are ready.
   { role: 'GT Field Team', username: 'Ravikant.Rai@IN.GT.COM', password: 'Password@123' },
-  { role: 'GT PMU', username: 'gt_pmu', password: 'Password@123' },
   { role: 'SIDBI SDE', username: 'pushpendrat@sidbi.in', password: 'Password@123' },
-  { role: 'SIDBI RO', username: 'sidbi_ro', password: 'Password@123' },
-  { role: 'SIDBI HO Maker', username: 'sidbi_ho_maker', password: 'Password@123' },
+  // { role: 'DIA', username: 'dia_user', password: 'Password@123' },
+  // { role: 'BSE', username: 'bse_user', password: 'Password@123' },
+  // { role: 'GT PMU', username: 'gt_pmu', password: 'Password@123' },
+  // { role: 'SIDBI RO', username: 'sidbi_ro', password: 'Password@123' },
+  // { role: 'SIDBI HO Maker', username: 'sidbi_ho_maker', password: 'Password@123' },
 ]
 
 export default function Login() {

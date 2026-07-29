@@ -304,6 +304,31 @@ function fmt(v) {
   if (Array.isArray(v)) return v.length ? v.join(', ') : '—'
   return String(v)
 }
+// Sector map from backend: { "Sector A": "problems…", "Sector B": "…" }.
+// Renders one bullet per entry as "Name — problems". Legacy string[] shape
+// (list of names only) still handled during transition.
+function fmtSectors(v) {
+  if (v == null) return '—'
+  if (Array.isArray(v)) return v.length ? v.join(', ') : '—'
+  if (typeof v === 'object') {
+    const entries = Object.entries(v).filter(([k]) => k && k.trim() !== '')
+    if (!entries.length) return '—'
+    return entries
+      .map(([name, problems]) => (problems ? `${name} — ${problems}` : name))
+      .join('\n')
+  }
+  return String(v)
+}
+// LocalDate "2024-04-01" → "FY 2024-25" (Indian financial year starts April).
+function fmtFinancialYear(v) {
+  if (!v) return '—'
+  const d = new Date(String(v).slice(0, 10))
+  if (isNaN(d.getTime())) return String(v)
+  const y = d.getFullYear()
+  const start = d.getMonth() >= 3 ? y : y - 1
+  const end = String(start + 1).slice(-2)
+  return `FY ${start}-${end}`
+}
 function fmtDate(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -332,7 +357,7 @@ function Row({ label, value, span = { xs: 12, sm: 6, md: 4 } }) {
   return (
     <Grid size={span}>
       <Typography variant="overline" color="text.secondary" display="block" sx={{ lineHeight: 1.2 }}>{label}</Typography>
-      <Typography fontWeight={500} sx={{ wordBreak: 'break-word' }}>{value}</Typography>
+      <Typography fontWeight={500} sx={{ wordBreak: 'break-word', whiteSpace: 'pre-line' }}>{value}</Typography>
     </Grid>
   )
 }
@@ -498,7 +523,7 @@ function AppraisalDetails({ appraisal }) {
         <Group title="Sector & scope">
           <Row label="Major sources of income" value={fmt(a.majorSourcesOfIncome)} span={12} />
           <Row label="Activities last year" value={fmt(a.activitiesLastYear)} span={12} />
-          <Row label="Top three sectors" value={fmt(a.topThreeSectors)} span={12} />
+          <Row label="Top three sectors & key problems" value={fmtSectors(a.topThreeSectors)} span={12} />
           <Row label="Financing scope" value={fmt(a.financingScope)} span={{ xs: 12, sm: 6 }} />
           <Row label="Project location" value={fmt(a.projectLocation)} span={{ xs: 12, sm: 6 }} />
         </Group>
@@ -514,6 +539,7 @@ function AppraisalDetails({ appraisal }) {
         </Group>
 
         <Group title="Budget & terms">
+          <Row label="Financial year" value={fmtFinancialYear(a.financialYear)} />
           <Row label="Budget allocated" value={fmtMoney(a.budgetAllocated)} />
           <Row label="Utilized amount" value={fmtMoney(a.utilizedAmount)} />
           <Row label="Available budget" value={fmtMoney(a.availableBudget)} />
