@@ -9,6 +9,7 @@ import {
   useBranchesByState,
   useCreateAppraisal,
   useUpdateAppraisal,
+  useFilesByRegistration,
 } from '../queries'
 import {
   toCreatePayload,
@@ -16,7 +17,7 @@ import {
   toFormValues,
 } from '../apis/industryAssociationAppraisals'
 import { uploadFile } from '../apis/files'
-import { encodeFilename } from '../fileFieldLabels'
+import { encodeFilename, FILE_FIELD_LABELS, FILE_FIELD_SEP } from '../fileFieldLabels'
 import { useAuth } from '../auth'
 
 // Same validation walk used across all form pages — returns the first
@@ -85,6 +86,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
   const iaQ = useIA(registrationUuid)
   const apprQ = useAppraisalByRegistration(registrationUuid)
   const branchesQ = useBranchesByState(iaQ.data?.state)
+  const filesQ = useFilesByRegistration(registrationUuid)
   const createM = useCreateAppraisal()
   const updateM = useUpdateAppraisal()
 
@@ -145,8 +147,21 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       envisaged_outcome: r.envisagedOutcome ?? '',
       envisaged_impact: r.envisagedImpact ?? '',
     } : {}
-    setValues({ ...seed, ...toFormValues(apprQ.data) })
-  }, [iaQ.data, iaQ.isLoading, apprQ.data, apprQ.isLoading, branchesQ.data])
+    // Group already-uploaded files under their slot slug so the appraisal
+    // form shows chips for what's on the server, not an empty picker.
+    const filesBySlot = {}
+    for (const f of filesQ.data || []) {
+      const fname = f?.filename
+      if (typeof fname !== 'string') continue
+      const idx = fname.indexOf(FILE_FIELD_SEP)
+      if (idx <= 0) continue
+      const slug = fname.slice(0, idx)
+      if (!(slug in FILE_FIELD_LABELS)) continue
+      if (!filesBySlot[slug]) filesBySlot[slug] = []
+      filesBySlot[slug].push(fname)
+    }
+    setValues({ ...seed, ...toFormValues(apprQ.data), ...filesBySlot })
+  }, [iaQ.data, iaQ.isLoading, apprQ.data, apprQ.isLoading, branchesQ.data, filesQ.data])
 
   const busy = createM.isPending || updateM.isPending
   const existing = apprQ.data

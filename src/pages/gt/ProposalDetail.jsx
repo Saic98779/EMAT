@@ -152,7 +152,10 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, md: 8 }}>
           <Stack spacing={2.5}>
-            {isSde ? (
+            {/* SDE view is stage-aware. The Due Diligence editor belongs to
+                L2 only — showing it in L1 leaks DD/appraisal fields into
+                the In-Principle review, which was a bug. */}
+            {isSde && ia.stage === 1 ? (
               <SectionCard title="Detailed appraisal & Due Diligence" subtitle="Modify GT-submitted fields and add your Due Diligence comments. Saves via PUT to the appraisal.">
                 <AppraisalForm
                   registrationUuid={ia.uuid}

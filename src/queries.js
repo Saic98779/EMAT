@@ -44,6 +44,7 @@ import {
 } from './apis/bseRecommendations'
 import { searchUsers, unwrapList as unwrapUsers } from './apis/users'
 import { listBranchesByState, listSdesByBranch } from './apis/dropdowns'
+import { listFiles } from './apis/files'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -78,6 +79,9 @@ export const keys = {
   },
   sdes: {
     byBranch: (branchUuid) => ['sdes', 'byBranch', branchUuid],
+  },
+  files: {
+    byRegistration: (regUuid) => ['files', 'byRegistration', regUuid],
   },
 }
 
@@ -376,5 +380,17 @@ export function useSdesByBranch(branchUuid) {
     queryKey: keys.sdes.byBranch(branchUuid),
     enabled: !!branchUuid,
     queryFn: ({ signal }) => listSdesByBranch(branchUuid, { signal }),
+  })
+}
+
+// ── Files ─────────────────────────────────────────────────────────────────
+// All files attached to a registration (IA / BSE / etc.). Returns the raw
+// UploadedFileResponse[] from the backend — callers decode the slug-prefixed
+// filenames via decodeFilename() from fileFieldLabels.js.
+export function useFilesByRegistration(regUuid) {
+  return useQuery({
+    queryKey: keys.files.byRegistration(regUuid),
+    enabled: !!regUuid,
+    queryFn: ({ signal }) => listFiles(regUuid, { signal }),
   })
 }
