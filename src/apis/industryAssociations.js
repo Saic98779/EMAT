@@ -92,7 +92,7 @@ export function toPayload(v = {}) {
     mappedWithCluster: bool(v.cluster_mapped),
     clusterName: v.cluster_mapped === 'yes' ? str(v.cluster_which) : null,
     mappedWithImportantDistrict: bool(v.district_mapped),
-    districtMsmeCount: int(v.district_msme_count),
+    districtMsmeCount: int(v.msme_count),
     activeMembersAbove200: bool(v.members_gt200),
     activeMembersCount: int(v.active_members),
     justification: str(v.members_justification),
@@ -104,7 +104,9 @@ export function toPayload(v = {}) {
     electricityBill: null,
     telephoneBill: null,
     itInfrastructureAvailable: bool(v.it_infra),
-    infrastructureType: v.it_infra === 'yes' ? str(v.it_infra_details) : null,
+    infrastructureType: v.it_infra === 'yes'
+      ? (Array.isArray(v.it_infra_details) ? (v.it_infra_details.length ? v.it_infra_details.join(', ') : null) : str(v.it_infra_details))
+      : null,
     secretariatStaffAvailable: bool(v.secretariat_staff),
     websiteAvailable: bool(v.website),
     websiteUrl: v.website === 'yes' ? str(v.website_url) : null,
@@ -167,8 +169,7 @@ export function toFormValues(dto = {}) {
     cluster_mapped: yn(dto.mappedWithCluster),
     cluster_which: dto.clusterName ?? '',
     district_mapped: yn(dto.mappedWithImportantDistrict),
-    district_msme_count: num(dto.districtMsmeCount),
-    msme_count: num(dto.msmeCountWithoutTraders),
+    msme_count: num(dto.msmeCountWithoutTraders ?? dto.districtMsmeCount),
     members_gt200: YN(dto.activeMembersAbove200),
     active_members: num(dto.activeMembersCount),
     members_justification: dto.justification ?? '',
@@ -176,7 +177,9 @@ export function toFormValues(dto = {}) {
     building: dto.buildingType ?? '',
     declaration_signed: yn(dto.declarationSigned),
     it_infra: yn(dto.itInfrastructureAvailable),
-    it_infra_details: dto.infrastructureType ?? '',
+    it_infra_details: typeof dto.infrastructureType === 'string' && dto.infrastructureType.length
+      ? dto.infrastructureType.split(',').map((s) => s.trim()).filter(Boolean)
+      : [],
     secretariat_staff: yn(dto.secretariatStaffAvailable),
     website: yn(dto.websiteAvailable),
     website_url: dto.websiteUrl ?? '',
