@@ -8,6 +8,7 @@ import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { makeInPrincipleSchema } from '../../formSchemas'
 import { createIndustryAssociation } from '../../apis/industryAssociations'
 import { uploadFile } from '../../apis/files'
+import { encodeFilename } from '../../fileFieldLabels'
 import { useBranchesByState, useSdesByBranch, keys } from '../../queries'
 
 // First unmet requirement (missing required field or a validation error), if
@@ -91,12 +92,14 @@ export default function InPrincipleApproval() {
     prevOptionsHash.current = hash
   }, [branchOptions, sdeOptions])
 
-  // Collect every File instance picked across all file-typed fields.
+  // Collect every File instance picked, tagged with the field name it came
+  // from so we can rename it with a slug prefix at upload time. That lets
+  // DocUpload later show which upload slot each file belongs to.
   const collectFiles = () => {
     const out = []
-    for (const v of Object.values(values)) {
+    for (const [name, v] of Object.entries(values)) {
       if (!Array.isArray(v)) continue
-      for (const item of v) if (item instanceof File) out.push(item)
+      for (const item of v) if (item instanceof File) out.push({ file: item, slug: name })
     }
     return out
   }
@@ -121,9 +124,10 @@ export default function InPrincipleApproval() {
       const files = collectFiles()
       if (regUuid && files.length) {
         const failures = []
-        for (const f of files) {
-          try { await uploadFile(regUuid, f) }
-          catch (err) { failures.push({ name: f.name, msg: err.message || 'unknown error' }) }
+        for (const { file, slug } of files) {
+          const tagged = encodeFilename(file, slug)
+          try { await uploadFile(regUuid, tagged) }
+          catch (err) { failures.push({ name: file.name, msg: err.message || 'unknown error' }) }
         }
         if (failures.length) {
           const first = failures[0]
