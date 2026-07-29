@@ -8,6 +8,7 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { alpha } from '@mui/material/styles'
+import { decodeFilename } from '../fileFieldLabels'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -153,11 +154,17 @@ function Uploader({ value, label, required, error, onChange }) {
       </Typography>
       {docs.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
-          {docs.map((f, i) => (
-            <Chip key={i} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />}
-              label={typeof f === 'string' ? f : f.name}
-              onDelete={() => removeAt(i)} />
-          ))}
+          {docs.map((f, i) => {
+            // Already-uploaded files come back as slug-prefixed strings —
+            // strip the `<slot>__` prefix so the chip shows just the
+            // original filename the user picked.
+            const shown = typeof f === 'string' ? decodeFilename(f).name : f.name
+            return (
+              <Chip key={i} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />}
+                label={shown}
+                onDelete={() => removeAt(i)} />
+            )
+          })}
         </Box>
       )}
       {rejected.length > 0 && (
