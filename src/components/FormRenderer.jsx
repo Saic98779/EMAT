@@ -357,9 +357,18 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   const counter = f.max ? `${String(value ?? '').length} / ${f.max}` : null
   // Native calendar bounds for date inputs. Accepts an ISO string
   // ("YYYY-MM-DD") or the literal "today".
+  // NOTE: format in local time — toISOString() would emit UTC, so at IST
+  // (UTC+5:30) local midnight on the 29th becomes 18:30 UTC on the 28th
+  // and the picker would cap a day early.
   const dateBound = (b) => {
     if (!b) return undefined
-    if (b === 'today') { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString().slice(0, 10) }
+    if (b === 'today') {
+      const d = new Date()
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
     return b
   }
   const dateMax = f.type === 'date' ? dateBound(f.maxDate) : undefined
