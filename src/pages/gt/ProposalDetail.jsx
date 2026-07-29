@@ -411,10 +411,9 @@ function RegistrationDetails({ ia }) {
           <Row label="Mapped to a cluster" value={yesNo(r.mappedWithCluster)} />
           <Row label="Cluster name" value={fmt(r.clusterName)} />
           <Row label="Mapped to important district" value={yesNo(r.mappedWithImportantDistrict)} />
-          <Row label="District MSME count" value={fmt(r.districtMsmeCount)} />
+          <Row label="MSMEs (without traders) in district" value={fmt(r.msmeCountWithoutTraders ?? r.districtMsmeCount)} />
           <Row label="Active members > 200" value={yesNo(r.activeMembersAbove200)} />
           <Row label="Active member count" value={fmt(r.activeMembersCount)} />
-          <Row label="MSME count (excl. traders)" value={fmt(r.msmeCountWithoutTraders)} />
           <Row label="Member directory available" value={yesNo(r.memberDirectoryAvailable)} />
           <Row label="Justification" value={fmt(r.justification)} span={12} />
         </Group>

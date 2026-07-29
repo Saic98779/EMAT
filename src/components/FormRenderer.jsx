@@ -1,9 +1,12 @@
-import { memo, useCallback, useDeferredValue, useMemo, useRef } from 'react'
+import { memo, useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import {
   Box, Card, Grid, Stack, Typography, TextField, MenuItem, InputAdornment,
   ToggleButtonGroup, ToggleButton, Avatar, Divider, RadioGroup, FormControlLabel,
   Radio, FormGroup, Checkbox, Button, Chip, LinearProgress,
+  Table, TableHead, TableBody, TableRow, TableCell, IconButton,
 } from '@mui/material'
+import AddIcon from '@mui/icons-material/Add'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { alpha } from '@mui/material/styles'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
@@ -52,14 +55,18 @@ const PATTERNS = {
 // `showRequired` — treat a required field as errored when empty. Off by
 // default so users don't see "Required" red text before they've even
 // touched the field. Turn on after the first submit attempt.
+//
+// Whitespace-only strings are treated as empty (a user typing " " should
+// not satisfy a required field).
 export function fieldError(f, value, values, { showRequired = false } = {}) {
-  const v = value ?? ''
-  const filled = Array.isArray(v) ? v.length > 0 : v !== ''
+  const raw = value ?? ''
+  const trimmed = typeof raw === 'string' ? raw.trim() : raw
+  const filled = Array.isArray(trimmed) ? trimmed.length > 0 : trimmed !== '' && trimmed !== null
   if (showRequired && f.required && !filled) return 'Required'
-  if (f.validate) { const e = f.validate(v, values); if (e) return e }
-  if (v === '') return ''
+  if (f.validate) { const e = f.validate(trimmed, values); if (e) return e }
+  if (trimmed === '' || trimmed == null) return ''
   const p = f.pattern || (f.type === 'email' && PATTERNS.email) || (f.type === 'tel' && PATTERNS.phone)
-  if (p && !p.re.test(String(v))) return p.msg
+  if (p && !p.re.test(String(trimmed))) return p.msg
   return ''
 }
 
@@ -104,11 +111,21 @@ function YesNo({ value, onChange }) {
 
 // Stores actual `File` objects in form state so the parent page can upload
 // them after the parent record has a UUID. Chips display `.name`.
+// Accepts only DOC / DOCX / JPG / JPEG / PNG per client spec — reject anything
+// else with an inline message so silent drops don't confuse the user.
+const ALLOWED_UPLOAD_EXT_RE = /\.(docx?|jpe?g|png)$/i
+const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.jpg,.jpeg,.png,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
 function Uploader({ value, label, required, onChange }) {
+  const [rejected, setRejected] = useState([])
   const docs = value || []
   const pick = useCallback((e) => {
     const picked = Array.from(e.target.files || [])
-    if (picked.length) onChange([...(value || []), ...picked])
+    const allowed = []
+    const bad = []
+    for (const f of picked) (ALLOWED_UPLOAD_EXT_RE.test(f.name) ? allowed : bad).push(f)
+    if (allowed.length) onChange([...(value || []), ...allowed])
+    setRejected(bad.map((f) => f.name))
     e.target.value = ''
   }, [value, onChange])
   const removeAt = useCallback((idx) => onChange((value || []).filter((_, i) => i !== idx)), [value, onChange])
@@ -116,8 +133,11 @@ function Uploader({ value, label, required, onChange }) {
     <Framed label={label} required={required}>
       <Button component="label" size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ mt: 0.25 }}>
         Upload
-        <input type="file" hidden multiple onChange={pick} />
+        <input type="file" hidden multiple accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
       </Button>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+        Only .doc, .docx, .jpg, .jpeg, .png files
+      </Typography>
       {docs.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
           {docs.map((f, i) => (
@@ -127,6 +147,98 @@ function Uploader({ value, label, required, onChange }) {
           ))}
         </Box>
       )}
+      {rejected.length > 0 && (
+        <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
+          Skipped (unsupported type): {rejected.join(', ')}
+        </Typography>
+      )}
+    </Framed>
+  )
+}
+
+// Repeater: an editable grid for a variable-length list of sub-records.
+// `columns` describes the row shape ({ name, label, type }); `value` is the
+// array of row objects. Cells edit in place; a per-row delete button removes
+// entries and the "Add" button appends a blank row.
+// Per-cell validation for repeater rows: applies the same email / phone /
+// pincode / custom pattern rules as the top-level Field, so each column
+// picks up inline red text without any per-schema wiring.
+function cellError(col, v) {
+  const raw = v ?? ''
+  const trimmed = typeof raw === 'string' ? raw.trim() : raw
+  if (trimmed === '' || trimmed == null) return ''
+  if (col.validate) { const e = col.validate(trimmed); if (e) return e }
+  const p = col.pattern
+    || (col.type === 'email' && PATTERNS.email)
+    || (col.type === 'tel' && PATTERNS.phone)
+  if (p && !p.re.test(String(trimmed))) return p.msg
+  return ''
+}
+
+function Repeater({ value, label, required, onChange, columns, addLabel }) {
+  const rows = Array.isArray(value) ? value : []
+  const cols = Array.isArray(columns) ? columns : []
+  const update = (idx, name, v) => {
+    const next = rows.map((r, i) => (i === idx ? { ...r, [name]: v } : r))
+    onChange(next)
+  }
+  const add = () => {
+    const blank = Object.fromEntries(cols.map((c) => [c.name, '']))
+    onChange([...rows, blank])
+  }
+  const remove = (idx) => onChange(rows.filter((_, i) => i !== idx))
+  return (
+    <Framed label={label} required={required}>
+      {rows.length > 0 ? (
+        <Table size="small" sx={{ mt: 0.5, '& td, & th': { px: 1, py: 0.75 } }}>
+          <TableHead>
+            <TableRow>
+              {cols.map((c) => (
+                <TableCell key={c.name} sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                  {c.label}
+                </TableCell>
+              ))}
+              <TableCell align="right" width={48} />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((r, i) => (
+              <TableRow key={i} hover>
+                {cols.map((c) => {
+                  const cellVal = r?.[c.name] ?? ''
+                  const err = cellError(c, cellVal)
+                  return (
+                    <TableCell key={c.name} sx={{ verticalAlign: 'top' }}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={cellVal}
+                        onChange={(e) => update(i, c.name, e.target.value)}
+                        placeholder={c.placeholder}
+                        type={['number', 'email', 'tel', 'date'].includes(c.type) ? c.type : 'text'}
+                        error={!!err}
+                        helperText={err || undefined}
+                      />
+                    </TableCell>
+                  )
+                })}
+                <TableCell align="right" sx={{ verticalAlign: 'top' }}>
+                  <IconButton size="small" color="error" onClick={() => remove(i)}>
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+          No entries yet — click below to add.
+        </Typography>
+      )}
+      <Button size="small" variant="outlined" startIcon={<AddIcon />} sx={{ mt: 1.25 }} onClick={add}>
+        {addLabel || 'Add'}
+      </Button>
     </Framed>
   )
 }
@@ -166,7 +278,26 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   }
   if (f.type === 'checkboxes') {
     const arr = value || []
-    const toggle = (v) => onChange(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
+    // An option literally named "All" acts as a select-all shortcut:
+    // - Toggling "All" on selects every option; off clears the list.
+    // - Checking every non-"All" option auto-checks "All".
+    // - Unchecking any non-"All" option removes "All" from the selection.
+    const allValues = options.map((raw) => asOption(raw).value)
+    const nonAll = allValues.filter((v) => v !== 'All')
+    const toggle = (v) => {
+      if (v === 'All') {
+        onChange(arr.includes('All') ? [] : allValues)
+        return
+      }
+      const has = arr.includes(v)
+      let next = has
+        ? arr.filter((x) => x !== v && x !== 'All')
+        : [...arr.filter((x) => x !== 'All'), v]
+      if (allValues.includes('All') && nonAll.every((x) => next.includes(x))) {
+        next = [...next, 'All']
+      }
+      onChange(next)
+    }
     return (
       <Grid size={12}>
         <Framed label={f.label} required={f.required}>
@@ -182,16 +313,38 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   if (f.type === 'file') {
     return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} required={f.required} onChange={onChange} /></Grid>
   }
+  if (f.type === 'repeater') {
+    return (
+      <Grid size={12}>
+        <Repeater
+          value={value}
+          label={f.label}
+          required={f.required}
+          onChange={onChange}
+          columns={f.columns || []}
+          addLabel={f.addLabel}
+        />
+      </Grid>
+    )
+  }
   if (f.type === 'computed') {
+    // `plain: true` on a field opts out of the yellow "auto-calculated" tint
+    // — use it for mirrored/passthrough values that shouldn't scream.
+    const plain = f.plain === true
     return (
       <Grid size={{ xs: 12, sm: f.span || 4 }}>
         <TextField size="small" label={f.label} value={computed} fullWidth
-          InputProps={{ readOnly: true, startAdornment: (
-            <InputAdornment position="start">
-              {f.prefix ? <Typography color="secondary.dark" fontWeight={700}>{f.prefix}</Typography> : <FunctionsIcon fontSize="small" color="secondary" />}
-            </InputAdornment>) }}
-          helperText="Auto-calculated"
-          sx={{ '& .MuiInputBase-input': { fontWeight: 700, color: 'secondary.dark' }, '& .MuiInputBase-root': { bgcolor: 'secondary.light' } }} />
+          InputProps={{ readOnly: true, startAdornment: plain
+            ? undefined
+            : (
+              <InputAdornment position="start">
+                {f.prefix ? <Typography color="secondary.dark" fontWeight={700}>{f.prefix}</Typography> : <FunctionsIcon fontSize="small" color="secondary" />}
+              </InputAdornment>
+            ) }}
+          helperText={plain ? f.help : 'Auto-calculated'}
+          sx={plain
+            ? undefined
+            : { '& .MuiInputBase-input': { fontWeight: 700, color: 'secondary.dark' }, '& .MuiInputBase-root': { bgcolor: 'secondary.light' } }} />
       </Grid>
     )
   }
@@ -202,6 +355,15 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     : (value ?? '')
   const multiline = f.type === 'textarea'
   const counter = f.max ? `${String(value ?? '').length} / ${f.max}` : null
+  // Native calendar bounds for date inputs. Accepts an ISO string
+  // ("YYYY-MM-DD") or the literal "today".
+  const dateBound = (b) => {
+    if (!b) return undefined
+    if (b === 'today') { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString().slice(0, 10) }
+    return b
+  }
+  const dateMax = f.type === 'date' ? dateBound(f.maxDate) : undefined
+  const dateMin = f.type === 'date' ? dateBound(f.minDate) : undefined
 
   return (
     <Grid size={{ xs: 12, sm: f.span || 6 }}>
@@ -218,7 +380,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         select={isSelect}
         value={selVal}
         onChange={(e) => onChange(e.target.value)}
-        inputProps={{ maxLength: f.max }}
+        inputProps={{ maxLength: f.max, max: dateMax, min: dateMin }}
         InputProps={{
           readOnly: f.readOnly,
           startAdornment: f.prefix ? <InputAdornment position="start">{f.prefix}</InputAdornment> : undefined,
@@ -241,7 +403,12 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   )
 })
 
-const isFilled = (v) => (Array.isArray(v) ? v.length > 0 : v != null && v !== '')
+const isFilled = (v) => {
+  if (Array.isArray(v)) return v.length > 0
+  if (v == null) return false
+  if (typeof v === 'string') return v.trim() !== ''
+  return v !== ''
+}
 
 const isVisible = (f, values) => !f.showIf || f.showIf(values)
 
@@ -265,6 +432,11 @@ function relevantKeysFor(sec) {
     set.add(f.name)
     if (f.otp) set.add(`${f.name}_verified`)
     if (Array.isArray(f.sum)) f.sum.forEach((n) => set.add(n))
+    // `formula` / `showIf` / `optionsFrom` / `validate` bodies are opaque
+    // functions — the schema must declare any external fields they read via
+    // `dependsOn`, otherwise the section skips re-render when the source
+    // value changes (breaks auto-populate).
+    if (Array.isArray(f.dependsOn)) f.dependsOn.forEach((n) => set.add(n))
   }
   // Common cross-section refs used by optionsFrom / showIf in this codebase
   // (e.g. district & cluster options depend on `state`). Cheap to always

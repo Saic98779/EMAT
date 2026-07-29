@@ -10,13 +10,16 @@ import { createIndustryAssociation } from '../../apis/industryAssociations'
 import { uploadFile } from '../../apis/files'
 import { useBranchesByState, useSdesByBranch, keys } from '../../queries'
 
-// First unmet requirement (missing required field or a validation error), if any.
+// First unmet requirement (missing required field or a validation error), if
+// any. Whitespace-only strings count as empty.
 function firstProblem(schema, values) {
   for (const sec of schema.sections) {
     for (const f of sec.fields) {
       if (f.showIf && !f.showIf(values)) continue
       const v = values[f.name]
-      const filled = Array.isArray(v) ? v.length > 0 : v != null && v !== ''
+      const filled = Array.isArray(v)
+        ? v.length > 0
+        : (typeof v === 'string' ? v.trim() !== '' : v != null && v !== '')
       if (f.required && !filled) return `${sec.title}: “${f.label}” is required`
       const err = fieldError(f, v, values)
       if (err) return `${sec.title}: ${f.label} — ${err}`
