@@ -126,8 +126,8 @@ function YesNo({ value, onChange }) {
 // them after the parent record has a UUID. Chips display `.name`.
 // Accepts only DOC / DOCX / JPG / JPEG / PNG per client spec — reject anything
 // else with an inline message so silent drops don't confuse the user.
-const ALLOWED_UPLOAD_EXT_RE = /\.(docx?|jpe?g|png)$/i
-const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.jpg,.jpeg,.png,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const ALLOWED_UPLOAD_EXT_RE = /\.(docx?|jpe?g|png|pdf)$/i
+const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
 function Uploader({ value, label, required, error, onChange }) {
   const [rejected, setRejected] = useState([])
@@ -148,8 +148,8 @@ function Uploader({ value, label, required, error, onChange }) {
         Upload
         <input type="file" hidden multiple accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
       </Button>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-        Only .doc, .docx, .jpg, .jpeg, .png files
+      <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
+        Only .doc, .docx, .pdf, .jpg, .jpeg, .png files
       </Typography>
       {docs.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
