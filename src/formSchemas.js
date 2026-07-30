@@ -111,7 +111,6 @@ export const makeInPrincipleSchema = ({
       { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 6, required: true },
     ] },
     { n: 3, title: 'Address of IA', fields: [
-      { name: 'address', label: 'Registered address', type: 'text', span: 12, required: true },
       { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true, help: 'Within the selected State' },
       { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE },
     ] },
@@ -665,8 +664,10 @@ export const appraisalSchema = {
     ] },
     { n: 11, title: 'DIA Specific Details', fields: [
       { name: 'ready_formalization', label: "IA's readiness to undertake the formalization process", type: 'textarea', span: 12, max: 500 },
-      { name: 'ready_referral', label: "IA's readiness to enter referral arrangement with SIDBI (Yes / No — with remarks)", type: 'textarea', span: 12, max: 500 },
-      { name: 'ready_bse', label: "IA's readiness to place SIDBI Business Support Executives (Yes / No — with remarks)", type: 'textarea', span: 12, max: 500 },
+      { name: 'ready_referral_yn', label: "IA's readiness to enter referral arrangement with SIDBI", type: 'yesno', span: 4 },
+      { name: 'ready_referral', label: 'Remarks — referral arrangement', type: 'textarea', span: 8, max: 500 },
+      { name: 'ready_bse_yn', label: "IA's readiness to place SIDBI Business Support Executives", type: 'yesno', span: 4 },
+      { name: 'ready_bse', label: 'Remarks — placing SIDBI BSE', type: 'textarea', span: 8, max: 500 },
       { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
       { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4 },
       { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
@@ -675,7 +676,14 @@ export const appraisalSchema = {
       { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4 },
       { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope', label: 'Scope for financing — description (50–75 words)', type: 'textarea', span: 8, max: 500 },
-      { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5' },
+      { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5',
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n)) return 'Enter a valid amount'
+          if (n < 0) return 'Cannot be negative'
+          return ''
+        } },
       { name: 'project_location', label: 'Location where the project is being proposed', type: 'text', span: 6 },
       { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'checkboxes', span: 12,
         options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },

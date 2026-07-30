@@ -115,31 +115,9 @@ export default function ApprovalQueue() {
       </Grid>
 
       <Card>
-        <Tabs
-          value={tab}
-          onChange={(_, v) => setTab(v)}
-          sx={{
-            px: 2,
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            minHeight: 48,
-            '& .MuiTab-root': { minHeight: 48, textTransform: 'none', fontWeight: 600 },
-          }}
-        >
-          {TABS.map((t) => (
-            <Tab
-              key={t.key}
-              value={t.key}
-              label={
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <span>{t.label}</span>
-                  <CountPill count={counts[t.key]} accent={t.accent} muted={tab !== t.key} />
-                </Stack>
-              }
-            />
-          ))}
-        </Tabs>
-
+        {/* Top-level tab bar removed — the summary tiles above already act
+            as tab selectors (clicking one sets `tab`). L1 sub-tabs still
+            live inside since they're a different axis. */}
         <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
           {tab === 'l1' && (
             <>

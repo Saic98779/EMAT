@@ -93,12 +93,27 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
   const [values, setValues] = useState({})
   const [showAllErrors, setShowAllErrors] = useState(false)
   const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
+  // Once the initial seed has run, background query refetches (react-query
+  // stale-time expiry, refetchOnWindowFocus, cache invalidation) must NOT
+  // clobber in-progress edits. Without this guard, a failed save that
+  // triggers any refetch — or even a re-render that races with a pending
+  // fetch — would wipe every field the user just typed.
+  const seeded = Boolean(values._seeded)
 
-  // Seed the form once IA + appraisal + branches have loaded. Preserves any
-  // DD keys already on the appraisal even if the current role's schema hides
-  // them, so GT re-saves don't wipe SDE's DD data.
+  // Seed the form once IA + appraisal + branches + files have loaded.
+  // Preserves any DD keys already on the appraisal even if the current
+  // role's schema hides them, so GT re-saves don't wipe SDE's DD data.
   useEffect(() => {
+    if (seeded) return
     if (iaQ.isLoading || apprQ.isLoading) return
+    if (filesQ.isLoading) return
+    // Branches load after IA (they're keyed on the IA's state). If we seed
+    // before the branch list is available, the UUID → name lookup below
+    // falls back to the raw UUID and the user sees a GUID in the SIDBI
+    // Branch field. `isLoading` alone isn't reliable: react-query returns
+    // false during the brief window between "enabled=true" and the fetch
+    // actually starting. Explicit `data` check is the sturdy version.
+    if (iaQ.data?.state && !branchesQ.data) return
     const ia = iaQ.data
     const r = ia?.raw || {}
     const branchName = branchesQ.data?.find((b) => b.uuid === r.sidbiBranch)?.branchName ?? r.sidbiBranch
@@ -140,6 +155,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       secretariat_staff: yn(r.secretariatStaffAvailable),
       website: yn(r.websiteAvailable),
       paid_services: yn(r.paidServicesAvailable),
+      paid_services_details: r.paidServicesDetails ?? '',
       basis_of_selection: Array.isArray(r.selectionCriteria) ? r.selectionCriteria : [],
       grant_proposed: r.grantProposed ?? '',
       grant_details: r.grantDetails ?? '',
@@ -160,8 +176,18 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       if (!filesBySlot[slug]) filesBySlot[slug] = []
       filesBySlot[slug].push(fname)
     }
-    setValues({ ...seed, ...toFormValues(apprQ.data), ...filesBySlot })
-  }, [iaQ.data, iaQ.isLoading, apprQ.data, apprQ.isLoading, branchesQ.data, filesQ.data])
+    const merged = { ...seed, ...toFormValues(apprQ.data), ...filesBySlot }
+    // `toFormValues` may overlay `sidbi_branch` with the raw UUID stored on
+    // the appraisal DTO (backend copies it from the IA at creation). If it
+    // still looks like a UUID after merge, swap in the human name from the
+    // resolved branches list — otherwise the field renders as a GUID.
+    const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (typeof merged.sidbi_branch === 'string' && uuidLike.test(merged.sidbi_branch)) {
+      const match = branchesQ.data?.find((b) => b.uuid === merged.sidbi_branch)
+      if (match?.branchName) merged.sidbi_branch = match.branchName
+    }
+    setValues({ ...merged, _seeded: true })
+  }, [seeded, iaQ.data, iaQ.isLoading, apprQ.data, apprQ.isLoading, branchesQ.data, branchesQ.isLoading, filesQ.data, filesQ.isLoading])
 
   const busy = createM.isPending || updateM.isPending
   const existing = apprQ.data

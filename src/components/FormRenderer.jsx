@@ -129,17 +129,31 @@ function YesNo({ value, onChange }) {
 // else with an inline message so silent drops don't confuse the user.
 const ALLOWED_UPLOAD_EXT_RE = /\.(docx?|jpe?g|png|pdf)$/i
 const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+// Hard cap on file size — matches what the backend/storage layer accepts and
+// keeps oversized uploads from ever leaving the browser.
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+const MAX_UPLOAD_LABEL = '5 MB'
 
 function Uploader({ value, label, required, error, onChange }) {
-  const [rejected, setRejected] = useState([])
+  // Two separate rejection buckets so we can show a distinct message for
+  // "wrong type" vs "too big" — otherwise the user has to guess which rule
+  // their file broke.
+  const [rejectedType, setRejectedType] = useState([])
+  const [rejectedSize, setRejectedSize] = useState([])
   const docs = value || []
   const pick = useCallback((e) => {
     const picked = Array.from(e.target.files || [])
     const allowed = []
-    const bad = []
-    for (const f of picked) (ALLOWED_UPLOAD_EXT_RE.test(f.name) ? allowed : bad).push(f)
+    const badType = []
+    const badSize = []
+    for (const f of picked) {
+      if (!ALLOWED_UPLOAD_EXT_RE.test(f.name)) { badType.push(f); continue }
+      if (f.size > MAX_UPLOAD_BYTES) { badSize.push(f); continue }
+      allowed.push(f)
+    }
     if (allowed.length) onChange([...(value || []), ...allowed])
-    setRejected(bad.map((f) => f.name))
+    setRejectedType(badType.map((f) => f.name))
+    setRejectedSize(badSize.map((f) => f.name))
     e.target.value = ''
   }, [value, onChange])
   const removeAt = useCallback((idx) => onChange((value || []).filter((_, i) => i !== idx)), [value, onChange])
@@ -150,7 +164,7 @@ function Uploader({ value, label, required, error, onChange }) {
         <input type="file" hidden multiple accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
       </Button>
       <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
-        Only .doc, .docx, .pdf, .jpg, .jpeg, .png files
+        Only .doc, .docx, .pdf, .jpg, .jpeg, .png files — max {MAX_UPLOAD_LABEL} each
       </Typography>
       {docs.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
@@ -167,9 +181,14 @@ function Uploader({ value, label, required, error, onChange }) {
           })}
         </Box>
       )}
-      {rejected.length > 0 && (
+      {rejectedType.length > 0 && (
         <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
-          Skipped (unsupported type): {rejected.join(', ')}
+          Skipped (unsupported type): {rejectedType.join(', ')}
+        </Typography>
+      )}
+      {rejectedSize.length > 0 && (
+        <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
+          Skipped (over {MAX_UPLOAD_LABEL}): {rejectedSize.join(', ')}
         </Typography>
       )}
     </Framed>

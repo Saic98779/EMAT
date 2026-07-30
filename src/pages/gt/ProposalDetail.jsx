@@ -152,10 +152,17 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, md: 8 }}>
           <Stack spacing={2.5}>
-            {/* SDE view is stage-aware. The Due Diligence editor belongs to
-                L2 only — showing it in L1 leaks DD/appraisal fields into
-                the In-Principle review, which was a bug. */}
-            {isSde && ia.stage === 1 ? (
+            {/* SDE view is stage-aware AND appraisal-aware.
+                – Stage 0 (L1 review): read-only IA registration.
+                – Stage 1 without appraisal ("Detailed Pending"): GT hasn't
+                  filed the detailed appraisal yet, so SDE just sees the
+                  IA plus an "awaiting GT" note. Showing the form here
+                  would let SDE create the appraisal themselves and
+                  bypass GT.
+                – Stage 1 with appraisal ("Final Review (L2)" / "Rejected
+                  L2"): render the editable form for review + L2 sign-off.
+                – Stage 2 (Approved): read-only IA + appraisal. */}
+            {isSde && ia.stage === 1 && ia.appraisal ? (
               <SectionCard title="Detailed appraisal & Due Diligence" subtitle="Modify GT-submitted fields and add your Due Diligence comments. Saves via PUT to the appraisal.">
                 <AppraisalForm
                   registrationUuid={ia.uuid}
@@ -164,6 +171,14 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
               </SectionCard>
             ) : (
               <>
+                {/* Waiting notice sits above the IA details so the SDE sees
+                    it immediately without scrolling — the details below are
+                    kept as reference context. */}
+                {isSde && ia.stage === 1 && !ia.appraisal && (
+                  <Alert severity="info">
+                    Waiting for the GT field team to submit the detailed appraisal. Once they do, you'll be able to review, edit the Due Diligence fields, and grant L2 approval from this page.
+                  </Alert>
+                )}
                 <RegistrationDetailsResolved ia={ia} />
                 {ia.appraisal && <AppraisalDetails appraisal={ia.appraisal} />}
               </>

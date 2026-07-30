@@ -111,6 +111,22 @@ export function toPayload(v = {}) {
     websiteAvailable: bool(v.website),
     websiteUrl: v.website === 'yes' ? str(v.website_url) : null,
     paidServicesAvailable: bool(v.paid_services),
+    // Sent speculatively — backend may or may not have a column yet. Jackson
+    // ignores unknown keys, so it's safe to include either way. If the POST
+    // response echoes this back, backend already supports it.
+    paidServicesDetails: v.paid_services === 'yes' ? str(v.paid_services_details) : null,
+    // Same story for the secretariat staff grid. Sending as an array of
+    // { name, contact, email } — filter out empty rows so we don't ship
+    // half-blank entries.
+    secretariatStaff: v.secretariat_staff === 'yes' && Array.isArray(v.secretariat_list)
+      ? v.secretariat_list
+          .map((row) => ({
+            name: str(row?.name),
+            contact: str(row?.contact),
+            email: str(row?.email),
+          }))
+          .filter((r) => r.name || r.contact || r.email)
+      : [],
     adverseRemarksAvailable: bool(v.adverse_remarks),
     adverseRemarks: v.adverse_remarks === 'yes' ? str(v.adverse_details) : null,
     webReport: null,
@@ -181,9 +197,11 @@ export function toFormValues(dto = {}) {
       ? dto.infrastructureType.split(',').map((s) => s.trim()).filter(Boolean)
       : [],
     secretariat_staff: yn(dto.secretariatStaffAvailable),
+    secretariat_list: Array.isArray(dto.secretariatStaff) ? dto.secretariatStaff : [],
     website: yn(dto.websiteAvailable),
     website_url: dto.websiteUrl ?? '',
     paid_services: yn(dto.paidServicesAvailable),
+    paid_services_details: dto.paidServicesDetails ?? '',
     adverse_remarks: yn(dto.adverseRemarksAvailable),
     adverse_details: dto.adverseRemarks ?? '',
     basis_of_selection: Array.isArray(dto.selectionCriteria) ? dto.selectionCriteria : [],
