@@ -151,6 +151,7 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
     secretariatStaffAvailable: bool(values.secretariat_staff),
     websiteAvailable: bool(values.website),
     paidServicesAvailable: bool(values.paid_services),
+    paidServicesDetails: values.paid_services === 'yes' ? str(values.paid_services_details) : null,
     majorSourcesOfIncome: str(values.major_sources_of_income),
     activitiesLastYear: str(values.activities_last_year),
 
@@ -158,6 +159,11 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
     formalizationComments: str(values.ready_formalization),
     referralArrangementComments: str(values.ready_referral),
     bseReadinessComments: str(values.ready_bse),
+    // Yes/No toggles sent speculatively alongside the existing *Comments
+    // strings so the moment backend adds boolean columns, they land. Jackson
+    // ignores unknown keys today, so this is safe either way.
+    referralArrangementReady: bool(values.ready_referral_yn),
+    bseReadinessReady: bool(values.ready_bse_yn),
 
     topThreeSectors,
     financingScope: str(values.financing_scope),
@@ -245,7 +251,9 @@ export function toFormValues(dto = {}) {
     // ── Section 11 — DIA Specific ─────────────────────────────────────
     ready_formalization: dto.formalizationComments ?? '',
     ready_referral: dto.referralArrangementComments ?? '',
+    ready_referral_yn: dto.referralArrangementReady == null ? '' : (dto.referralArrangementReady ? 'yes' : 'no'),
     ready_bse: dto.bseReadinessComments ?? '',
+    ready_bse_yn: dto.bseReadinessReady == null ? '' : (dto.bseReadinessReady ? 'yes' : 'no'),
     sector_1: sectorEntries[0]?.[0] ?? '',
     sector_1_problems: sectorEntries[0]?.[1] ?? '',
     sector_2: sectorEntries[1]?.[0] ?? '',
