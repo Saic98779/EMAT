@@ -537,7 +537,21 @@ const SectionCard = memo(function SectionCard({
       </Stack>
       <Box sx={{ p: { xs: 2, md: 2.5 } }}>
         {sec.desc && <Typography variant="body2" color="text.secondary" mb={2}>{sec.desc}</Typography>}
-        <Grid container spacing={2}>
+        {/*
+          alignItems="flex-start" keeps siblings top-aligned even when one
+          field (uploader, error message, etc.) grows tall — otherwise MUI's
+          default `stretch` blows up short TextFields to match the tallest
+          item in the row and the grid looks jagged.
+          The helperText reservation (`.MuiFormHelperText-root { minHeight }`)
+          keeps every text field the same height whether it has help/error
+          text or not, so bottoms line up across rows.
+        */}
+        <Grid
+          container
+          spacing={2.5}
+          alignItems="flex-start"
+          sx={{ '& .MuiFormHelperText-root': { minHeight: '1.25em', mt: 0.5 } }}
+        >
           {sec.fields.map((f) => {
             if (!isVisible(f, values)) return null
             const val = values[f.name]

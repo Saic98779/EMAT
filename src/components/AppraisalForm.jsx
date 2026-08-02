@@ -16,7 +16,7 @@ import {
   toUpdatePayload,
   toFormValues,
 } from '../apis/industryAssociationAppraisals'
-import { uploadFile } from '../apis/files'
+import { uploadFilesBatch } from '../apis/files'
 import { encodeFilename, FILE_FIELD_LABELS, FILE_FIELD_SEP } from '../fileFieldLabels'
 import { useAuth } from '../auth'
 
@@ -221,15 +221,11 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       const files = collectFiles()
       let uploadFailure = null
       if (files.length) {
-        const failures = []
-        for (const { file, slug } of files) {
-          const tagged = encodeFilename(file, slug)
-          try { await uploadFile(registrationUuid, tagged) }
-          catch (err) { failures.push({ name: file.name, msg: err.message || 'unknown error' }) }
-        }
-        if (failures.length) {
-          const first = failures[0]
-          uploadFailure = `${failures.length} of ${files.length} file${files.length === 1 ? '' : 's'} failed (e.g. "${first.name}": ${first.msg})`
+        const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
+        try {
+          await uploadFilesBatch(registrationUuid, tagged)
+        } catch (err) {
+          uploadFailure = `${files.length} file${files.length === 1 ? '' : 's'} failed to upload (${err.message || 'unknown error'})`
         }
       }
 

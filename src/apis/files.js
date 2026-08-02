@@ -50,6 +50,43 @@ export async function uploadFile(registrationUuid, file, { signal } = {}) {
   return data
 }
 
+// POST /files/{registrationUuid}/batch (multipart/form-data, repeating field
+// name `files`). Replaces the sequential single-file loop we used to run —
+// one TCP call, one auth check, backend controls internal concurrency.
+// Returns whatever the batch endpoint returns (typically the list of
+// UploadedFileResponse entries in request order).
+export async function uploadFilesBatch(registrationUuid, files, { signal } = {}) {
+  if (!files || files.length === 0) return []
+  const bearer = getStoredToken()
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+
+  const res = await fetch(`${API_BASE}${PATH}/${encodeURIComponent(registrationUuid)}/batch`, {
+    method: 'POST',
+    signal,
+    headers: {
+      Accept: 'application/json',
+      ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+    },
+    body: form,
+  })
+
+  const text = await res.text()
+  const data = text ? safeJson(text) : null
+  if (!res.ok) {
+    const msg = (data && (data.message || data.error)) || `Batch upload failed (${res.status})`
+    const err = new Error(msg)
+    err.status = res.status
+    err.data = data
+    throw err
+  }
+  // Backend may return a bare array or a wrapper (`{content: []}` / `{items: []}`).
+  return Array.isArray(data)
+    ? data
+    : (Array.isArray(data?.content) ? data.content
+      : (Array.isArray(data?.items) ? data.items : []))
+}
+
 // DELETE /files/{registrationUuid}/{filename}
 export function deleteFile(registrationUuid, filename, { signal } = {}) {
   return apiFetch(

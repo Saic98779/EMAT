@@ -84,14 +84,24 @@ export function listBseRecommendationsByMappedStatus(status, { signal } = {}) {
 // ── Payload adapter ─────────────────────────────────────────────────────────
 // Frontend form values → backend `CreateBseRecommendationRequest`.
 // - Coerces Yes/No strings to booleans for `experienced`
-// - Emits ISO-8601 date for `gtRecommendationDate` (accepts DD/MM/YYYY)
+// - Emits ISO-8601 dates (accepts DD/MM/YYYY too)
 // - File-typed fields are sent as `null` for now (no upload endpoint yet;
 //   swap to filenames or URLs once uploads are wired)
-// - PMU / HO / Committee / approval fields are server-controlled: omitted here
+// - Downstream stage fields (PMU / HO / Committee / approval / joining /
+//   mapping / offer letter) are sent as `null` on create — they're populated
+//   by the PUT flow after each stage's review.
+//
+// `industryRegistrationId` mirrors `registrationUuid` today: the frontend only
+// carries the IA's UUID, and no separate short/human id is surfaced by the
+// backend on the IA DTO. Pass the same UUID until the backend clarifies.
 export function toPayload(v = {}, registrationUuid = null) {
   const experienced = bool(v.experience_status)
+  const uuid = str(registrationUuid)
   return {
-    registrationUuid: str(registrationUuid),
+    registrationUuid: uuid,
+    industryRegistrationId: uuid,
+    state: str(v.state),
+    district: str(v.district),
     bseName: str(v.bse_name),
     mobileNumber: str(v.mobile),
     emailId: str(v.email),
@@ -111,7 +121,22 @@ export function toPayload(v = {}, registrationUuid = null) {
     candidateCv: null,
     gtRecommendation: str(v.recommendation),
     gtRecommendationDate: toIsoDate(v.recommendation_date),
-    gtRemarks: null,
+    gtRemarks: str(v.gt_remarks),
+    pmuRecommendation: null,
+    pmuRecommendationDate: null,
+    pmuRemarks: null,
+    hoRecommendation: null,
+    hoRecommendationDate: null,
+    hoRemarks: null,
+    committeeRecommendation: null,
+    committeeDate: null,
+    committeeMom: null,
+    committeeRemarks: null,
+    approvedSalary: null,
+    approvedTravelAllowance: null,
+    dateOfJoining: null,
+    iaMapped: null,
+    offerLetter: null,
   }
 }
 
@@ -122,37 +147,42 @@ export function toPayload(v = {}, registrationUuid = null) {
 // GT fields). Server-controlled `id` / `uuid` / timestamps are never sent.
 //
 // Recognised patch keys (all optional):
+//   state, district,
 //   pmuRecommendation, pmuRecommendationDate, pmuRemarks,
 //   hoRecommendation,  hoRecommendationDate,  hoRemarks,
-//   committeeRecommendation, committeeRecommendationDate, committeeRemarks,
+//   committeeRecommendation, committeeDate, committeeMom, committeeRemarks,
 //   gtRecommendation, gtRecommendationDate, gtRemarks,
-//   mapped, mappedDate,
-//   dateOfJoining, expectedSalary, resumeStatus,
-//   resumeFile, salarySlip, candidateCv, relievingLetter,
+//   iaMapped,
+//   dateOfJoining, approvedSalary, approvedTravelAllowance,
+//   expectedSalary, resumeStatus,
+//   resumeFile, salarySlip, candidateCv, relievingLetter, offerLetter,
 export function toUpdatePayload(patch = {}) {
   const out = {}
   const passthrough = [
+    'state', 'district',
     'pmuRecommendation', 'pmuRemarks',
     'hoRecommendation', 'hoRemarks',
-    'committeeRecommendation', 'committeeRemarks',
+    'committeeRecommendation', 'committeeMom', 'committeeRemarks',
     'gtRecommendation', 'gtRemarks',
     'resumeStatus',
-    'resumeFile', 'salarySlip', 'candidateCv', 'relievingLetter',
+    'resumeFile', 'salarySlip', 'candidateCv', 'relievingLetter', 'offerLetter',
   ]
   for (const k of passthrough) if (patch[k] !== undefined) out[k] = str(patch[k])
 
   const dateKeys = [
     'pmuRecommendationDate', 'hoRecommendationDate',
-    'committeeRecommendationDate', 'gtRecommendationDate',
-    'mappedDate', 'dateOfJoining',
+    'committeeDate', 'gtRecommendationDate',
+    'dateOfJoining',
   ]
   for (const k of dateKeys) if (patch[k] !== undefined) out[k] = toIsoDate(patch[k])
 
-  if (patch.mapped !== undefined) out.mapped = bool(patch.mapped)
+  if (patch.iaMapped !== undefined) out.iaMapped = bool(patch.iaMapped)
   if (patch.expectedSalary !== undefined) out.expectedSalary = num(patch.expectedSalary)
   if (patch.currentSalary !== undefined) out.currentSalary = num(patch.currentSalary)
   if (patch.lastDrawnSalary !== undefined) out.lastDrawnSalary = num(patch.lastDrawnSalary)
   if (patch.noticePeriodDays !== undefined) out.noticePeriodDays = int(patch.noticePeriodDays)
+  if (patch.approvedSalary !== undefined) out.approvedSalary = num(patch.approvedSalary)
+  if (patch.approvedTravelAllowance !== undefined) out.approvedTravelAllowance = num(patch.approvedTravelAllowance)
   return out
 }
 

@@ -7,7 +7,7 @@ import EastIcon from '@mui/icons-material/East'
 import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { makeInPrincipleSchema } from '../../formSchemas'
 import { createIndustryAssociation } from '../../apis/industryAssociations'
-import { uploadFile } from '../../apis/files'
+import { uploadFilesBatch } from '../../apis/files'
 import { encodeFilename } from '../../fileFieldLabels'
 import { useBranchesByState, useSdesByBranch, keys } from '../../queries'
 
@@ -117,26 +117,20 @@ export default function InPrincipleApproval() {
       const created = await createIndustryAssociation(values)
       const regUuid = created?.uuid
 
-      // Upload picked files SEQUENTIALLY under the new registration's UUID.
-      // Parallel POSTs to the same parent were producing partial failures
-      // (backend serialises writes; duplicate filenames also collide).
-      // Sequential is a few seconds slower but consistently succeeds.
+      // One batch POST replaces the previous sequential loop. Backend
+      // controls concurrency internally, which fixed the partial-failure
+      // problem that made us serialise before.
       const files = collectFiles()
       if (regUuid && files.length) {
-        const failures = []
-        for (const { file, slug } of files) {
-          const tagged = encodeFilename(file, slug)
-          try { await uploadFile(regUuid, tagged) }
-          catch (err) { failures.push({ name: file.name, msg: err.message || 'unknown error' }) }
-        }
-        if (failures.length) {
-          const first = failures[0]
+        const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
+        try {
+          await uploadFilesBatch(regUuid, tagged)
+          setToast({ severity: 'success', msg: `${values.ia_name || 'New IA'} added — ${files.length} file${files.length === 1 ? '' : 's'} uploaded.` })
+        } catch (err) {
           setToast({
             severity: 'warning',
-            msg: `IA created. ${failures.length} of ${files.length} file${files.length === 1 ? '' : 's'} failed (e.g. "${first.name}": ${first.msg}). Retry from the IA page.`,
+            msg: `IA created. File upload failed (${err.message || 'unknown error'}). Retry from the IA page.`,
           })
-        } else {
-          setToast({ severity: 'success', msg: `${values.ia_name || 'New IA'} added — ${files.length} file${files.length === 1 ? '' : 's'} uploaded.` })
         }
       } else {
         setToast({ severity: 'success', msg: `${values.ia_name || 'New IA'} added to the onboarding pipeline.` })
