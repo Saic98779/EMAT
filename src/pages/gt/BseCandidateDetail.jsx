@@ -143,7 +143,7 @@ export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 
 
   return (
     <Box>
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/gt/team')} sx={{ mb: 2 }}>BSE Team</Button>
+      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(backPath)} sx={{ mb: 2 }}>{backLabel}</Button>
 
       <Card sx={{ mb: 2.5 }}>
         <CardContent>

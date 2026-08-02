@@ -35,10 +35,38 @@ import IaSalaryRequest from './pages/ia/IaSalaryRequest'
 import MpaDashboard from './pages/mpa/MpaDashboard'
 import MpaRaiseDisbursement from './pages/mpa/MpaRaiseDisbursement'
 
+import ClusterExpertDashboard from './pages/ce/ClusterExpertDashboard'
+
+import HoMakerDashboard from './pages/ho/HoMakerDashboard'
+import HoIaApprovals from './pages/ho/HoIaApprovals'
+import HoIaReview from './pages/ho/HoIaReview'
+
 function Protected({ role, children }) {
   const { role: current } = useAuth()
   if (!current) return <Navigate to="/" replace />
   if (role && current !== role) return <Navigate to={`/${current}`} replace />
+  return children
+}
+
+// `/sde` is shared by the SIDBI appraisal chain, cluster experts, and SIDBI HO
+// Makers — each of the latter two gets its own review-only landing page
+// instead of the appraisal/disbursal dashboard.
+function SdeHome() {
+  const { rawRole } = useAuth()
+  if (rawRole === 'CLUSTER_EXPERT') return <ClusterExpertDashboard />
+  if (rawRole === 'SIDBI_HO_MAKER') return <HoMakerDashboard />
+  return <SdeDashboard />
+}
+
+// Cluster experts and SIDBI HO Makers share the /sde/* route space but are
+// each restricted to their own slice of it (CE: read + comment on IA
+// appraisals; HO Maker: approve/reject IAs the Cluster Expert has commented
+// on). Wraps the screens
+// that carry decisions or data outside a role's remit so a hand-typed URL
+// can't hand out powers the sidebar never offered.
+function DenyRawRoles({ roles, children }) {
+  const { rawRole } = useAuth()
+  if (roles.includes(rawRole)) return <Navigate to="/sde" replace />
   return children
 }
 
@@ -68,14 +96,16 @@ export default function App() {
 
       {/* SDE — SIDBI appraisal */}
       <Route element={<Protected role="sde"><AppLayout /></Protected>}>
-        <Route path="/sde" element={<SdeDashboard />} />
-        <Route path="/sde/queue" element={<ApprovalQueue />} />
-        <Route path="/sde/ias" element={<IndustryAssociations basePath="/sde/ias" />} />
-        <Route path="/sde/ias/:id" element={<ProposalDetail backPath="/sde/ias" />} />
-        <Route path="/sde/ias/:id/edit" element={<IaEdit />} />
-        <Route path="/sde/ias/:id/appraisal" element={<Appraisal backPath="/sde/ias" />} />
-        <Route path="/sde/disbursals" element={<Disbursals role="sde" />} />
-        <Route path="/sde/team/:uuid" element={<BseCandidateDetail backPath="/sde/queue" backLabel="Approval Queue" />} />
+        <Route path="/sde" element={<SdeHome />} />
+        <Route path="/sde/queue" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><ApprovalQueue /></DenyRawRoles>} />
+        <Route path="/sde/ias" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><IndustryAssociations basePath="/sde/ias" /></DenyRawRoles>} />
+        <Route path="/sde/ias/:id" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><ProposalDetail backPath="/sde/ias" /></DenyRawRoles>} />
+        <Route path="/sde/ias/:id/edit" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><IaEdit /></DenyRawRoles>} />
+        <Route path="/sde/ias/:id/appraisal" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><Appraisal backPath="/sde/ias" /></DenyRawRoles>} />
+        <Route path="/sde/disbursals" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><Disbursals role="sde" /></DenyRawRoles>} />
+        <Route path="/sde/team/:uuid" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><BseCandidateDetail backPath="/sde/queue" backLabel="Approval Queue" /></DenyRawRoles>} />
+        <Route path="/sde/ia-approvals" element={<DenyRawRoles roles={['CLUSTER_EXPERT']}><HoIaApprovals /></DenyRawRoles>} />
+        <Route path="/sde/ias/:id/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoIaReview /></DenyRawRoles>} />
       </Route>
 
       {/* BSE — field officer */}

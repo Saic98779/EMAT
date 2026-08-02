@@ -16,6 +16,7 @@ import {
   useIA, useApproveIA, useApproveAppraisal,
   useBranchesByState, useSdesByBranch,
 } from '../../queries'
+import { unpackClusterExpertComments } from '../../apis/industryAssociationAppraisals'
 import { useAuth } from '../../auth'
 import { monoFont } from '../../theme'
 
@@ -48,10 +49,13 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const isGt = backPath.startsWith('/gt')
-  const isSde = backPath.startsWith('/sde')
 
   const { rawRole } = useAuth()
   const isClusterExpert = rawRole === 'CLUSTER_EXPERT'
+  // Cluster experts browse the same /sde/* paths but must never get the SDE
+  // affordances (edit registration, L1/L2 approve-reject, inline editable
+  // appraisal) — they are review-and-comment only.
+  const isSde = backPath.startsWith('/sde') && !isClusterExpert
 
   const iaQ = useIA(id)
   const approveL1 = useApproveIA()
@@ -196,7 +200,7 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
                 onReject={() => setDecisionOpen({ level: canApproveL1 ? 1 : 2, action: 'reject' })}
               />
             )}
-            <DocUpload registrationUuid={ia.uuid} />
+            <DocUpload registrationUuid={ia.uuid} readOnly={isClusterExpert} />
             <SectionCard title="Appraisal trail">
             <Stack spacing={0}>
               {ia.trail.map((t, i) => (
@@ -553,7 +557,10 @@ function AppraisalDetails({ appraisal }) {
         </Group>
 
         <Group title="Cluster Expert">
-          <Row label="Comments" value={fmt(a.clusterExpertComments)} span={12} />
+          {/* Both CE comments share one backend column, so split them back out
+              rather than showing the packing marker to the reader. */}
+          <Row label="Comments" value={fmt(unpackClusterExpertComments(a).general)} span={12} />
+          <Row label="Comments on Terms of Assistance" value={fmt(unpackClusterExpertComments(a).terms)} span={12} />
         </Group>
 
         <Group title="Budget & terms">

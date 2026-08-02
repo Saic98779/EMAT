@@ -246,9 +246,10 @@ export function useApproveAppraisal() {
 }
 
 // ── BSE recommendations ────────────────────────────────────────────────────
-export function useBseList() {
+export function useBseList({ enabled = true } = {}) {
   return useQuery({
     queryKey: keys.bse.lists(),
+    enabled,
     queryFn: ({ signal }) => listBseRecommendations({ signal }).then((d) => unwrapList(d).map(bseFromDto)),
   })
 }

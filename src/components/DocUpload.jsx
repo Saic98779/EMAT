@@ -24,6 +24,9 @@ export default function DocUpload({
   setDocs,
   registrationUuid = null,
   accent = 'primary',
+  // Review-only roles (e.g. CLUSTER_EXPERT) may open/download the documents
+  // but must not attach new ones or delete what others uploaded.
+  readOnly = false,
 }) {
   const apiMode = Boolean(registrationUuid)
 
@@ -139,13 +142,17 @@ export default function DocUpload({
       </Stack>
       <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
         <Typography variant="body2" color="text.secondary" mb={2}>
-          Attach the Invoice and any supporting files (PDF, images, spreadsheets).
+          {readOnly
+            ? 'Documents submitted with this application. Click any file to download.'
+            : 'Attach the Invoice and any supporting files (PDF, images, spreadsheets).'}
         </Typography>
 
-        <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} disabled={busy}>
-          {busy ? 'Uploading…' : 'Attach documents'}
-          <input type="file" hidden multiple onChange={onPick} />
-        </Button>
+        {!readOnly && (
+          <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} disabled={busy}>
+            {busy ? 'Uploading…' : 'Attach documents'}
+            <input type="file" hidden multiple onChange={onPick} />
+          </Button>
+        )}
 
         {error && <Alert severity="error" sx={{ mt: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
@@ -177,14 +184,16 @@ export default function DocUpload({
                       {it.name}{sizePart}
                     </Typography>
                   </Box>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={(e) => { e.stopPropagation(); remove(i, it.meta ?? { filename: it.name }) }}
-                    aria-label="Delete file"
-                  >
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
+                  {!readOnly && (
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={(e) => { e.stopPropagation(); remove(i, it.meta ?? { filename: it.name }) }}
+                      aria-label="Delete file"
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  )}
                 </Box>
               )
             })}

@@ -38,8 +38,15 @@ function firstProblem(schema, values) {
   return null
 }
 
+// The only fields a Cluster Expert may edit — everything else on the appraisal
+// is other roles' work and is shown to them strictly for review.
+const CE_EDITABLE = new Set(['cluster_expert_comments', 'cluster_expert_terms_comments'])
+
 // Role-shaped schema:
-//   CLUSTER_EXPERT → everything read-only except cluster_expert_comments.
+//   CLUSTER_EXPERT → whole application visible, read-only, except its two
+//                    comment fields. `required` is dropped from the locked
+//                    fields: the CE cannot fix someone else's blank, so
+//                    leaving it on would make their own save unreachable.
 //   SIDBI_SDE      → base schema, minus Cluster Expert Comments section.
 //   GT / default   → base minus Cluster Expert Comments AND Comments on
 //                    Due Diligence (SDE-owned).
@@ -50,21 +57,36 @@ function schemaFor(role) {
       ...src,
       sections: src.sections.map((sec) => ({
         ...sec,
-        fields: sec.fields.map((f) =>
-          f.name === 'cluster_expert_comments' ? f : { ...f, readOnly: true },
-        ),
+        fields: sec.fields.map((f) => (
+          CE_EDITABLE.has(f.name)
+            ? f
+            : { ...f, readOnly: true, required: false, otp: false }
+        )),
       })),
     }
   }
+  // Non-CE roles keep the CE fields visible but locked — the terms comment
+  // lives in the Terms of Assistance section, which they do own.
+  const lockCeFields = (sec) => ({
+    ...sec,
+    fields: sec.fields.map((f) => (f.ceOnly ? { ...f, readOnly: true, required: false } : f)),
+  })
   if (role === 'SIDBI_SDE') {
-    return { ...src, sections: src.sections.filter((sec) => sec.title !== 'Cluster Expert Comments') }
+    return {
+      ...src,
+      sections: src.sections
+        .filter((sec) => sec.title !== 'Cluster Expert Comments')
+        .map(lockCeFields),
+    }
   }
   return {
     ...src,
-    sections: src.sections.filter((sec) =>
-      sec.title !== 'Cluster Expert Comments' &&
-      sec.title !== 'Comments on Due Diligence',
-    ),
+    sections: src.sections
+      .filter((sec) =>
+        sec.title !== 'Cluster Expert Comments' &&
+        sec.title !== 'Comments on Due Diligence',
+      )
+      .map(lockCeFields),
   }
 }
 

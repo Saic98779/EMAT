@@ -565,14 +565,15 @@ export const capexSchema = {
 
 // ── Appraisal (SIDBI SDE, second level — full 15-point) ─────────────────────
 // Turn every editable input field in a section list required.
-// Skips subheadings, computed fields (derived), and any field already flagged
+// Skips subheadings, computed fields (derived), any field already flagged
 // `readOnly` — those are autofetched and users can't fill them, so requiring
-// them would only surface false positives when seed data is thin.
+// them would only surface false positives when seed data is thin — and any
+// field explicitly marked `optional`.
 function requireAllInputs(sections) {
   return sections.map((sec) => ({
     ...sec,
     fields: sec.fields.map((f) =>
-      ['subheading', 'computed'].includes(f.type) || f.readOnly
+      ['subheading', 'computed'].includes(f.type) || f.readOnly || f.optional
         ? f
         : { ...f, required: true },
     ),
@@ -695,10 +696,19 @@ export const appraisalSchema = {
       { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12, max: 500 },
     ] },
     { n: 12, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
-      { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4 },
+      // Mandatory for the Cluster Expert — it is the one thing that role is
+      // asked to contribute. `required` is safe to keep on the shared schema
+      // because GT/SDE variants filter this whole section out (see
+      // `schemaFor` in AppraisalForm).
+      { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4, required: true },
     ] },
     { n: 13, title: 'Terms of Assistance', fields: [
       { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'textarea', span: 12, placeholder: 'As per Annexure' },
+      // Cluster Expert comments specifically on the Terms of Assistance.
+      // Editable only by CLUSTER_EXPERT; every other role sees it read-only.
+      // Optional — the mandatory contribution is the remarks field in the
+      // Cluster Expert Comments section above.
+      { name: 'cluster_expert_terms_comments', label: "Cluster Expert's comments on the Terms of Assistance", type: 'textarea', span: 12, rows: 3, ceOnly: true, optional: true },
     ] },
     { n: 14, title: 'Budget', fields: [
       // Backend stores this as a LocalDate; we key each option on the

@@ -22,6 +22,7 @@ import { useAuth } from '../auth'
 import Logo from './Logo'
 import sidbiLogo from '../assets/sidbi-logo.png'
 import { useIAs, useAppraisals } from '../queries'
+import { unpackHoDecision } from '../apis/industryAssociationAppraisals'
 
 const DRAWER_WIDTH = 288
 
@@ -55,6 +56,21 @@ export const NAV = {
     { icon: 'payments', label: 'Disbursals', path: '/bse/disbursals', overline: 'Field ops', title: 'Disbursals' },
     { icon: 'doc', label: 'CAPEX Reimbursement', path: '/bse/capex/new', overline: 'Disbursement', title: 'Reimbursement of CAPEX to IA' },
   ],
+  // CLUSTER_EXPERT rides the SDE routes (same read paths) but its job is only
+  // to review applications and leave comments — no approval queue, no
+  // disbursals. Keyed separately from `sde` and selected by rawRole below.
+  ce: [
+    { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'Cluster Expert' },
+    { icon: 'doc', label: 'Applications', path: '/sde/ias', overline: 'Applications', title: 'Applications' },
+  ],
+  // SIDBI_HO_MAKER also rides the SDE route space. Its entire job is to
+  // approve/reject (with remarks) Industry Associations the Cluster Expert
+  // has already commented on — no IA appraisal editing, no disbursals, no
+  // L1/L2 approval queue.
+  ho: [
+    { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'SIDBI HO Maker' },
+    { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
+  ],
   ia: [
     { icon: 'home', label: 'Dashboard', path: '/ia', overline: 'Overview', title: 'Dashboard' },
     { icon: 'payments', label: 'Salary Requests', path: '/ia/requests', overline: 'Disbursement', title: 'BSE Salary Requests' },
@@ -66,18 +82,22 @@ export const NAV = {
 }
 
 export default function AppLayout() {
-  const { role, roleInfo, logout } = useAuth()
+  const { role, rawRole, roleInfo, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const isDesktop = useMediaQuery((t) => t.breakpoints.up('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
   const [anchor, setAnchor] = useState(null)
 
+  // Cluster experts and SIDBI HO Makers share the `sde` workspace but each
+  // get their own trimmed nav.
+  const navKey = rawRole === 'CLUSTER_EXPERT' ? 'ce' : rawRole === 'SIDBI_HO_MAKER' ? 'ho' : role
+
   // Live sidebar badges — same query hooks other pages use, so caches are
   // shared and counts stay in sync when approvals happen anywhere.
-  const badges = useLiveBadges(role)
+  const badges = useLiveBadges(navKey)
 
-  const nav = (NAV[role] || []).map((item) => {
+  const nav = (NAV[navKey] || []).map((item) => {
     const live = badges[item.path]
     return live ? { ...item, badge: live } : item
   })
@@ -96,7 +116,13 @@ export default function AppLayout() {
         </Box>
       </Toolbar>
       <Divider />
-      <Typography variant="overline" color="text.secondary" sx={{ px: 2, pt: 1.5 }}>{roleInfo?.label}</Typography>
+      <Typography variant="overline" color="text.secondary" sx={{ px: 2, pt: 1.5 }}>
+        {/* CE / HO Maker share the `sde` workspace, so ROLES[role].label would
+            read "SIDBI SDE" — name the actual role instead. */}
+        {rawRole === 'CLUSTER_EXPERT' ? 'Cluster Expert'
+          : rawRole === 'SIDBI_HO_MAKER' ? 'SIDBI HO Maker'
+          : roleInfo?.label}
+      </Typography>
       <List sx={{ px: 1, flexGrow: 1 }}>
         {nav.map((item) => {
           const Icon = ICONS[item.icon]
@@ -206,7 +232,8 @@ export default function AppLayout() {
 // any per-page wiring.
 function useLiveBadges(role) {
   const isSde = role === 'sde'
-  const iasQ = useIAs({ enabled: isSde })
+  const isHo = role === 'ho'
+  const iasQ = useIAs({ enabled: isSde || isHo })
   const apprsQ = useAppraisals({ enabled: isSde })
 
   if (isSde) {
@@ -215,6 +242,15 @@ function useLiveBadges(role) {
     const l1 = ias.filter((i) => (i.stage ?? 0) === 0).length
     const l2 = apprs.filter((a) => !a.approved).length
     return { '/sde/queue': l1 + l2 }
+  }
+  if (isHo) {
+    // Awaiting HO decision = Cluster Expert has commented but HO hasn't
+    // packed a decision into recommendationRemarks yet (see
+    // unpackHoDecision — no dedicated backend field for this).
+    const ias = iasQ.data || []
+    const pending = ias.filter((i) =>
+      !!String(i.appraisal?.clusterExpertComments || '').trim() && !unpackHoDecision(i.appraisal).decision)
+    return { '/sde/ia-approvals': pending.length }
   }
   return {}
 }

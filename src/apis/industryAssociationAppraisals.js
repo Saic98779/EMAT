@@ -180,7 +180,8 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
     envisagedImpact: str(values.envisaged_impact),
 
     // ── Section 12 — Cluster Expert ──────────────────────────────────────
-    clusterExpertComments: str(values.cluster_expert_comments),
+    clusterExpertComments: packClusterExpertComments(values),
+    clusterExpertTermsComments: str(values.cluster_expert_terms_comments),
 
     // ── Section 14 — Budget (availableBudget derived; sent for safety) ───
     financialYear: toIsoDate(values.financial_year),
@@ -221,6 +222,7 @@ export function toFormValues(dto = {}) {
     : (dto.topThreeSectors && typeof dto.topThreeSectors === 'object'
         ? Object.entries(dto.topThreeSectors)
         : [])
+  const clusterExpert = unpackClusterExpertComments(dto)
 
   const out = {
     // ── Section 7 — Due Diligence (IA) ────────────────────────────────
@@ -265,7 +267,8 @@ export function toFormValues(dto = {}) {
     project_location: dto.projectLocation ?? '',
 
     // ── Section 12 — Cluster Expert ──────────────────────────────────
-    cluster_expert_comments: dto.clusterExpertComments ?? '',
+    cluster_expert_comments: clusterExpert.general,
+    cluster_expert_terms_comments: clusterExpert.terms,
 
     // ── Section 13, 14, 15 ───────────────────────────────────────────
     terms: dto.termsAndConditions ?? '',
@@ -341,6 +344,59 @@ function computeAvailable(v) {
   const u = Number(v?.budget_utilized)
   if (!Number.isFinite(a) && !Number.isFinite(u)) return null
   return (Number.isFinite(a) ? a : 0) - (Number.isFinite(u) ? u : 0)
+}
+
+// ── Cluster Expert comments ───────────────────────────────────────────────
+// The Cluster Expert writes two things: general remarks on the proposal, and
+// remarks specifically on the Terms of Assistance. The backend currently
+// exposes a single `clusterExpertComments` column, so the two are packed into
+// it behind a marker line and split apart on read. `clusterExpertTermsComments`
+// is *also* sent so the value lands natively the moment a real column ships —
+// and `unpack` prefers that field when the response carries it.
+const TERMS_MARK = '\n\n--- Comments on Terms of Assistance ---\n'
+
+function packClusterExpertComments(values) {
+  const general = values.cluster_expert_comments ?? ''
+  const terms = values.cluster_expert_terms_comments ?? ''
+  if (!String(terms).trim()) return str(general)
+  return `${general}${TERMS_MARK}${terms}`
+}
+
+export function unpackClusterExpertComments(dto) {
+  const raw = dto.clusterExpertComments ?? ''
+  const i = raw.indexOf(TERMS_MARK)
+  const general = i === -1 ? raw : raw.slice(0, i)
+  const packedTerms = i === -1 ? '' : raw.slice(i + TERMS_MARK.length)
+  return {
+    general,
+    terms: dto.clusterExpertTermsComments ?? packedTerms,
+  }
+}
+
+// ── SIDBI HO Maker decision ────────────────────────────────────────────────
+// Like Cluster Expert comments, HO Maker's approve/reject-with-remarks has no
+// dedicated backend column. It's packed into `recommendationRemarks` behind a
+// marker so GT/SDE's own remarks on that field survive. Deliberately NOT
+// touching `isSidbeApproved` — that's SDE's own Level-2 approval, and writing
+// there would mean HO Maker and SDE silently overwrite each other's decision
+// on the same field.
+const HO_MARK = '\n\n--- SIDBI HO Maker Decision ---\n'
+
+export function packHoDecision(baseRemarks, decision, remarks) {
+  return `${baseRemarks || ''}${HO_MARK}${decision}: ${remarks}`
+}
+
+export function unpackHoDecision(dto) {
+  const raw = dto?.recommendationRemarks ?? ''
+  const i = raw.indexOf(HO_MARK)
+  if (i === -1) return { baseRemarks: raw, decision: null, remarks: '' }
+  const tail = raw.slice(i + HO_MARK.length)
+  const m = tail.match(/^(Approved|Rejected):\s*([\s\S]*)$/)
+  return {
+    baseRemarks: raw.slice(0, i),
+    decision: m ? m[1] : null,
+    remarks: m ? m[2] : tail,
+  }
 }
 
 // ── Coercion helpers ──────────────────────────────────────────────────────

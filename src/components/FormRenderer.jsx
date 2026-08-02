@@ -123,6 +123,21 @@ function YesNo({ value, onChange }) {
   )
 }
 
+// Read-only presentation for choice / collection fields (yes-no, radio,
+// checkboxes). Reviewer roles such as CLUSTER_EXPERT get the captured value as
+// plain text inside the usual frame: legible, and with no control to click
+// there is nothing to accidentally change.
+function ReadOnlyValue({ text }) {
+  return (
+    <Typography variant="body2" sx={{ py: 0.4, fontWeight: 500, color: text ? 'text.primary' : 'text.disabled' }}>
+      {text || '—'}
+    </Typography>
+  )
+}
+
+const labelOfOption = (options, v) =>
+  options.map((o) => asOption(o)).find((o) => o.value === v)?.label ?? (v ?? '')
+
 // Stores actual `File` objects in form state so the parent page can upload
 // them after the parent record has a UUID. Chips display `.name`.
 // Accepts only DOC / DOCX / JPG / JPEG / PNG per client spec — reject anything
@@ -134,7 +149,7 @@ const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.pdf,.jpg,.jpeg,.png,image/jpeg,image/
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 const MAX_UPLOAD_LABEL = '5 MB'
 
-function Uploader({ value, label, required, error, onChange }) {
+function Uploader({ value, label, required, error, onChange, readOnly }) {
   // Two separate rejection buckets so we can show a distinct message for
   // "wrong type" vs "too big" — otherwise the user has to guess which rule
   // their file broke.
@@ -159,15 +174,20 @@ function Uploader({ value, label, required, error, onChange }) {
   const removeAt = useCallback((idx) => onChange((value || []).filter((_, i) => i !== idx)), [value, onChange])
   return (
     <Framed label={label} required={required} error={error}>
-      <Button component="label" size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ mt: 0.25 }}>
-        Upload
-        <input type="file" hidden multiple accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
-      </Button>
-      <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
-        Only .doc, .docx, .pdf, .jpg, .jpeg, .png files — max {MAX_UPLOAD_LABEL} each
-      </Typography>
+      {!readOnly && (
+        <>
+          <Button component="label" size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ mt: 0.25 }}>
+            Upload
+            <input type="file" hidden multiple accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
+          </Button>
+          <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
+            Only .doc, .docx, .pdf, .jpg, .jpeg, .png files — max {MAX_UPLOAD_LABEL} each
+          </Typography>
+        </>
+      )}
+      {readOnly && docs.length === 0 && <ReadOnlyValue text="" />}
       {docs.length > 0 && (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: readOnly ? 0.25 : 1 }}>
           {docs.map((f, i) => {
             // Already-uploaded files come back as slug-prefixed strings —
             // strip the `<slot>__` prefix so the chip shows just the
@@ -176,7 +196,7 @@ function Uploader({ value, label, required, error, onChange }) {
             return (
               <Chip key={i} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />}
                 label={shown}
-                onDelete={() => removeAt(i)} />
+                onDelete={readOnly ? undefined : () => removeAt(i)} />
             )
           })}
         </Box>
@@ -214,7 +234,7 @@ function cellError(col, v) {
   return ''
 }
 
-function Repeater({ value, label, required, onChange, columns, addLabel }) {
+function Repeater({ value, label, required, onChange, columns, addLabel, readOnly }) {
   const rows = Array.isArray(value) ? value : []
   const cols = Array.isArray(columns) ? columns : []
   const update = (idx, name, v) => {
@@ -237,7 +257,7 @@ function Repeater({ value, label, required, onChange, columns, addLabel }) {
                   {c.label}
                 </TableCell>
               ))}
-              <TableCell align="right" width={48} />
+              {!readOnly && <TableCell align="right" width={48} />}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -257,27 +277,33 @@ function Repeater({ value, label, required, onChange, columns, addLabel }) {
                         type={['number', 'email', 'tel', 'date'].includes(c.type) ? c.type : 'text'}
                         error={!!err}
                         helperText={err || undefined}
+                        InputProps={{ readOnly }}
+                        sx={readOnly ? { '& .MuiInputBase-root': { bgcolor: 'action.hover' } } : undefined}
                       />
                     </TableCell>
                   )
                 })}
-                <TableCell align="right" sx={{ verticalAlign: 'top' }}>
-                  <IconButton size="small" color="error" onClick={() => remove(i)}>
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
-                </TableCell>
+                {!readOnly && (
+                  <TableCell align="right" sx={{ verticalAlign: 'top' }}>
+                    <IconButton size="small" color="error" onClick={() => remove(i)}>
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       ) : (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-          No entries yet — click below to add.
+          {readOnly ? 'No entries.' : 'No entries yet — click below to add.'}
         </Typography>
       )}
-      <Button size="small" variant="outlined" startIcon={<AddIcon />} sx={{ mt: 1.25 }} onClick={add}>
-        {addLabel || 'Add'}
-      </Button>
+      {!readOnly && (
+        <Button size="small" variant="outlined" startIcon={<AddIcon />} sx={{ mt: 1.25 }} onClick={add}>
+          {addLabel || 'Add'}
+        </Button>
+      )}
     </Framed>
   )
 }
@@ -298,7 +324,11 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   if (f.type === 'yesno') {
     return (
       <Grid size={{ xs: 12, sm: f.span || 6 }}>
-        <Framed label={f.label} required={f.required} error={error}><YesNo value={value} onChange={onChange} /></Framed>
+        <Framed label={f.label} required={f.required} error={error}>
+          {f.readOnly
+            ? <ReadOnlyValue text={value === 'yes' ? 'Yes' : value === 'no' ? 'No' : ''} />
+            : <YesNo value={value} onChange={onChange} />}
+        </Framed>
       </Grid>
     )
   }
@@ -306,11 +336,13 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     return (
       <Grid size={{ xs: 12, sm: f.span || 6 }}>
         <Framed label={f.label} required={f.required} error={error}>
-          <RadioGroup row value={value ?? ''} onChange={(e) => onChange(e.target.value)} sx={{ my: -0.5 }}>
-            {options.map((raw) => { const o = asOption(raw)
-              return <FormControlLabel key={o.value} value={o.value} control={<Radio size="small" />} label={o.label} />
-            })}
-          </RadioGroup>
+          {f.readOnly ? <ReadOnlyValue text={labelOfOption(options, value)} /> : (
+            <RadioGroup row value={value ?? ''} onChange={(e) => onChange(e.target.value)} sx={{ my: -0.5 }}>
+              {options.map((raw) => { const o = asOption(raw)
+                return <FormControlLabel key={o.value} value={o.value} control={<Radio size="small" />} label={o.label} />
+              })}
+            </RadioGroup>
+          )}
         </Framed>
       </Grid>
     )
@@ -340,17 +372,19 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     return (
       <Grid size={12}>
         <Framed label={f.label} required={f.required} error={error}>
-          <FormGroup row sx={{ gap: 0.5 }}>
-            {options.map((raw) => { const o = asOption(raw)
-              return <FormControlLabel key={o.value} sx={{ mr: 2 }} control={<Checkbox size="small" checked={arr.includes(o.value)} onChange={() => toggle(o.value)} />} label={o.label} />
-            })}
-          </FormGroup>
+          {f.readOnly ? <ReadOnlyValue text={arr.map((v) => labelOfOption(options, v)).join(', ')} /> : (
+            <FormGroup row sx={{ gap: 0.5 }}>
+              {options.map((raw) => { const o = asOption(raw)
+                return <FormControlLabel key={o.value} sx={{ mr: 2 }} control={<Checkbox size="small" checked={arr.includes(o.value)} onChange={() => toggle(o.value)} />} label={o.label} />
+              })}
+            </FormGroup>
+          )}
         </Framed>
       </Grid>
     )
   }
   if (f.type === 'file') {
-    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} required={f.required} error={error} onChange={onChange} /></Grid>
+    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} required={f.required} error={error} onChange={onChange} readOnly={f.readOnly} /></Grid>
   }
   if (f.type === 'repeater') {
     return (
@@ -362,6 +396,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
           onChange={onChange}
           columns={f.columns || []}
           addLabel={f.addLabel}
+          readOnly={f.readOnly}
         />
       </Grid>
     )
@@ -392,6 +427,9 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   const selVal = isSelect
     ? (options.some((o) => asOption(o).value === value) ? value : '')
     : (value ?? '')
+  // A read-only <Select> still opens its menu on click, so render the chosen
+  // option's label through a plain text input instead.
+  const lockedSelect = isSelect && f.readOnly
   const multiline = f.type === 'textarea'
   const counter = f.max ? `${String(value ?? '').length} / ${f.max}` : null
   // Native calendar bounds for date inputs. Accepts an ISO string
@@ -422,17 +460,17 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         helperText={error || counter || f.help}
         error={!!error}
         type={['number', 'email', 'tel', 'date'].includes(f.type) && !isSelect ? f.type : 'text'}
-        InputLabelProps={f.type === 'date' ? { shrink: true } : undefined}
+        InputLabelProps={f.type === 'date' || lockedSelect ? { shrink: true } : undefined}
         multiline={multiline}
         minRows={multiline ? (f.rows || 2) : undefined}
-        select={isSelect}
-        value={selVal}
+        select={isSelect && !lockedSelect}
+        value={lockedSelect ? labelOfOption(options, selVal) : selVal}
         onChange={(e) => onChange(e.target.value)}
         inputProps={{ maxLength: f.max, max: dateMax, min: dateMin }}
         InputProps={{
           readOnly: f.readOnly,
           startAdornment: f.prefix ? <InputAdornment position="start">{f.prefix}</InputAdornment> : undefined,
-          endAdornment: f.otp ? (
+          endAdornment: f.otp && !f.readOnly ? (
             <InputAdornment position="end">
               {verified
                 ? <Chip size="small" color="success" icon={<VerifiedIcon />} label="Verified" />
@@ -443,7 +481,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         sx={f.readOnly ? { '& .MuiInputBase-root': { bgcolor: 'action.hover' } } : undefined}
         fullWidth
       >
-        {isSelect && options.map((raw) => { const o = asOption(raw)
+        {isSelect && !lockedSelect && options.map((raw) => { const o = asOption(raw)
           return <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
         })}
       </TextField>
