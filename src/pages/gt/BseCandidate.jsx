@@ -29,6 +29,7 @@ export default function BseCandidate() {
   const [values, setValues] = useState({})
   const [toast, setToast] = useState({ severity: '', msg: '' })
   const [busy, setBusy] = useState(false)
+  const [showAllErrors, setShowAllErrors] = useState(false)
   const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
 
   // The IA list is loaded lazily by the `/gt/ias` page — refetch here so this
@@ -57,7 +58,11 @@ export default function BseCandidate() {
       return
     }
     const problem = firstProblem(schema, values)
-    if (problem) { setToast({ severity: 'warning', msg: problem }); return }
+    if (problem) {
+      setShowAllErrors(true)
+      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
+      return
+    }
 
     // Backend expects the IA's registrationUuid, but the form only carries the
     // display name — resolve it from the approved IA list.
@@ -96,7 +101,7 @@ export default function BseCandidate() {
         </Typography>
       </Box>
 
-      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} />
+      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors} />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
         <Button color="inherit" onClick={() => navigate('/gt/team')} disabled={busy}>Cancel</Button>

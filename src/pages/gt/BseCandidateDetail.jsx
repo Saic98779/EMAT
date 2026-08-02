@@ -97,7 +97,7 @@ export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 
       },
       committee: {
         recommendation: dto.committeeRecommendation || '',
-        date: (dto.committeeRecommendationDate || '').slice(0, 10),
+        date: (dto.committeeDate || '').slice(0, 10),
         remarks: dto.committeeRemarks || '',
       },
     })
@@ -111,9 +111,12 @@ export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 
     if (!d) return
     setSavingStage(stage)
     try {
+      // Backend uses `committeeDate` (not `committeeRecommendationDate`) —
+      // remap that one stage's date key.
+      const dateKey = stage === 'committee' ? 'committeeDate' : `${stage}RecommendationDate`
       const patch = toUpdatePayload({
         [`${stage}Recommendation`]: d.recommendation,
-        [`${stage}RecommendationDate`]: d.date || todayIso(),
+        [dateKey]: d.date || todayIso(),
         [`${stage}Remarks`]: d.remarks,
       })
       const updated = await updateBseRecommendation(uuid, patch)

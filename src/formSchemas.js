@@ -259,19 +259,19 @@ export const makeBseCandidateSchema = (approvedIAs = []) => ({
         span: 12, required: true },
     ] },
     { n: 2, title: 'Candidate Details', fields: [
-      { name: 'bse_name', label: 'Name of Proposed BSE', type: 'text', span: 6, required: true },
-      { name: 'mobile', label: 'Mobile No', type: 'tel', span: 3, required: true },
-      { name: 'email', label: 'Email ID', type: 'email', span: 3, required: true, otp: true },
+      { name: 'bse_name', label: 'Name of Proposed BSE', type: 'text', span: 12, required: true },
+      { name: 'mobile', label: 'Mobile No', type: 'tel', span: 6, required: true },
+      { name: 'email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
       { name: 'qualification', label: 'Highest Educational Qualification', type: 'select', span: 12, required: true,
         options: ['Under Graduate', 'Graduate', 'Post Graduate'] },
     ] },
     { n: 3, title: 'Experience', fields: [
-      { name: 'experience_status', label: 'Prior Experience', type: 'select', options: ['Yes', 'No'], span: 4, required: true },
-      { name: 'experience_years', label: 'Experience — Years', type: 'number', span: 4,
-        showIf: (v) => v.experience_status === 'Yes',
+      { name: 'experience_status', label: 'Prior Experience', type: 'select', options: ['Yes', 'No'], span: 12, required: true },
+      { name: 'experience_years', label: 'Experience — Years', type: 'number', span: 6,
+        showIf: (v) => v.experience_status === 'Yes', required: true,
         validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
-      { name: 'experience_months', label: 'Experience — Months', type: 'number', span: 4,
-        showIf: (v) => v.experience_status === 'Yes',
+      { name: 'experience_months', label: 'Experience — Months', type: 'number', span: 6,
+        showIf: (v) => v.experience_status === 'Yes', required: true,
         validate: (v) => {
           if (v === '') return ''
           if (!/^\d+$/.test(String(v))) return 'Whole number only'
@@ -280,16 +280,16 @@ export const makeBseCandidateSchema = (approvedIAs = []) => ({
         } },
     ] },
     { n: 4, title: 'Employment & Salary', fields: [
-      { name: 'employment_status', label: 'Employment Status', type: 'select', options: ['Working', 'Resigned'], span: 4, required: true },
-      { name: 'current_salary', label: 'Current Salary (₹ / month)', type: 'number', span: 4, prefix: '₹',
+      { name: 'employment_status', label: 'Employment Status', type: 'select', options: ['Working', 'Resigned'], span: 12, required: true },
+      { name: 'current_salary', label: 'Current Salary (₹ / month)', type: 'number', span: 6, prefix: '₹',
         showIf: (v) => v.employment_status === 'Working', required: true },
-      { name: 'notice_period', label: 'Minimum Notice Period (Days)', type: 'number', span: 4,
+      { name: 'notice_period', label: 'Minimum Notice Period (Days)', type: 'number', span: 6,
         showIf: (v) => v.employment_status === 'Working', required: true },
-      { name: 'last_drawn_salary', label: 'Last Drawn Salary (₹ / month)', type: 'number', span: 8, prefix: '₹',
+      { name: 'last_drawn_salary', label: 'Last Drawn Salary (₹ / month)', type: 'number', span: 12, prefix: '₹',
         showIf: (v) => v.employment_status === 'Resigned', required: true },
       { name: 'resignation_doc', label: 'Resignation Acceptance / Relieving Letter', type: 'file', span: 12,
         showIf: (v) => v.employment_status === 'Resigned', required: true },
-      { name: 'expected_salary', label: 'Expected Salary (₹ / month)', type: 'number', span: 4, prefix: '₹', required: true,
+      { name: 'expected_salary', label: 'Expected Salary (₹ / month)', type: 'number', span: 6, prefix: '₹', required: true,
         help: 'Must be ≥ current/last drawn salary and ≤ ₹50,000',
         validate: (v, values) => {
           if (v === '' || v == null) return ''
@@ -304,15 +304,15 @@ export const makeBseCandidateSchema = (approvedIAs = []) => ({
         } },
     ] },
     { n: 5, title: 'Documents', fields: [
-      { name: 'resume_status', label: 'Resume Status', type: 'select', options: ['Received', 'Not Received'], span: 4, required: true },
-      { name: 'resume_file', label: 'Upload Resume (PDF)', type: 'file', span: 8,
+      { name: 'resume_status', label: 'Resume Status', type: 'select', options: ['Received', 'Not Received'], span: 12, required: true },
+      { name: 'resume_file', label: 'Upload Resume (PDF)', type: 'file', span: 12,
         showIf: (v) => v.resume_status === 'Received', required: true },
-      { name: 'salary_proof', label: 'Salary Slip / Bank Statement (proof of last drawn salary)', type: 'file', span: 12 },
+      { name: 'salary_proof', label: 'Salary Slip / Bank Statement (proof of last drawn salary)', type: 'file', span: 12, required: true },
     ] },
     { n: 6, title: 'GT Field Manager Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation Status', type: 'radio',
         options: ['Recommended', 'Not Recommended'], span: 6, required: true },
-      { name: 'recommendation_date', label: 'Recommendation Date', type: 'text', placeholder: 'DD/MM/YYYY', span: 6, required: true },
+      { name: 'recommendation_date', label: 'Recommendation Date', type: 'date', span: 6, required: true },
     ] },
   ],
 })

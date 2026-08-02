@@ -7,7 +7,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import DownloadIcon from '@mui/icons-material/Download'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import { listFiles, uploadFile, deleteFile, downloadFile } from '../apis/files'
+import { listFiles, uploadFilesBatch, deleteFile, downloadFile } from '../apis/files'
 import { decodeFilename } from '../fileFieldLabels'
 
 // Attach supporting documents (Invoice, attendance, etc.).
@@ -79,13 +79,13 @@ export default function DocUpload({
     setBusy(true)
     setError('')
     try {
-      const uploaded = []
-      for (const f of picked) {
-        const res = await uploadFile(registrationUuid, f)
-        if (res) uploaded.push(res)
-      }
-      // Trust the returned records, but re-fetch to stay canonical.
-      setFiles((prev) => mergeByFilename(prev, uploaded))
+      // One batch POST for all picked files — replaces the previous per-file
+      // loop. Backend writes them transactionally, so a duplicate/oversize in
+      // the batch fails the whole set (surfaced via the catch below).
+      const uploaded = await uploadFilesBatch(registrationUuid, picked)
+      if (uploaded.length) setFiles((prev) => mergeByFilename(prev, uploaded))
+      // Re-fetch to stay canonical (batch response might omit fields the
+      // list endpoint returns).
       await refresh()
     } catch (err) {
       setError(err.message || 'Upload failed')
