@@ -70,6 +70,12 @@ export const NAV = {
   ho: [
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'SIDBI HO Maker' },
     { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
+    { icon: 'groups', label: 'BSE Approvals', path: '/sde/bse-approvals', overline: 'Approvals', title: 'BSE Approvals' },
+  ],
+  // GT_PMU rides the /gt workspace but only sees the PMU review screens.
+  pmu: [
+    { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'GT PMU' },
+    { icon: 'inbox', label: 'PMU Queue', path: '/gt/pmu/queue', overline: 'Approvals', title: 'BSE PMU Queue' },
   ],
   ia: [
     { icon: 'home', label: 'Dashboard', path: '/ia', overline: 'Overview', title: 'Dashboard' },
@@ -91,7 +97,11 @@ export default function AppLayout() {
 
   // Cluster experts and SIDBI HO Makers share the `sde` workspace but each
   // get their own trimmed nav.
-  const navKey = rawRole === 'CLUSTER_EXPERT' ? 'ce' : rawRole === 'SIDBI_HO_MAKER' ? 'ho' : role
+  const navKey =
+    rawRole === 'CLUSTER_EXPERT' ? 'ce'
+    : rawRole === 'SIDBI_HO_MAKER' ? 'ho'
+    : rawRole === 'GT_PMU' ? 'pmu'
+    : role
 
   // Live sidebar badges — same query hooks other pages use, so caches are
   // shared and counts stay in sync when approvals happen anywhere.
@@ -121,6 +131,7 @@ export default function AppLayout() {
             read "SIDBI SDE" — name the actual role instead. */}
         {rawRole === 'CLUSTER_EXPERT' ? 'Cluster Expert'
           : rawRole === 'SIDBI_HO_MAKER' ? 'SIDBI HO Maker'
+          : rawRole === 'GT_PMU' ? 'GT PMU'
           : roleInfo?.label}
       </Typography>
       <List sx={{ px: 1, flexGrow: 1 }}>

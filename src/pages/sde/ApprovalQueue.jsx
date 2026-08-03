@@ -14,18 +14,17 @@ import { PageHeader } from '../../components/shared'
 import {
   useIAs,
   useAppraisals,
-  useBseByPmuStatus,
+  useBseList,
   useBranchesByStates,
 } from '../../queries'
 
 // Queues shown here:
 //   L1 pending — IAs with stage 0 in the shared IA list
 //   L2 pending — appraisals with isSidbeApproved !== true
-//   BSE PMU review — technically the PMU role's queue; kept here until a
-//     dedicated PMU workspace exists.
+//   BSE PMU review — technically the PMU role's queue; kept here as a
+//     cross-visibility surface for SDE. Filtered client-side (see below).
 // Approvals themselves happen on the Review pages, not inline — SDE should
 // always see the full record before granting sanction.
-const PMU_PENDING_STATUS = 'Pending'
 
 const TABS = [
   { key: 'l1', label: 'In-Principle (L1)', icon: FactCheckOutlinedIcon, accent: 'warning' },
@@ -38,7 +37,10 @@ export default function ApprovalQueue() {
 
   const iasQ = useIAs()
   const apprsQ = useAppraisals()
-  const pmuQ = useBseByPmuStatus(PMU_PENDING_STATUS)
+  // Full BSE list — filtered client-side to "GT-recommended, PMU hasn't
+  // decided" because the `/pmu-recommendation` endpoint no longer takes a
+  // pending status. Same pattern PmuQueue / HoBseApprovals use.
+  const pmuQ = useBseList()
 
   // L1 buckets keyed off isSidbeApproved:
   //   null      → pending (SDE hasn't acted)
@@ -72,7 +74,14 @@ export default function ApprovalQueue() {
       .map((a) => ({ ...a, iaName: iaNameByUuid.get(a.registrationUuid) || a.iaName })),
     [apprsQ.data, iaNameByUuid],
   )
-  const pmuPending = pmuQ.data || []
+  const pmuPending = useMemo(
+    () => (pmuQ.data || []).filter((r) => {
+      const gt = String(r.raw?.gtRecommendation || '').toLowerCase()
+      const pmu = String(r.raw?.pmuRecommendation || '').trim()
+      return gt === 'recommended' && !pmu
+    }),
+    [pmuQ.data],
+  )
 
   const counts = {
     l1: l1Pending.length,

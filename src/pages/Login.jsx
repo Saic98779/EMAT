@@ -17,12 +17,12 @@ const DEMO_CREDS = [
   // backend right now. Other roles are commented out until seed data /
   // backend endpoints for them are ready.
   { role: 'GT Field Team', username: 'Ravikant.Rai@IN.GT.COM', password: 'Password@123' },
+  { role: 'GT PMU', username: 'gt_pmu', password: 'Password@123' },
   { role: 'SIDBI SDE', username: 'pushpendrat@sidbi.in', password: 'Password@123' },
   { role: 'Cluster Expert', username: 'cluster_expert', password: 'Password@123' },
   { role: 'SIDBI HO Maker', username: 'sidbi_ho_maker', password: 'Password@123' },
   // { role: 'DIA', username: 'dia_user', password: 'Password@123' },
   // { role: 'BSE', username: 'bse_user', password: 'Password@123' },
-  // { role: 'GT PMU', username: 'gt_pmu', password: 'Password@123' },
   // { role: 'SIDBI RO', username: 'sidbi_ro', password: 'Password@123' },
 ]
 

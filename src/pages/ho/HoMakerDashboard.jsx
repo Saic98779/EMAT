@@ -55,10 +55,16 @@ export default function HoMakerDashboard() {
         subtitle="Review Industry Associations the Cluster Expert has commented on and record your approve/reject decision with remarks."
         badge="SIDBI HO Maker"
         action={
-          <Button variant="contained" endIcon={<EastIcon />} onClick={() => navigate('/sde/ia-approvals')}
-            sx={{ bgcolor: 'common.white', color: 'primary.dark', '&:hover': { bgcolor: 'grey.100' } }}>
-            All applications
-          </Button>
+          <Stack direction="row" spacing={1.5}>
+            <Button variant="outlined" endIcon={<EastIcon />} onClick={() => navigate('/sde/bse-approvals')}
+              sx={{ borderColor: 'common.white', color: 'common.white', '&:hover': { borderColor: 'grey.100', bgcolor: 'rgba(255,255,255,0.08)' } }}>
+              BSE approvals
+            </Button>
+            <Button variant="contained" endIcon={<EastIcon />} onClick={() => navigate('/sde/ia-approvals')}
+              sx={{ bgcolor: 'common.white', color: 'primary.dark', '&:hover': { bgcolor: 'grey.100' } }}>
+              All IA applications
+            </Button>
+          </Stack>
         }
       />
 

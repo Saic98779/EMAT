@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Grid, Box, Stack, Typography, Button, Card, CardContent, Avatar, Chip, Divider,
@@ -11,38 +11,22 @@ import { BarChart } from '@mui/x-charts/BarChart'
 import { StatCard, StatBars, SectionCard, GreetingBanner, iconMap, statusColor } from '../../components/shared'
 import { gtStats } from '../../data'
 import { useAuth } from '../../auth'
-import {
-  listBseRecommendationsByGtStatus,
-  fromDto as bseFromDto,
-} from '../../apis/bseRecommendations'
-
-// The backend's initial gt-recommendation status. Adjust if the enum uses a
-// different label ("PENDING", "None", etc.).
-const GT_PENDING_STATUS = 'Pending'
+import { useBseList } from '../../queries'
 
 export default function GtDashboard() {
   const navigate = useNavigate()
   const { roleInfo } = useAuth()
   const s = gtStats
 
-  const [pendingBse, setPendingBse] = useState([])
-  const [pendingBseLoading, setPendingBseLoading] = useState(false)
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    setPendingBseLoading(true)
-    listBseRecommendationsByGtStatus(GT_PENDING_STATUS, { signal: ctrl.signal })
-      .then((data) => {
-        const list = Array.isArray(data)
-          ? data
-          : (Array.isArray(data?.content) ? data.content
-            : (Array.isArray(data?.items) ? data.items : []))
-        setPendingBse(list.map(bseFromDto))
-      })
-      .catch((err) => { if (err.name !== 'AbortError') setPendingBse([]) })
-      .finally(() => setPendingBseLoading(false))
-    return () => ctrl.abort()
-  }, [])
+  // Full BSE list + client-side filter: "GT hasn't decided yet". Matches the
+  // pattern the PMU / HO queues use — the backend `/gt-recommendation`
+  // endpoint's semantics changed and can't reliably return the pending set.
+  const bseQ = useBseList()
+  const pendingBse = useMemo(
+    () => (bseQ.data || []).filter((c) => !String(c.raw?.gtRecommendation || '').trim()),
+    [bseQ.data],
+  )
+  const pendingBseLoading = bseQ.isLoading
 
   return (
     <Box>
@@ -68,7 +52,7 @@ export default function GtDashboard() {
         <Grid size={12}>
           <SectionCard
             title="BSE candidates awaiting your recommendation"
-            subtitle={`Filtered by gt-recommendation status = “${GT_PENDING_STATUS}”.`}
+            subtitle="Candidates where you haven't recorded a decision yet."
             action={<Button size="small" endIcon={<EastIcon />} onClick={() => navigate('/gt/team')}>BSE Team</Button>}
           >
             {pendingBseLoading && pendingBse.length === 0 ? (
