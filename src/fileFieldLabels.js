@@ -19,6 +19,14 @@ export const FILE_FIELD_LABELS = {
   nabard_blacklist_file: 'NABARD Blacklist Document',
   holder_cibil_file: 'Office Holder — CIBIL Report',
   owner_cibil_file: 'Beneficial Owner — CIBIL Report',
+  // BSE candidate proposal (GT Field Manager) — these are the slugs used
+  // by `makeBseCandidateSchema` field names.
+  resume_file: 'Resume',
+  salary_proof: 'Salary Slip / Bank Statement',
+  resignation_doc: 'Resignation / Relieving Letter',
+  candidate_cv: 'Candidate CV',
+  // BSE committee stage (SIDBI HO Maker records on the committee's behalf).
+  committee_mom: 'Committee MoM',
 }
 
 // Separator between slug and original filename. Chosen to be unlikely inside
@@ -34,14 +42,26 @@ export function encodeFilename(file, slug) {
   return new File([file], prefixed, { type: file.type, lastModified: file.lastModified })
 }
 
-// Splits a stored filename back into `{ label, name }`. Falls back to
-// `{ label: null, name: filename }` when no slug prefix is present.
+// Splits a stored filename back into `{ label, name }`.
+// - Known slug → uses the registered human label.
+// - Unknown slug → title-cases the slug (e.g. "some_field" → "Some Field")
+//   so the user still sees a slot label rather than the raw slug.
+// - No slug prefix at all → `{ label: null, name: filename }`.
+// Either way, `name` never carries the slug prefix.
 export function decodeFilename(filename) {
   if (typeof filename !== 'string') return { label: null, name: String(filename ?? '') }
   const idx = filename.indexOf(FILE_FIELD_SEP)
   if (idx <= 0) return { label: null, name: filename }
   const slug = filename.slice(0, idx)
   const rest = filename.slice(idx + FILE_FIELD_SEP.length)
-  const label = FILE_FIELD_LABELS[slug]
-  return label ? { label, name: rest } : { label: null, name: filename }
+  const label = FILE_FIELD_LABELS[slug] || titleCase(slug)
+  return { label, name: rest }
+}
+
+function titleCase(slug) {
+  return slug
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
 }

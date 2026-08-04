@@ -2,35 +2,27 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Box, Card, CardContent, Grid, Stack, Typography, Button, Chip, Divider,
-  CircularProgress, Snackbar, Alert, TextField, MenuItem,
+  CircularProgress, Snackbar, Alert,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import SaveIcon from '@mui/icons-material/Save'
 import { SectionCard } from '../../components/shared'
 import DocUpload from '../../components/DocUpload'
 import {
   getBseRecommendation,
-  updateBseRecommendation,
-  toUpdatePayload,
   fromDto,
 } from '../../apis/bseRecommendations'
 
-// Review stages, in display order. Each stage owns three PUT-able fields on
-// the record: <stage>Recommendation, <stage>RecommendationDate, <stage>Remarks.
-const STAGES = [
-  { key: 'gt', label: 'GT (Field)' },
-  { key: 'pmu', label: 'PMU' },
-  { key: 'ho', label: 'HO' },
-  { key: 'committee', label: 'Committee' },
-]
+// GT Field Team view of a proposed BSE candidate. Read-only across all four
+// review stages — GT cannot record recommendations on behalf of PMU / HO /
+// Committee; those roles have their own workspaces (PmuReview, HoBseReview).
+// This page is a status snapshot: candidate profile + stage-by-stage progress
+// + supporting documents.
 
-const RECOMMENDATION_OPTIONS = ['Recommended', 'Not Recommended', 'Hold']
-
-// Header colour for the pipeline status — mirrors BseTeam.
+// Colour for the header status chip — mirrors BseTeam.
 function statusColor(status) {
   switch (status) {
     case 'Onboarded': return 'success'
-    case 'Committee reviewed': return 'info'
+    case 'Committee reviewed':
     case 'HO reviewed': return 'info'
     case 'PMU reviewed': return 'warning'
     case 'Proposed by GT': return 'primary'
@@ -38,8 +30,30 @@ function statusColor(status) {
   }
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10)
+const STAGES = [
+  { key: 'gt', label: 'GT (Field)' },
+  { key: 'pmu', label: 'PMU' },
+  { key: 'ho', label: 'HO' },
+  { key: 'committee', label: 'Committee' },
+]
+
+// Pull the status/date/remarks triple for a stage off the DTO. Committee
+// uses `committeeDate` (not `committeeRecommendationDate`) — that's the only
+// per-stage naming quirk on the backend.
+function stageValues(dto, key) {
+  if (!dto) return { status: '', date: '', remarks: '' }
+  if (key === 'committee') {
+    return {
+      status: dto.committeeRecommendation || '',
+      date: dto.committeeDate || '',
+      remarks: dto.committeeRemarks || '',
+    }
+  }
+  return {
+    status: dto[`${key}Recommendation`] || '',
+    date: dto[`${key}RecommendationDate`] || '',
+    remarks: dto[`${key}Remarks`] || '',
+  }
 }
 
 export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 'BSE Team' }) {
@@ -50,7 +64,6 @@ export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [toast, setToast] = useState({ severity: '', msg: '' })
-  const [savingStage, setSavingStage] = useState(null)
 
   const load = useCallback(async (signal) => {
     setLoading(true)
@@ -73,61 +86,6 @@ export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 
   }, [load])
 
   const view = useMemo(() => (dto ? fromDto(dto) : null), [dto])
-
-  // Local drafts for the four review stages — seeded from the record and
-  // flushed to the backend via PUT.
-  const [drafts, setDrafts] = useState({})
-  useEffect(() => {
-    if (!dto) return
-    setDrafts({
-      gt: {
-        recommendation: dto.gtRecommendation || '',
-        date: (dto.gtRecommendationDate || '').slice(0, 10),
-        remarks: dto.gtRemarks || '',
-      },
-      pmu: {
-        recommendation: dto.pmuRecommendation || '',
-        date: (dto.pmuRecommendationDate || '').slice(0, 10),
-        remarks: dto.pmuRemarks || '',
-      },
-      ho: {
-        recommendation: dto.hoRecommendation || '',
-        date: (dto.hoRecommendationDate || '').slice(0, 10),
-        remarks: dto.hoRemarks || '',
-      },
-      committee: {
-        recommendation: dto.committeeRecommendation || '',
-        date: (dto.committeeDate || '').slice(0, 10),
-        remarks: dto.committeeRemarks || '',
-      },
-    })
-  }, [dto])
-
-  const setDraft = (stage, field, value) =>
-    setDrafts((prev) => ({ ...prev, [stage]: { ...prev[stage], [field]: value } }))
-
-  const saveStage = async (stage) => {
-    const d = drafts[stage]
-    if (!d) return
-    setSavingStage(stage)
-    try {
-      // Backend uses `committeeDate` (not `committeeRecommendationDate`) —
-      // remap that one stage's date key.
-      const dateKey = stage === 'committee' ? 'committeeDate' : `${stage}RecommendationDate`
-      const patch = toUpdatePayload({
-        [`${stage}Recommendation`]: d.recommendation,
-        [dateKey]: d.date || todayIso(),
-        [`${stage}Remarks`]: d.remarks,
-      })
-      const updated = await updateBseRecommendation(uuid, patch)
-      if (updated) setDto(updated)
-      setToast({ severity: 'success', msg: `${STAGES.find((s) => s.key === stage).label} recommendation saved.` })
-    } catch (err) {
-      setToast({ severity: 'error', msg: err.message || 'Failed to save.' })
-    } finally {
-      setSavingStage(null)
-    }
-  }
 
   if (loading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
@@ -176,69 +134,29 @@ export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 
 
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, md: 7 }}>
-          <SectionCard title="Review actions" subtitle="Record recommendations for each review stage. Each row PUTs independently.">
-            <Stack spacing={2.5} divider={<Divider flexItem />}>
+          <SectionCard
+            title="Review progress"
+            subtitle="Recommendations recorded at each stage. Decisions are made by PMU, HO, and Committee in their own workspaces."
+          >
+            <Stack divider={<Divider flexItem />} spacing={2}>
               {STAGES.map((s) => {
-                const d = drafts[s.key] || {}
-                return (
-                  <Box key={s.key}>
-                    <Typography variant="subtitle2" mb={1.25}>{s.label}</Typography>
-                    <Grid container spacing={1.5}>
-                      <Grid size={{ xs: 12, sm: 4 }}>
-                        <TextField
-                          select fullWidth size="small" label="Recommendation"
-                          value={d.recommendation || ''}
-                          onChange={(e) => setDraft(s.key, 'recommendation', e.target.value)}
-                        >
-                          <MenuItem value=""><em>None</em></MenuItem>
-                          {RECOMMENDATION_OPTIONS.map((opt) => (
-                            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                          ))}
-                        </TextField>
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 3 }}>
-                        <TextField
-                          fullWidth size="small" type="date" label="Date"
-                          InputLabelProps={{ shrink: true }}
-                          value={d.date || ''}
-                          onChange={(e) => setDraft(s.key, 'date', e.target.value)}
-                        />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 5 }}>
-                        <TextField
-                          fullWidth size="small" label="Remarks"
-                          value={d.remarks || ''}
-                          onChange={(e) => setDraft(s.key, 'remarks', e.target.value)}
-                        />
-                      </Grid>
-                    </Grid>
-                    <Stack direction="row" justifyContent="flex-end" mt={1.5}>
-                      <Button
-                        size="small" variant="contained"
-                        startIcon={savingStage === s.key ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
-                        disabled={savingStage === s.key}
-                        onClick={() => saveStage(s.key)}
-                      >
-                        {savingStage === s.key ? 'Saving…' : 'Save'}
-                      </Button>
-                    </Stack>
-                  </Box>
-                )
+                const v = stageValues(dto, s.key)
+                return <StageRow key={s.key} label={s.label} status={v.status} date={v.date} remarks={v.remarks} />
               })}
             </Stack>
           </SectionCard>
         </Grid>
 
         <Grid size={{ xs: 12, md: 5 }}>
-          <Stack spacing={2.5}>
-            <DocUpload registrationUuid={dto.registrationUuid} />
-          </Stack>
+          {/* Files uploaded during BSE create are keyed by the BSE record's
+              own UUID (not the parent IA's), so read them off `dto.uuid`. */}
+          <DocUpload registrationUuid={dto.uuid} readOnly />
         </Grid>
       </Grid>
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={3200}
+        autoHideDuration={3000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
@@ -256,5 +174,24 @@ function Field({ label, value }) {
       <Typography variant="overline" color="text.secondary" display="block">{label}</Typography>
       <Typography fontWeight={500}>{value ?? '—'}</Typography>
     </Grid>
+  )
+}
+
+function StageRow({ label, status, date, remarks }) {
+  const decided = !!status
+  return (
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+      <Typography variant="subtitle2" sx={{ minWidth: 100 }}>{label}</Typography>
+      <Chip size="small"
+        color={status === 'Recommended' ? 'success' : status === 'Not Recommended' ? 'error' : 'default'}
+        label={decided ? status : 'Pending'}
+        sx={{ fontWeight: 600 }} />
+      <Typography variant="body2" color="text.secondary" sx={{ minWidth: 110 }}>
+        {date ? new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+      </Typography>
+      <Typography variant="body2" sx={{ flexGrow: 1 }}>
+        {remarks || <Box component="span" sx={{ color: 'text.disabled' }}>No remarks</Box>}
+      </Typography>
+    </Stack>
   )
 }

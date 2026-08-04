@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Box, Card, CardContent, Grid, Stack, Typography, Button, Chip, Divider,
+  Box, Card, CardContent, Grid, Stack, Typography, Button, Chip,
   CircularProgress, Snackbar, Alert, TextField, MenuItem,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -10,6 +10,12 @@ import { SectionCard } from '../../components/shared'
 import DocUpload from '../../components/DocUpload'
 import { useBse, useUpdateBse } from '../../queries'
 import { toUpdatePayload, fromDto } from '../../apis/bseRecommendations'
+
+// GT PMU workspace for a single BSE recommendation.
+//
+// Perf shape mirrors HoBseReview — the editable PMU card is a memoized child
+// with its own state so keystrokes don't re-render the read-only profile,
+// the GT recommendation strip, or DocUpload.
 
 const RECOMMENDATION_OPTIONS = ['Recommended', 'Not Recommended', 'Hold']
 
@@ -26,13 +32,6 @@ function statusColor(status) {
   }
 }
 
-// GT PMU workspace for a single BSE recommendation.
-//
-// Layout:
-//   ① Candidate profile        (read-only, from GT)
-//   ② GT recommendation        (read-only)
-//   ③ PMU recommendation       (editable — PMU owns)
-//   + Supporting documents sidebar
 export default function PmuReview() {
   const { uuid } = useParams()
   const navigate = useNavigate()
@@ -43,37 +42,21 @@ export default function PmuReview() {
   const view = useMemo(() => (dto ? fromDto(dto) : null), [dto])
 
   const [toast, setToast] = useState({ severity: '', msg: '' })
-  const [saving, setSaving] = useState(false)
-  const [pmu, setPmu] = useState({ recommendation: '', date: '', remarks: '' })
 
-  // Seed the draft from the record so the reviewer sees any prior partial edit.
-  useEffect(() => {
-    if (!dto) return
-    setPmu({
-      recommendation: dto.pmuRecommendation || '',
-      date: (dto.pmuRecommendationDate || '').slice(0, 10),
-      remarks: dto.pmuRemarks || '',
-    })
-  }, [dto])
-
-  const save = async () => {
-    setSaving(true)
+  const savePmu = useCallback(async (d) => {
     try {
       const patch = toUpdatePayload({
-        pmuRecommendation: pmu.recommendation,
-        pmuRecommendationDate: pmu.date || todayIso(),
-        pmuRemarks: pmu.remarks,
+        pmuRecommendation: d.recommendation,
+        pmuRecommendationDate: d.date || todayIso(),
+        pmuRemarks: d.remarks,
       })
       await updateM.mutateAsync({ uuid, patch })
       setToast({ severity: 'success', msg: 'PMU recommendation saved.' })
-      // Land back on the queue so the reviewer moves to the next record.
       setTimeout(() => navigate('/gt/pmu/queue'), 900)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to save.' })
-    } finally {
-      setSaving(false)
     }
-  }
+  }, [updateM, uuid, navigate])
 
   if (bseQ.isLoading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
@@ -108,78 +91,17 @@ export default function PmuReview() {
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, md: 8 }}>
           <Stack spacing={2.5}>
-            {/* ① Candidate profile */}
-            <SectionCard title="Candidate profile" subtitle="Captured by GT Field Manager.">
-              <Grid container spacing={2}>
-                <ReadField label="Mobile" value={view.mobile} />
-                <ReadField label="Email" value={view.email} />
-                <ReadField label="Qualification" value={view.qualification} />
-                <ReadField label="Experience" value={view.experience} />
-                <ReadField label="Employment status" value={view.employmentStatus} />
-                <ReadField label="Current salary" value={view.currentSalary != null ? `₹${view.currentSalary}` : '—'} />
-                <ReadField label="Notice period" value={view.noticePeriod != null ? `${view.noticePeriod}d` : '—'} />
-                <ReadField label="Last drawn salary" value={view.lastDrawnSalary != null ? `₹${view.lastDrawnSalary}` : '—'} />
-                <ReadField label="Expected salary" value={view.expectedSalary ? `₹${view.expectedSalary}` : '—'} />
-                <ReadField label="Resume status" value={view.resumeStatus} />
-              </Grid>
-            </SectionCard>
-
-            {/* ② GT recommendation (read-only) */}
-            <SectionCard title="GT recommendation" subtitle="Recorded by the GT Field Manager.">
-              <StageRow
-                label="GT Field"
-                status={dto.gtRecommendation}
-                date={dto.gtRecommendationDate}
-                remarks={dto.gtRemarks}
-              />
-            </SectionCard>
-
-            {/* ③ PMU recommendation (editable) */}
-            <SectionCard title="PMU recommendation" subtitle="Your review at the GT PMU stage.">
-              <Grid container spacing={1.5}>
-                <Grid size={{ xs: 12, sm: 4 }}>
-                  <TextField
-                    select fullWidth size="small" label="Recommendation"
-                    value={pmu.recommendation}
-                    onChange={(e) => setPmu((p) => ({ ...p, recommendation: e.target.value }))}
-                  >
-                    <MenuItem value=""><em>None</em></MenuItem>
-                    {RECOMMENDATION_OPTIONS.map((o) => <MenuItem key={o} value={o}>{o}</MenuItem>)}
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 3 }}>
-                  <TextField
-                    fullWidth size="small" type="date" label="Date"
-                    InputLabelProps={{ shrink: true }}
-                    value={pmu.date}
-                    onChange={(e) => setPmu((p) => ({ ...p, date: e.target.value }))}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 5 }}>
-                  <TextField
-                    fullWidth size="small" label="Remarks"
-                    value={pmu.remarks}
-                    onChange={(e) => setPmu((p) => ({ ...p, remarks: e.target.value }))}
-                  />
-                </Grid>
-              </Grid>
-              <Stack direction="row" justifyContent="flex-end" mt={1.5}>
-                <Button
-                  size="small" variant="contained"
-                  startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
-                  disabled={saving || !pmu.recommendation}
-                  onClick={save}
-                >
-                  {saving ? 'Saving…' : 'Save PMU recommendation'}
-                </Button>
-              </Stack>
-            </SectionCard>
+            <CandidateProfile view={view} />
+            <GtRecommendationCard dto={dto} />
+            <PmuBlock initial={dto} onSave={savePmu} />
           </Stack>
         </Grid>
 
         <Grid size={{ xs: 12, md: 4 }}>
           <Stack spacing={2.5} sx={{ position: { md: 'sticky' }, top: { md: 88 } }}>
-            <DocUpload registrationUuid={dto.registrationUuid} readOnly />
+            {/* Files uploaded during BSE create are keyed by the BSE
+                record's own UUID, so read them off `dto.uuid`. */}
+            <DocUpload registrationUuid={dto.uuid} readOnly />
           </Stack>
         </Grid>
       </Grid>
@@ -197,6 +119,114 @@ export default function PmuReview() {
     </Box>
   )
 }
+
+// ── Read-only sections ──────────────────────────────────────────────────────
+
+const CandidateProfile = memo(function CandidateProfile({ view }) {
+  return (
+    <SectionCard title="Candidate profile" subtitle="Captured by GT Field Manager.">
+      <Grid container spacing={2}>
+        <ReadField label="Mobile" value={view.mobile} />
+        <ReadField label="Email" value={view.email} />
+        <ReadField label="Qualification" value={view.qualification} />
+        <ReadField label="Experience" value={view.experience} />
+        <ReadField label="Employment status" value={view.employmentStatus} />
+        <ReadField label="Current salary" value={view.currentSalary != null ? `₹${view.currentSalary}` : '—'} />
+        <ReadField label="Notice period" value={view.noticePeriod != null ? `${view.noticePeriod}d` : '—'} />
+        <ReadField label="Last drawn salary" value={view.lastDrawnSalary != null ? `₹${view.lastDrawnSalary}` : '—'} />
+        <ReadField label="Expected salary" value={view.expectedSalary ? `₹${view.expectedSalary}` : '—'} />
+        <ReadField label="Resume status" value={view.resumeStatus} />
+      </Grid>
+    </SectionCard>
+  )
+})
+
+const GtRecommendationCard = memo(function GtRecommendationCard({ dto }) {
+  return (
+    <SectionCard title="GT recommendation" subtitle="Recorded by the GT Field Manager.">
+      <StageRow label="GT Field" status={dto.gtRecommendation} date={dto.gtRecommendationDate} remarks={dto.gtRemarks} />
+    </SectionCard>
+  )
+})
+
+// ── Editable block ──────────────────────────────────────────────────────────
+
+const PmuBlock = memo(function PmuBlock({ initial, onSave }) {
+  const [d, setD] = useState({
+    recommendation: initial.pmuRecommendation || '',
+    date: (initial.pmuRecommendationDate || '').slice(0, 10),
+    remarks: initial.pmuRemarks || '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), [])
+  const save = useCallback(async () => {
+    setSaving(true)
+    try { await onSave(d) } finally { setSaving(false) }
+  }, [onSave, d])
+
+  return (
+    <SectionCard title="PMU recommendation" subtitle="Your review at the GT PMU stage.">
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 3 }}>
+          <DateField value={d.date} onChange={set('date')} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 5 }}>
+          <TextInput value={d.remarks} onChange={set('remarks')} label="Remarks" />
+        </Grid>
+      </Grid>
+      <Stack direction="row" justifyContent="flex-end" mt={1.5}>
+        <Button
+          size="small" variant="contained"
+          startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+          disabled={saving || !d.recommendation}
+          onClick={save}
+        >
+          {saving ? 'Saving…' : 'Save PMU recommendation'}
+        </Button>
+      </Stack>
+    </SectionCard>
+  )
+})
+
+// ── Small reusable inputs ───────────────────────────────────────────────────
+
+const RecommendationSelect = memo(function RecommendationSelect({ value, onChange }) {
+  return (
+    <TextField
+      select fullWidth size="small" label="Recommendation"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <MenuItem value=""><em>None</em></MenuItem>
+      {RECOMMENDATION_OPTIONS.map((o) => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+    </TextField>
+  )
+})
+
+const DateField = memo(function DateField({ value, onChange }) {
+  return (
+    <TextField
+      fullWidth size="small" type="date" label="Date"
+      InputLabelProps={{ shrink: true }}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+})
+
+const TextInput = memo(function TextInput({ value, onChange, label }) {
+  return (
+    <TextField
+      fullWidth size="small" label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+})
 
 function ReadField({ label, value }) {
   return (

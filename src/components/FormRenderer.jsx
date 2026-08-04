@@ -149,7 +149,7 @@ const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.pdf,.jpg,.jpeg,.png,image/jpeg,image/
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 const MAX_UPLOAD_LABEL = '5 MB'
 
-function Uploader({ value, label, required, error, onChange, readOnly }) {
+function Uploader({ value, label, help, required, error, onChange, readOnly }) {
   // Two separate rejection buckets so we can show a distinct message for
   // "wrong type" vs "too big" — otherwise the user has to guess which rule
   // their file broke.
@@ -183,6 +183,11 @@ function Uploader({ value, label, required, error, onChange, readOnly }) {
           <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
             Only .doc, .docx, .pdf, .jpg, .jpeg, .png files — max {MAX_UPLOAD_LABEL} each
           </Typography>
+          {help && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+              {help}
+            </Typography>
+          )}
         </>
       )}
       {readOnly && docs.length === 0 && <ReadOnlyValue text="" />}
@@ -384,7 +389,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     )
   }
   if (f.type === 'file') {
-    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} required={f.required} error={error} onChange={onChange} readOnly={f.readOnly} /></Grid>
+    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} help={f.help} required={f.required} error={error} onChange={onChange} readOnly={f.readOnly} /></Grid>
   }
   if (f.type === 'repeater') {
     return (

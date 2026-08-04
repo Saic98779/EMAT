@@ -6,7 +6,20 @@ import EastIcon from '@mui/icons-material/East'
 import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { makeBseCandidateSchema } from '../../formSchemas'
 import { createBseRecommendation } from '../../apis/bseRecommendations'
+import { uploadFilesBatch } from '../../apis/files'
+import { encodeFilename } from '../../fileFieldLabels'
 import { useData } from '../../store'
+
+// Every File instance picked across all file-typed fields, tagged with the
+// field name so DocUpload can later show which slot each file came from.
+function collectFiles(values) {
+  const out = []
+  for (const [name, v] of Object.entries(values)) {
+    if (!Array.isArray(v)) continue
+    for (const item of v) if (item instanceof File) out.push({ file: item, slug: name })
+  }
+  return out
+}
 
 // First unmet requirement (missing required field or a validation error), if any.
 function firstProblem(schema, values) {
@@ -75,13 +88,38 @@ export default function BseCandidate() {
     setBusy(true)
     try {
       const created = await createBseRecommendation(values, ia.uuid)
+      const bseUuid = created?.uuid
+
+      // Upload every picked file (resume, salary proof, resignation letter,
+      // CV, etc.) in a single batch keyed by the new BSE record's UUID.
+      // Filenames are slug-prefixed with the field name so DocUpload can
+      // decode them into "Salary proof · payslip.pdf" style chips later.
+      const files = collectFiles(values)
+      if (bseUuid && files.length) {
+        try {
+          const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
+          await uploadFilesBatch(bseUuid, tagged)
+        } catch (fileErr) {
+          setToast({
+            severity: 'warning',
+            msg: `Candidate saved, but file upload failed (${fileErr.message || 'unknown error'}). Retry from the candidate page.`,
+          })
+          addBseCandidate(values)
+          const nextPath = bseUuid ? `/gt/team/${bseUuid}` : '/gt/team'
+          setTimeout(() => navigate(nextPath), 1500)
+          return
+        }
+      }
+
       // Keep the local store in sync so the BSE Team page reflects the new candidate.
       addBseCandidate(values)
       setToast({
         severity: 'success',
-        msg: `${values.bse_name || 'Candidate'} proposed for ${values.ia_name || 'IA'}.`,
+        msg: files.length
+          ? `${values.bse_name || 'Candidate'} proposed — ${files.length} file${files.length === 1 ? '' : 's'} uploaded.`
+          : `${values.bse_name || 'Candidate'} proposed for ${values.ia_name || 'IA'}.`,
       })
-      const nextPath = created?.uuid ? `/gt/team/${created.uuid}` : '/gt/team'
+      const nextPath = bseUuid ? `/gt/team/${bseUuid}` : '/gt/team'
       setTimeout(() => navigate(nextPath), 1100)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to submit. Please try again.' })
