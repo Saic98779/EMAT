@@ -307,7 +307,8 @@ export const makeBseCandidateSchema = (approvedIAs = []) => ({
       { name: 'resume_status', label: 'Resume Status', type: 'select', options: ['Received', 'Not Received'], span: 12, required: true },
       { name: 'resume_file', label: 'Upload Resume (PDF)', type: 'file', span: 12,
         showIf: (v) => v.resume_status === 'Received', required: true },
-      { name: 'salary_proof', label: 'Salary Slip / Bank Statement (proof of last drawn salary)', type: 'file', span: 12, required: true },
+      { name: 'salary_proof', label: 'Salary Slip / Bank Statement (proof of last drawn salary)', type: 'file', span: 12, required: true,
+        help: 'You may attach multiple files — e.g. salary slip, bank statement, loan statement.' },
     ] },
     { n: 6, title: 'GT Field Manager Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation Status', type: 'radio',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import {
   Card, CardContent, Stack, Typography, Button, Chip, Box, Avatar,
   CircularProgress, Alert, IconButton, Tooltip,
@@ -19,7 +19,11 @@ import { decodeFilename } from '../fileFieldLabels'
 // 2. Local-only fallback (no `registrationUuid`) — keeps the original demo
 //    behaviour of tracking picked file names in a parent-owned array. Used
 //    while a parent record is still being drafted and has no UUID yet.
-export default function DocUpload({
+//
+// Exported as memo() so parent forms re-rendering on every keystroke don't
+// force this component (with its own network fetch + list rendering) to
+// re-render alongside them.
+function DocUpload({
   docs,
   setDocs,
   registrationUuid = null,
@@ -211,6 +215,8 @@ export default function DocUpload({
     </Card>
   )
 }
+
+export default memo(DocUpload)
 
 function mergeByFilename(prev, incoming) {
   const byName = new Map(prev.map((f) => [f.filename, f]))
