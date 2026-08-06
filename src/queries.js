@@ -38,12 +38,17 @@ import {
   listBseRecommendationsByHoStatus,
   listBseRecommendationsByMappedStatus,
   listBseRecommendationsByRegistration,
+  listBseByVendorSelected,
   createBseRecommendation,
   updateBseRecommendation,
   fromDto as bseFromDto,
 } from './apis/bseRecommendations'
 import { searchUsers, unwrapList as unwrapUsers } from './apis/users'
-import { listBranchesByState, listSdesByBranch, listVendorsDropdown } from './apis/dropdowns'
+import { listBranchesByState, listSdesByBranch } from './apis/dropdowns'
+import {
+  listVendors, getVendor, createVendor, updateVendor, deleteVendor,
+  listVendorsDropdown,
+} from './apis/vendors'
 import { listFiles } from './apis/files'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
@@ -69,6 +74,7 @@ export const keys = {
     byHoStatus: (status) => ['bse', 'ho-status', status],
     byMappedStatus: (status) => ['bse', 'mapped', status],
     byRegistration: (regUuid) => ['bse', 'byRegistration', regUuid],
+    byVendorSelected: (vendorUuid) => ['bse', 'byVendorSelected', vendorUuid],
   },
   users: {
     all: ['users'],
@@ -81,6 +87,9 @@ export const keys = {
     byBranch: (branchUuid) => ['sdes', 'byBranch', branchUuid],
   },
   vendors: {
+    all: ['vendors'],
+    lists: () => ['vendors', 'list'],
+    detail: (uuid) => ['vendors', 'detail', uuid],
     dropdown: () => ['vendors', 'dropdown'],
   },
   files: {
@@ -313,6 +322,18 @@ export function useBseByRegistration(regUuid) {
   })
 }
 
+// Active BSE recommendations mapped to a vendor and marked as selected —
+// the vendor's own resource pool (View My Resources + Raise Disbursement).
+// Returns the raw DTOs (not `fromDto`-adapted) because we want the extra
+// vendor-side fields like `iaSelected`, `vendorName`, `createdAt`.
+export function useBseByVendorSelected(vendorUuid) {
+  return useQuery({
+    queryKey: keys.bse.byVendorSelected(vendorUuid),
+    enabled: !!vendorUuid,
+    queryFn: ({ signal }) => listBseByVendorSelected(vendorUuid, { signal }).then(unwrapList),
+  })
+}
+
 export function useCreateBse() {
   const qc = useQueryClient()
   return useMutation({
@@ -387,13 +408,73 @@ export function useSdesByBranch(branchUuid) {
   })
 }
 
-// Third-party vendors that dispatch the BSE offer letter. Static list —
-// safe to cache indefinitely.  Returns `[{ uuid, name }]`.
+// Resolve the vendor record for the logged-in Manpower Agency user.
+//
+// Backend workaround: the login response doesn't (yet) include the caller's
+// `vendorUuid`, so we fetch the vendor list and match by email. Cached with
+// the vendor list. Swap to a `GET /vendor/me` call (or the login response's
+// `vendorUuid`) once the backend adds it — this hook is the only place that
+// needs to change.
+export function useMyVendor(email) {
+  const q = useVendors()
+  const vendor = (q.data || []).find(
+    (v) => (v.email || '').toLowerCase() === (email || '').toLowerCase(),
+  ) || null
+  return { ...q, data: vendor }
+}
+
+// ── Vendors (SDE-managed) ─────────────────────────────────────────────────
+// Third-party vendors that dispatch the BSE offer letter. Managed by SDE via
+// the Vendor Management page.
+
+export function useVendors() {
+  return useQuery({
+    queryKey: keys.vendors.lists(),
+    queryFn: ({ signal }) => listVendors({ signal }).then(unwrapList),
+  })
+}
+
+export function useVendor(uuid) {
+  return useQuery({
+    queryKey: keys.vendors.detail(uuid),
+    enabled: !!uuid,
+    queryFn: ({ signal }) => getVendor(uuid, { signal }),
+  })
+}
+
+// Dropdown-only slice (`{ uuid, name }[]`) used by the BSE candidate form.
 export function useVendorsDropdown() {
   return useQuery({
     queryKey: keys.vendors.dropdown(),
     queryFn: ({ signal }) => listVendorsDropdown({ signal }),
     staleTime: 15 * 60_000,
+  })
+}
+
+export function useCreateVendor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createVendor(values),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.vendors.all }) },
+  })
+}
+
+export function useUpdateVendor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ uuid, values }) => updateVendor(uuid, values),
+    onSuccess: (_data, { uuid }) => {
+      qc.invalidateQueries({ queryKey: keys.vendors.all })
+      qc.invalidateQueries({ queryKey: keys.vendors.detail(uuid) })
+    },
+  })
+}
+
+export function useDeleteVendor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (uuid) => deleteVendor(uuid),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.vendors.all }) },
   })
 }
 

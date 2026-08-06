@@ -53,27 +53,6 @@ export const bseProfile = {
   nature_payment: 'Payment towards CAPEX purchase.\n\nIA has been sanctioned Rs.______/- towards the purchase of ___________. Out of this Rs.__________/- has already been disbursed towards the purchase of ____________. The present disbursement is of Rs.__________/- towards the purchase of ____________.',
 }
 
-// Autofilled agency profile — comes from the MPA's KYC/onboarding record.
-export const manpowerProfile = {
-  agency_name: 'Skillforce Manpower Pvt. Ltd.',
-  agency_gstin: '27AAAAA0000A1Z5',
-  gstin_na_reason: '',
-  sanctioned_amount: 720000,
-  disbursed_till_date: 384000,
-  tds_applicable: 'no',
-  tds_na_reason: 'Below deduction threshold as per FY declaration',
-  sidbi_gstin: '09AABCS3480N5ZS',
-  account_code: 'EX1909010',
-  nature_payment: 'Payment towards Salary for the month <<MMM-YYYY>> of ____ BSEs. BSE-wise Details in Annexure I.',
-  bse_roster: ['Ravi Kumar', 'Meena Joshi', 'Arjun Nair'],
-  // Salary + attendance seeded per BSE — used to auto-fill Annexure I.
-  bse_master: {
-    'Ravi Kumar': { ia: 'Coimbatore Textile Manufacturers Assn.', monthly_salary: 32000, days_this_cycle: 26 },
-    'Meena Joshi': { ia: 'Pune Auto Components Cluster', monthly_salary: 30000, days_this_cycle: 24 },
-    'Arjun Nair': { ia: 'Surat Diamond & Gems Federation', monthly_salary: 28000, days_this_cycle: 25 },
-  },
-}
-
 // Salary disbursement requests raised by the IA (seed).
 export const salaryRequests = [
   { id: 'SR-101', agency: 'Skillforce Manpower Pvt. Ltd.', bse: 'Ravi Kumar', month: 'May-2026', amount: 32000, invoiceNo: 'INV-5567', date: '02 Jun 2026', status: 'Approved by GT', docs: ['Invoice-INV-5567.pdf', 'Attendance-May.xlsx'] },
