@@ -14,9 +14,3 @@ export function listSdesByBranch(branchUuid, { signal } = {}) {
   return apiFetch(`/sidbi-sde/dropdown?${q}`, { signal })
 }
 
-// GET /vendors/dropdown
-// → [{ uuid, name }] — third-party vendors that will send the offer letter
-// to a newly approved BSE candidate.
-export function listVendorsDropdown({ signal } = {}) {
-  return apiFetch('/vendors/dropdown', { signal })
-}

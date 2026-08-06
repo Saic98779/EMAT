@@ -47,6 +47,7 @@ export const NAV = {
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'Dashboard' },
     { icon: 'inbox', label: 'Approval Queue', path: '/sde/queue', overline: 'Approvals', title: 'Approval queue' },
     { icon: 'doc', label: 'Industry Associations', path: '/sde/ias', overline: 'Industry Associations', title: 'Industry Associations' },
+    { icon: 'personAdd', label: 'Vendors', path: '/sde/vendors', overline: 'Vendors', title: 'Vendor Management' },
     { icon: 'payments', label: 'Disbursals', path: '/sde/disbursals', overline: 'Field ops', title: 'Disbursals' },
   ],
   bse: [
@@ -82,8 +83,10 @@ export const NAV = {
     { icon: 'payments', label: 'Salary Requests', path: '/ia/requests', overline: 'Disbursement', title: 'BSE Salary Requests' },
   ],
   mpa: [
-    { icon: 'home', label: 'Dashboard', path: '/mpa', overline: 'Overview', title: 'Dashboard' },
-    { icon: 'payments', label: 'Raise Disbursement', path: '/mpa/disburse', overline: 'Disbursement', title: 'Salary Disbursement Request' },
+    { icon: 'payments', label: 'Raise Disbursement Note', path: '/mpa/disburse', overline: 'Disbursement', title: 'Salary Disbursement Request' },
+    { icon: 'groups', label: 'View My Resources', path: '/mpa/resources', overline: 'Resources', title: 'My Resources' },
+    { icon: 'calendar', label: 'View Attendance', path: '/mpa/attendance', overline: 'Resources', title: 'Attendance of My Resources' },
+    { icon: 'personAdd', label: 'Profile', path: '/mpa/profile', overline: 'Account', title: 'Vendor Profile' },
   ],
 }
 

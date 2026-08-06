@@ -20,6 +20,7 @@ import Disbursals from './pages/gt/Disbursals'
 import SdeDashboard from './pages/sde/SdeDashboard'
 import ApprovalQueue from './pages/sde/ApprovalQueue'
 import IaEdit from './pages/sde/IaEdit'
+import Vendors from './pages/sde/Vendors'
 
 import BseDashboard from './pages/bse/BseDashboard'
 import MyFieldVisits from './pages/bse/MyFieldVisits'
@@ -32,8 +33,10 @@ import IaDashboard from './pages/ia/IaDashboard'
 import IaRequests from './pages/ia/IaRequests'
 import IaSalaryRequest from './pages/ia/IaSalaryRequest'
 
-import MpaDashboard from './pages/mpa/MpaDashboard'
 import MpaRaiseDisbursement from './pages/mpa/MpaRaiseDisbursement'
+import MpaMyResources from './pages/mpa/MyResources'
+import MpaAttendance from './pages/mpa/MyResourcesAttendance'
+import MpaProfile from './pages/mpa/Profile'
 
 import ClusterExpertDashboard from './pages/ce/ClusterExpertDashboard'
 
@@ -124,6 +127,7 @@ export default function App() {
         <Route path="/sde/ia-approvals" element={<DenyRawRoles roles={['CLUSTER_EXPERT']}><HoIaApprovals /></DenyRawRoles>} />
         <Route path="/sde/ias/:id/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoIaReview /></DenyRawRoles>} />
         <Route path="/sde/bse-approvals" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseApprovals /></DenyRawRoles>} />
+        <Route path="/sde/vendors" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><Vendors /></DenyRawRoles>} />
         <Route path="/sde/bse/:uuid/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseReview /></DenyRawRoles>} />
       </Route>
 
@@ -144,10 +148,15 @@ export default function App() {
         <Route path="/ia/requests/new" element={<IaSalaryRequest />} />
       </Route>
 
-      {/* Manpower Agency — salary disbursement ops (formerly DIA) */}
+      {/* Manpower Agency — Vendor / Consultancy workspace. `/mpa` lands on
+          the disburse page (the primary action); the standalone dashboard is
+          no longer part of the sidebar. */}
       <Route element={<Protected role="mpa"><AppLayout /></Protected>}>
-        <Route path="/mpa" element={<MpaDashboard />} />
+        <Route path="/mpa" element={<Navigate to="/mpa/disburse" replace />} />
         <Route path="/mpa/disburse" element={<MpaRaiseDisbursement />} />
+        <Route path="/mpa/resources" element={<MpaMyResources />} />
+        <Route path="/mpa/attendance" element={<MpaAttendance />} />
+        <Route path="/mpa/profile" element={<MpaProfile />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

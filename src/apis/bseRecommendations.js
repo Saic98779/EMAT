@@ -48,6 +48,17 @@ export function listBseRecommendationsByRegistration(registrationUuid, { signal 
   )
 }
 
+// GET /bse-recommendations/vendor/{vendorUuid}/selected
+// Active BSE recommendations mapped to `vendorUuid` and flagged `iaSelected`.
+// Feeds the Manpower Agency workspace ("View My Resources" + the disbursement
+// note's BSE picker).
+export function listBseByVendorSelected(vendorUuid, { signal } = {}) {
+  return apiFetch(
+    `${PATH}/vendor/${encodeURIComponent(vendorUuid)}/selected`,
+    { signal },
+  )
+}
+
 // GET /bse-recommendations/gt-recommendation/{status}
 export function listBseRecommendationsByGtStatus(status, { signal } = {}) {
   return apiFetch(
