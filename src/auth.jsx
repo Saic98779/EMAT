@@ -28,8 +28,9 @@ const ROLE_MAP = {
   BSE: 'bse',
   // Industry Association nodal user
   IA: 'ia',
-  // DIA owns the manpower / salary-disbursement workspace.
-  DIA: 'dia',
+  // Manpower Agency owns the salary-disbursement workspace (formerly DIA).
+  MANPOWER_AGENCY: 'mpa',
+  MPA: 'mpa',
   // Cluster experts see the SDE appraisal surface.
   CLUSTER_EXPERT: 'sde',
 }

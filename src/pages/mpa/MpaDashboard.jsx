@@ -25,7 +25,7 @@ export default function MpaDashboard() {
         subtitle="Raise BSE salary disbursement requests. Requests route to the SIDBI HO Maker for review."
         badge="Manpower Agency"
         action={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/dia/disburse')}
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/mpa/disburse')}
             sx={{ bgcolor: 'common.white', color: 'primary.dark', '&:hover': { bgcolor: 'grey.100' } }}>
             New Disbursement
           </Button>

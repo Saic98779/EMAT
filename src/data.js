@@ -29,12 +29,12 @@ export const ROLES = {
     short: 'IA',
     user: { name: 'Lakshmi Iyer', initials: 'LI', title: 'Coimbatore Textile Mfrs. Assn.', email: 'nodal@ctma.org' },
   },
-  dia: {
-    key: 'dia',
-    label: 'DIA',
-    tag: 'SIDBI',
-    short: 'DIA',
-    user: { name: 'Ramesh Sharma', initials: 'RS', title: 'DIA · Manpower Disbursement', email: 'dia@sidbi.in' },
+  mpa: {
+    key: 'mpa',
+    label: 'Manpower Agency',
+    tag: 'MPA',
+    short: 'MPA',
+    user: { name: 'Ramesh Sharma', initials: 'RS', title: 'Manpower Agency · Salary Disbursement', email: 'mpa@sidbi.in' },
   },
 }
 
