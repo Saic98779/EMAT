@@ -43,7 +43,7 @@ import {
   fromDto as bseFromDto,
 } from './apis/bseRecommendations'
 import { searchUsers, unwrapList as unwrapUsers } from './apis/users'
-import { listBranchesByState, listSdesByBranch } from './apis/dropdowns'
+import { listBranchesByState, listSdesByBranch, listVendorsDropdown } from './apis/dropdowns'
 import { listFiles } from './apis/files'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
@@ -79,6 +79,9 @@ export const keys = {
   },
   sdes: {
     byBranch: (branchUuid) => ['sdes', 'byBranch', branchUuid],
+  },
+  vendors: {
+    dropdown: () => ['vendors', 'dropdown'],
   },
   files: {
     byRegistration: (regUuid) => ['files', 'byRegistration', regUuid],
@@ -381,6 +384,16 @@ export function useSdesByBranch(branchUuid) {
     queryKey: keys.sdes.byBranch(branchUuid),
     enabled: !!branchUuid,
     queryFn: ({ signal }) => listSdesByBranch(branchUuid, { signal }),
+  })
+}
+
+// Third-party vendors that dispatch the BSE offer letter. Static list —
+// safe to cache indefinitely.  Returns `[{ uuid, name }]`.
+export function useVendorsDropdown() {
+  return useQuery({
+    queryKey: keys.vendors.dropdown(),
+    queryFn: ({ signal }) => listVendorsDropdown({ signal }),
+    staleTime: 15 * 60_000,
   })
 }
 

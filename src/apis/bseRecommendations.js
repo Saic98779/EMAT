@@ -100,6 +100,7 @@ export function toPayload(v = {}, registrationUuid = null) {
   return {
     registrationUuid: uuid,
     industryRegistrationId: uuid,
+    vendorUuid: str(v.vendor_uuid),
     state: str(v.state),
     district: str(v.district),
     bseName: str(v.bse_name),

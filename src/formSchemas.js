@@ -246,9 +246,14 @@ export const makeInPrincipleSchema = ({
 })
 
 // ── BSE Candidate Proposal (GT Field Manager — new BSE onboarding) ──────────
-// Factory: takes the list of IAs already cleared at In-Principle stage so the
-// association dropdown is populated with live data from the app store.
-export const makeBseCandidateSchema = (approvedIAs = []) => ({
+// Factory:
+//   `approvedIAs`   — plain strings; IAs already cleared at In-Principle stage
+//                     (source list for the association dropdown).
+//   `vendorOptions` — `{ value: vendorUuid, label: vendorName }[]` from
+//                     GET /vendors/dropdown. The picked UUID is sent as
+//                     `vendorUuid` on the create payload — that's the vendor
+//                     who will mail the offer letter after final approval.
+export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = []) => ({
   key: 'bse-candidate',
   sections: [
     { n: 1, title: 'Location & Industry Association', fields: [
@@ -310,7 +315,12 @@ export const makeBseCandidateSchema = (approvedIAs = []) => ({
       { name: 'salary_proof', label: 'Salary Slip / Bank Statement (proof of last drawn salary)', type: 'file', span: 12, required: true,
         help: 'You may attach multiple files — e.g. salary slip, bank statement, loan statement.' },
     ] },
-    { n: 6, title: 'GT Field Manager Recommendation', fields: [
+    { n: 6, title: 'Offer Letter Vendor', desc: 'The third-party vendor who will email the offer letter once the candidate is fully approved.', fields: [
+      { name: 'vendor_uuid', label: 'Vendor', type: 'select', span: 12, required: true,
+        options: vendorOptions.length ? vendorOptions : [{ value: '', label: 'No vendors configured yet' }],
+        help: vendorOptions.length ? undefined : 'Ask SIDBI HO to onboard a vendor before proposing candidates.' },
+    ] },
+    { n: 7, title: 'GT Field Manager Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation Status', type: 'radio',
         options: ['Recommended', 'Not Recommended'], span: 6, required: true },
       { name: 'recommendation_date', label: 'Recommendation Date', type: 'date', span: 6, required: true },
