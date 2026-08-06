@@ -62,12 +62,12 @@ export default function MpaRaiseDisbursement() {
     if (problem) { setToast(problem); return }
     addMpaRequest(values)
     setToast('done')
-    setTimeout(() => navigate('/dia'), 1200)
+    setTimeout(() => navigate('/mpa'), 1200)
   }
 
   return (
     <Box sx={{ maxWidth: 940, mx: 'auto', pb: 9 }}>
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/dia')} sx={{ mb: 2 }}>Dashboard</Button>
+      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/mpa')} sx={{ mb: 2 }}>Dashboard</Button>
       <Box textAlign="center" mb={3}>
         <Chip label="Manpower Agency · New Disbursement" sx={{ bgcolor: 'primary.light', color: 'primary.dark', mb: 1.5, fontWeight: 700 }} />
         <Typography variant="h4">Raise Salary Disbursement</Typography>
@@ -79,7 +79,7 @@ export default function MpaRaiseDisbursement() {
       <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
-        <Button color="inherit" onClick={() => navigate('/dia')}>Cancel</Button>
+        <Button color="inherit" onClick={() => navigate('/mpa')}>Cancel</Button>
         <Button variant="contained" startIcon={<SendIcon />} onClick={submit}>Submit to HO Maker</Button>
       </Paper>
 

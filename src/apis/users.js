@@ -7,7 +7,7 @@ const PATH = '/users'
 // Kept as a plain object rather than a TS enum so it's usable directly as
 // dropdown values without indirection.
 export const ROLES = Object.freeze({
-  DIA: 'DIA',
+  MANPOWER_AGENCY: 'MANPOWER_AGENCY',
   BSE: 'BSE',
   GT_FIELD_TEAM: 'GT_FIELD_TEAM',
   GT_PMU: 'GT_PMU',

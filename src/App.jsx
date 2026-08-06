@@ -144,10 +144,10 @@ export default function App() {
         <Route path="/ia/requests/new" element={<IaSalaryRequest />} />
       </Route>
 
-      {/* DIA — SIDBI internal / manpower disbursement ops */}
-      <Route element={<Protected role="dia"><AppLayout /></Protected>}>
-        <Route path="/dia" element={<MpaDashboard />} />
-        <Route path="/dia/disburse" element={<MpaRaiseDisbursement />} />
+      {/* Manpower Agency — salary disbursement ops (formerly DIA) */}
+      <Route element={<Protected role="mpa"><AppLayout /></Protected>}>
+        <Route path="/mpa" element={<MpaDashboard />} />
+        <Route path="/mpa/disburse" element={<MpaRaiseDisbursement />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

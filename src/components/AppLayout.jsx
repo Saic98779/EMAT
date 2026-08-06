@@ -81,9 +81,9 @@ export const NAV = {
     { icon: 'home', label: 'Dashboard', path: '/ia', overline: 'Overview', title: 'Dashboard' },
     { icon: 'payments', label: 'Salary Requests', path: '/ia/requests', overline: 'Disbursement', title: 'BSE Salary Requests' },
   ],
-  dia: [
-    { icon: 'home', label: 'Dashboard', path: '/dia', overline: 'Overview', title: 'Dashboard' },
-    { icon: 'payments', label: 'Raise Disbursement', path: '/dia/disburse', overline: 'Disbursement', title: 'Salary Disbursement Request' },
+  mpa: [
+    { icon: 'home', label: 'Dashboard', path: '/mpa', overline: 'Overview', title: 'Dashboard' },
+    { icon: 'payments', label: 'Raise Disbursement', path: '/mpa/disburse', overline: 'Disbursement', title: 'Salary Disbursement Request' },
   ],
 }
 
