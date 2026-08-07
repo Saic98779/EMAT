@@ -211,7 +211,7 @@ export default function MpaRaiseDisbursement() {
       </Box>
 
       <Stack spacing={2.5}>
-        <VendorDetails vendor={vendor} natureOfPayment={natureOfPayment} />
+        <VendorDetails vendor={vendor} />
 
         <ResourceSelection
           month={month} setMonth={setMonth}
@@ -223,6 +223,11 @@ export default function MpaRaiseDisbursement() {
         />
 
         <AnnexureTable rows={annexureRows} onSet={setRowField} total={disbursementSought} />
+
+        <DisbursementSummary
+          total={disbursementSought}
+          natureOfPayment={natureOfPayment}
+        />
 
         <InvoiceDetails
           date={invoiceDate} onDate={setInvoiceDate}
@@ -264,7 +269,7 @@ export default function MpaRaiseDisbursement() {
 
 // ── Section 1: Vendor Details (autofilled, read-only) ──────────────────────
 
-const VendorDetails = memo(function VendorDetails({ vendor, natureOfPayment }) {
+const VendorDetails = memo(function VendorDetails({ vendor }) {
   return (
     <Card>
       <CardContent>
@@ -276,13 +281,40 @@ const VendorDetails = memo(function VendorDetails({ vendor, natureOfPayment }) {
           <ReadField label="Company" value={vendor.companyName} span={6} />
           <ReadField label="Contact Person" value={vendor.contactPerson} span={3} />
           <ReadField label="Contact" value={`${vendor.email || ''} · ${vendor.mobileNo || ''}`} span={3} mono />
-          <Grid size={12}>
+        </Grid>
+      </CardContent>
+    </Card>
+  )
+})
+
+// ── Between the table and Invoice: reads directly from the table's totals.
+// "Disbursement Sought" and "Nature of Payment" both derive from the Annexure
+// I total per the spec — displayed here as read-only fields immediately after
+// the table so the connection is visible.
+const DisbursementSummary = memo(function DisbursementSummary({ total, natureOfPayment }) {
+  return (
+    <Card>
+      <CardContent>
+        <SectionTitle title="Disbursement Summary" subtitle="Auto-derived from the Annexure I table above." />
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <TextField
+              fullWidth size="small"
+              label="Disbursement Sought (₹)"
+              value={total > 0 ? total.toLocaleString('en-IN') : ''}
+              InputProps={{ readOnly: true, startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+              sx={{ '& .MuiInputBase-root': { bgcolor: 'action.hover', fontWeight: 700, color: 'primary.dark' } }}
+              helperText="Total of the Annexure I table"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 8 }}>
             <TextField
               fullWidth size="small" multiline minRows={2}
               label="Nature of Payment"
               value={natureOfPayment}
               InputProps={{ readOnly: true }}
               sx={{ '& .MuiInputBase-root': { bgcolor: 'action.hover' } }}
+              helperText="Auto-composed from selected month + resource count"
             />
           </Grid>
         </Grid>
