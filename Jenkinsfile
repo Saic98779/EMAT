@@ -7,14 +7,6 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                git branch: 'main',
-                        credentialsId: 'github-credentials',
-                        url: 'https://github.com/Saic98779/EMAT.git'
-            }
-        }
-
         stage('Install Dependencies') {
             steps {
                 sh 'npm ci'
@@ -30,11 +22,12 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-            rm -rf ${DEPLOY_DIR}/*
-            cp -r dist/* ${DEPLOY_DIR}/
-        '''
+                    rm -rf ${DEPLOY_DIR}/*
+                    cp -r dist/* ${DEPLOY_DIR}/
+                '''
             }
         }
+    }
 
     post {
         success {
