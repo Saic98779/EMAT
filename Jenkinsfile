@@ -23,7 +23,11 @@ pipeline {
 
         stage('Build React App') {
             steps {
-                sh 'npm run build'
+                sh '''
+            cp /opt/emat-config/.env.production .env.production
+            npm run build
+            rm -f .env.production
+        '''
             }
         }
 
