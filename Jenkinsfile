@@ -43,7 +43,7 @@ pipeline {
         }
 
         failure {
-            echo 'EMAT frontend deployment failed!'
+            echo 'EMAT frontend deployment failed'
         }
     }
 }
