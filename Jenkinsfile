@@ -30,10 +30,9 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-                    sudo rm -rf ${DEPLOY_DIR}/*
-                    sudo cp -r dist/* ${DEPLOY_DIR}/
-                    sudo chown -R www-data:www-data ${DEPLOY_DIR}
-                '''
+            rm -rf ${DEPLOY_DIR}/*
+            cp -r dist/* ${DEPLOY_DIR}/
+        '''
             }
         }
 
