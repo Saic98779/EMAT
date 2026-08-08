@@ -36,16 +36,6 @@ pipeline {
             }
         }
 
-        stage('Reload Nginx') {
-            steps {
-                sh '''
-                    sudo nginx -t
-                    sudo systemctl reload nginx
-                '''
-            }
-        }
-    }
-
     post {
         success {
             echo 'EMAT frontend deployed successfully!'
