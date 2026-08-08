@@ -10,7 +10,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                        credentialsId: 'github-credential',
+                        credentialsId: 'github-credentials',
                         url: 'https://github.com/Saic98779/EMAT.git'
             }
         }
@@ -30,20 +30,20 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-                    rm -rf ${DEPLOY_DIR}/*
-                    cp -r dist/* ${DEPLOY_DIR}/
-                '''
+            rm -rf ${DEPLOY_DIR}/*
+            cp -r dist/* ${DEPLOY_DIR}/
+        '''
             }
         }
     }
 
     post {
         success {
-            echo 'EMAT frontend deployed successfully! Version 2'
+            echo 'EMAT frontend deployed successfully!'
         }
 
         failure {
-            echo 'EMAT frontend deployment failed Version 2'
+            echo 'EMAT frontend deployment failed!'
         }
     }
 }
