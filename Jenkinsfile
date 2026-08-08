@@ -48,11 +48,11 @@ pipeline {
 
     post {
         success {
-            echo 'EMAT frontend deployed successfully'
+            echo 'EMAT frontend deployed successfully!'
         }
 
         failure {
-            echo 'EMAT frontend deployment failed'
+            echo 'EMAT frontend deployment failed!'
         }
     }
 }
