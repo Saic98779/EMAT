@@ -20,7 +20,7 @@ export default function MyResources() {
   // the BSE list now keys off `user.userId` directly — backend switched from
   // vendor-linked to user-linked BSE assignment. No round-trip to /vendor is
   // needed to know which BSEs are ours.
-  const vendorQ = useMyVendor(user?.email)
+  const vendorQ = useMyVendor(user?.userId)
   const bsesQ = useBseByUserSelected(user?.userId)
 
   const [q, setQ] = useState('')
@@ -64,7 +64,7 @@ export default function MyResources() {
       {missingVendor && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           Your login isn&apos;t linked to a vendor record on the SDE side yet. Ask SDE to add
-          a vendor whose email matches your login.
+          a vendor and link it to your user account.
         </Alert>
       )}
 

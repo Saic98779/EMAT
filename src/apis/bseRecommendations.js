@@ -113,7 +113,10 @@ export function toPayload(v = {}, registrationUuid = null) {
   return {
     registrationUuid: uuid,
     industryRegistrationId: uuid,
-    vendorUuid: str(v.vendor_uuid),
+    // Backend switched from the vendor table to the user table. Field name is
+    // `userId` (integer), NOT `vendorUuid`. The form's `vendor_uuid` slot now
+    // stores the linked MPA user's id (string), so we parse it back to int.
+    userId: int(v.vendor_uuid),
     state: str(v.state),
     district: str(v.district),
     bseName: str(v.bse_name),
@@ -191,6 +194,10 @@ export function toUpdatePayload(patch = {}) {
   for (const k of dateKeys) if (patch[k] !== undefined) out[k] = toIsoDate(patch[k])
 
   if (patch.iaMapped !== undefined) out.iaMapped = bool(patch.iaMapped)
+  if (patch.iaSelected !== undefined) out.iaSelected = bool(patch.iaSelected)
+  // Retro-link a BSE record to a MANPOWER_AGENCY user via PUT — used to fix
+  // records created before the create payload was corrected.
+  if (patch.userId !== undefined) out.userId = int(patch.userId)
   if (patch.expectedSalary !== undefined) out.expectedSalary = num(patch.expectedSalary)
   if (patch.currentSalary !== undefined) out.currentSalary = num(patch.currentSalary)
   if (patch.lastDrawnSalary !== undefined) out.lastDrawnSalary = num(patch.lastDrawnSalary)

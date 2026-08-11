@@ -28,6 +28,8 @@ import BseAttendance from './pages/bse/BseAttendance'
 import BseDisbursals from './pages/bse/BseDisbursals'
 import RaiseDisbursal from './pages/bse/RaiseDisbursal'
 import BseCapexReimbursement from './pages/bse/BseCapexReimbursement'
+import GtCapexReview from './pages/gt/GtCapexReview'
+import SdeCapexReview from './pages/sde/SdeCapexReview'
 
 import IaDashboard from './pages/ia/IaDashboard'
 import IaRequests from './pages/ia/IaRequests'
@@ -37,6 +39,7 @@ import MpaRaiseDisbursement from './pages/mpa/MpaRaiseDisbursement'
 import MpaMyResources from './pages/mpa/MyResources'
 import MpaAttendance from './pages/mpa/MyResourcesAttendance'
 import MpaProfile from './pages/mpa/Profile'
+import MpaMyDisbursements from './pages/mpa/MyDisbursements'
 
 import ClusterExpertDashboard from './pages/ce/ClusterExpertDashboard'
 
@@ -112,6 +115,7 @@ export default function App() {
         <Route path="/gt/salary-requests" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtSalaryRequests /></DenyRawRoles>} />
         <Route path="/gt/attendance" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Attendance /></DenyRawRoles>} />
         <Route path="/gt/disbursals" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Disbursals /></DenyRawRoles>} />
+        <Route path="/gt/capex" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtCapexReview /></DenyRawRoles>} />
         <Route path="/gt/pmu/queue" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuQueue /></DenyRawRoles>} />
         <Route path="/gt/pmu/:uuid" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuReview /></DenyRawRoles>} />
       </Route>
@@ -132,6 +136,7 @@ export default function App() {
         <Route path="/sde/vendors" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><Vendors /></DenyRawRoles>} />
         <Route path="/sde/vendor-disbursements" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoDisbursementApprovals /></DenyRawRoles>} />
         <Route path="/sde/vendor-disbursements/:id" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoDisbursementReview /></DenyRawRoles>} />
+        <Route path="/sde/capex" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><SdeCapexReview /></DenyRawRoles>} />
         <Route path="/sde/bse/:uuid/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseReview /></DenyRawRoles>} />
       </Route>
 
@@ -158,6 +163,7 @@ export default function App() {
       <Route element={<Protected role="mpa"><AppLayout /></Protected>}>
         <Route path="/mpa" element={<Navigate to="/mpa/disburse" replace />} />
         <Route path="/mpa/disburse" element={<MpaRaiseDisbursement />} />
+        <Route path="/mpa/disbursements" element={<MpaMyDisbursements />} />
         <Route path="/mpa/resources" element={<MpaMyResources />} />
         <Route path="/mpa/attendance" element={<MpaAttendance />} />
         <Route path="/mpa/profile" element={<MpaProfile />} />
