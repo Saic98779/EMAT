@@ -1,8 +1,12 @@
 import { apiFetch } from '../api'
 
-// Backend `vendor-disbursement-controller`. Owns the Manpower Agency salary
-// disbursement requests (created by MPA login, reviewed by SIDBI HO).
-const PATH = '/vendor-disbursements'
+// Backend `bse-salary-controller`. Owns the per-BSE monthly salary
+// disbursement notes (created by MPA login, reviewed by SIDBI HO).
+//
+// Renamed from `/vendor-disbursements` — semantically each note is now
+// scoped to ONE BSE (not one vendor's whole roster). The `details[]` array
+// holds per-month rows for that BSE (supports arrears / catch-up runs).
+const PATH = '/bse-salary'
 
 // GET /vendor-disbursements → list of all disbursement requests.
 export function listVendorDisbursements({ signal } = {}) {
@@ -70,15 +74,16 @@ export function toPayload(v = {}) {
   // Disbursement sought = sum of Net Sal across the Annexure I table.
   const disbursementSought = rows.reduce((sum, r) => sum + netSalOf(r), 0)
 
-  // `registrationUuid` refers to the IA registration this disbursement is
-  // scoped to (empirically verified — passing a BSE uuid or vendor uuid
-  // returns 404 REGISTRATION_NOT_FOUND). One disbursement = one IA. We take
-  // the first Annexure row's `iaId`; callers are expected to enforce that
-  // every row belongs to the same IA (see MpaRaiseDisbursement.jsx).
+  // `registrationUuid` refers to the IA this note is scoped to; `bseId` is
+  // the specific BSE the salary is for. Backend now enforces one note per
+  // BSE (per invoice) — `details[]` rows are per-month for that same BSE.
+  // Both are lifted from the caller directly, or fall back to the first row.
   const registrationUuid = v.registrationUuid || (rows[0]?.iaId ?? null)
+  const bseId = v.bseId || (rows[0]?.bseId ?? null)
 
   return {
     registrationUuid: str(registrationUuid),
+    bseId: str(bseId),
     gstinOfAgency: str(v.gstinOfAgency),
     reasonForNoGstin: str(v.reasonForNoGstin),
     gstinOfSdbi: str(v.gstinOfSdbi),
@@ -112,12 +117,12 @@ export function toPayload(v = {}) {
     verifiedBy: null,
     approvedBy: null,
 
+    // Per the new schema, iaId + bseId are no longer per-row — they live at
+    // the top level. Each row is just month + salary/attendance + comments.
     details: rows.map((r) => ({
-      iaId: str(r.iaId),
-      bseId: str(r.bseId),
-      salaryMonth: str(v.salaryMonth),          // header-level month applies to every row
-      salaryDays: int(r.workingDays),           // "salary days" in the backend field
-      paidDays: int(r.workingDays),             // paid == worked in the spec's flow
+      salaryMonth: str(r.salaryMonth || v.salaryMonth),
+      salaryDays: int(r.workingDays),
+      paidDays: int(r.workingDays),
       additionalAmount: num(r.additionalAmount),
       additionalAmountReason: str(r.additionalReason),
       paymentToBse: netSalOf(r),

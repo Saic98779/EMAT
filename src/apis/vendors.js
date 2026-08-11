@@ -14,6 +14,13 @@ export function getVendor(uuid, { signal } = {}) {
   return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
 }
 
+// GET /vendor/user/{userId} → the vendor record linked to a given user id.
+// Used by the MPA workspace to resolve "my vendor" without downloading the
+// full vendor list and filtering client-side.
+export function getVendorByUser(userId, { signal } = {}) {
+  return apiFetch(`${PATH}/user/${encodeURIComponent(userId)}`, { signal })
+}
+
 // POST /vendor — feeds the SDE Vendor Management page.
 export function createVendor(values, { signal } = {}) {
   return apiFetch(PATH, { method: 'POST', body: toPayload(values), signal })

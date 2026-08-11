@@ -42,6 +42,7 @@ export const NAV = {
     { icon: 'inbox', label: 'Salary Requests', path: '/gt/salary-requests', badge: 1, overline: 'Disbursement', title: 'BSE Salary Requests' },
     { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', badge: 2, overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/gt/disbursals', badge: 2, overline: 'Field ops', title: 'Disbursals' },
+    { icon: 'doc', label: 'CAPEX Verification', path: '/gt/capex', overline: 'Field ops', title: 'CAPEX — Field Verification' },
   ],
   sde: [
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'Dashboard' },
@@ -49,6 +50,7 @@ export const NAV = {
     { icon: 'doc', label: 'Industry Associations', path: '/sde/ias', overline: 'Industry Associations', title: 'Industry Associations' },
     { icon: 'personAdd', label: 'Vendors', path: '/sde/vendors', overline: 'Vendors', title: 'Vendor Management' },
     { icon: 'payments', label: 'Disbursals', path: '/sde/disbursals', overline: 'Field ops', title: 'Disbursals' },
+    { icon: 'doc', label: 'CAPEX Approvals', path: '/sde/capex', overline: 'Approvals', title: 'CAPEX Approvals' },
   ],
   bse: [
     { icon: 'home', label: 'Dashboard', path: '/bse', overline: 'Overview', title: 'Dashboard' },
@@ -85,6 +87,7 @@ export const NAV = {
   ],
   mpa: [
     { icon: 'payments', label: 'Raise Disbursement Note', path: '/mpa/disburse', overline: 'Disbursement', title: 'Salary Disbursement Request' },
+    { icon: 'inbox', label: 'Disbursement Notes', path: '/mpa/disbursements', overline: 'Disbursement', title: 'My Disbursement Notes' },
     { icon: 'groups', label: 'View My Resources', path: '/mpa/resources', overline: 'Resources', title: 'My Resources' },
     { icon: 'calendar', label: 'View Attendance', path: '/mpa/attendance', overline: 'Resources', title: 'Attendance of My Resources' },
     { icon: 'personAdd', label: 'Profile', path: '/mpa/profile', overline: 'Account', title: 'Vendor Profile' },

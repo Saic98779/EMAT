@@ -83,6 +83,10 @@ export default function HoBseReview() {
     approvedTravelAllowance: d.approvedTravelAllowance,
     dateOfJoining: d.dateOfJoining || todayIso(),
     iaMapped: d.iaMapped,
+    // Mirror `iaMapped` onto `iaSelected` — the backend `/user/{id}/selected`
+    // endpoint filters on `iaSelected`, so without this the MPA disbursement
+    // resource list stays empty even after a candidate is onboarded.
+    iaSelected: d.iaMapped,
   }), [doSave])
 
   if (bseQ.isLoading) {
@@ -187,6 +191,12 @@ const UpstreamRecommendations = memo(function UpstreamRecommendations({ dto }) {
 
 // ── Editable blocks — each owns its own state ───────────────────────────────
 
+const HO_MAPPING = [
+  ['recommendation', 'hoRecommendation', false],
+  ['date', 'hoRecommendationDate', true],
+  ['remarks', 'hoRemarks', false],
+]
+
 const HoBlock = memo(function HoBlock({ initial, onSave }) {
   const [d, setD] = useState({
     recommendation: initial.hoRecommendation || '',
@@ -201,8 +211,14 @@ const HoBlock = memo(function HoBlock({ initial, onSave }) {
     try { await onSave(d) } finally { setSaving(false) }
   }, [onSave, d])
 
+  const dirty = isDirty(d, initial, HO_MAPPING)
+
   return (
-    <SectionCard title="HO recommendation" subtitle="Your review at the SIDBI HO stage.">
+    <SectionCard
+      title="HO recommendation"
+      subtitle="Your review at the SIDBI HO stage."
+      action={<SavedChip status={initial.hoRecommendation} date={initial.hoRecommendationDate} />}
+    >
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 4 }}>
           <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} label="Recommendation" />
@@ -214,10 +230,17 @@ const HoBlock = memo(function HoBlock({ initial, onSave }) {
           <TextInput value={d.remarks} onChange={set('remarks')} label="Remarks" />
         </Grid>
       </Grid>
-      <SaveRow onSave={save} saving={saving} label="Save HO recommendation" />
+      <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save HO recommendation" />
     </SectionCard>
   )
 })
+
+const COMMITTEE_MAPPING = [
+  ['recommendation', 'committeeRecommendation', false],
+  ['date', 'committeeDate', true],
+  ['remarks', 'committeeRemarks', false],
+  ['mom', 'committeeMom', false],
+]
 
 const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
   const [d, setD] = useState({
@@ -234,8 +257,14 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
     try { await onSave(d) } finally { setSaving(false) }
   }, [onSave, d])
 
+  const dirty = isDirty(d, initial, COMMITTEE_MAPPING)
+
   return (
-    <SectionCard title="Committee decision" subtitle="Recorded by SIDBI HO Maker on behalf of the committee.">
+    <SectionCard
+      title="Committee decision"
+      subtitle="Recorded by SIDBI HO Maker on behalf of the committee."
+      action={<SavedChip status={initial.committeeRecommendation} date={initial.committeeDate} />}
+    >
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 4 }}>
           <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} label="Committee status" />
@@ -256,10 +285,17 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
           <TextInput value={d.remarks} onChange={set('remarks')} label="Committee remarks" multiline />
         </Grid>
       </Grid>
-      <SaveRow onSave={save} saving={saving} label="Save committee decision" />
+      <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save committee decision" />
     </SectionCard>
   )
 })
+
+const ONBOARDING_MAPPING = [
+  ['approvedSalary', 'approvedSalary', false],
+  ['approvedTravelAllowance', 'approvedTravelAllowance', false],
+  ['dateOfJoining', 'dateOfJoining', true],
+  ['iaMapped', 'iaMapped', false],
+]
 
 const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
   const [d, setD] = useState({
@@ -276,11 +312,35 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
     try { await onSave(d) } finally { setSaving(false) }
   }, [onSave, d])
 
+  // Onboarding has no "recommendation" — treat "any onboarding value present"
+  // as the saved indicator so the chip appears once HO has filled it in.
+  const onboarded = initial.dateOfJoining || initial.approvedSalary != null || initial.iaMapped
+  // Manual dirty-check because iaMapped is a boolean coerced from a string.
+  const dirty =
+    String(d.approvedSalary ?? '') !== String(initial.approvedSalary ?? '') ||
+    String(d.approvedTravelAllowance ?? '') !== String(initial.approvedTravelAllowance ?? '') ||
+    (d.dateOfJoining || '') !== (initial.dateOfJoining || '').slice(0, 10) ||
+    !!d.iaMapped !== !!initial.iaMapped
+
   return (
     <SectionCard
       title="Onboarding"
       subtitle="Confirm salary, travel allowance, joining date and IA mapping."
-      action={<Chip size="small" color="success" icon={<CheckCircleOutlineIcon />} label="Committee approved" />}
+      action={
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Chip size="small" color="success" icon={<CheckCircleOutlineIcon />} label="Committee approved" />
+          {onboarded && (
+            <Chip
+              size="small" color="success" variant="outlined"
+              icon={<CheckCircleOutlineIcon />}
+              label={initial.dateOfJoining
+                ? `Onboarded · DOJ ${new Date(initial.dateOfJoining).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+                : 'Onboarded'}
+              sx={{ fontWeight: 700 }}
+            />
+          )}
+        </Stack>
+      }
     >
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 3 }}>
@@ -303,7 +363,7 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
           </TextField>
         </Grid>
       </Grid>
-      <SaveRow onSave={save} saving={saving} label="Save onboarding details" color="success" />
+      <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save onboarding details" color="success" />
     </SectionCard>
   )
 })
@@ -359,19 +419,60 @@ const MoneyField = memo(function MoneyField({ value, onChange, label }) {
   )
 })
 
-function SaveRow({ onSave, saving, label, color = 'primary' }) {
+// Save button row + inline "unsaved changes" hint. When the local draft
+// matches the DTO's saved values the button greys out and reads "Saved" —
+// clearly signalling the write has landed and there's nothing to do.
+function SaveRow({ onSave, saving, label, color = 'primary', dirty = true }) {
   return (
-    <Stack direction="row" justifyContent="flex-end" mt={1.5}>
+    <Stack direction="row" spacing={1.5} justifyContent="flex-end" alignItems="center" mt={1.5}>
+      {dirty && !saving && (
+        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+          Unsaved changes
+        </Typography>
+      )}
       <Button
         size="small" variant="contained" color={color}
-        startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
-        disabled={saving}
+        startIcon={saving
+          ? <CircularProgress size={14} color="inherit" />
+          : dirty ? <SaveIcon /> : <CheckCircleOutlineIcon />}
+        disabled={saving || !dirty}
         onClick={onSave}
       >
-        {saving ? 'Saving…' : label}
+        {saving ? 'Saving…' : dirty ? label : 'Saved'}
       </Button>
     </Stack>
   )
+}
+
+// Small "already saved" chip that lives in a SectionCard's `action` slot.
+// Renders nothing until the DTO has a recorded status — after that, it
+// shows the decision + the date it was recorded so the reviewer sees at a
+// glance that the stage is done.
+function SavedChip({ status, date }) {
+  if (!status) return null
+  const color = status === 'Recommended' ? 'success'
+    : status === 'Not Recommended' ? 'error' : 'warning'
+  const dateLabel = date ? new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null
+  return (
+    <Chip
+      size="small" color={color}
+      icon={<CheckCircleOutlineIcon />}
+      label={dateLabel ? `${status} · ${dateLabel}` : status}
+      sx={{ fontWeight: 700 }}
+    />
+  )
+}
+
+// Detects whether the current draft matches the DTO's saved values. Used to
+// gate the Save button + show the "Unsaved changes" hint.
+function isDirty(d, initial, mapping) {
+  for (const [draftKey, dtoKey, sliceDate] of mapping) {
+    const draftVal = d[draftKey] ?? ''
+    const savedVal = initial[dtoKey] ?? ''
+    const norm = sliceDate ? String(savedVal).slice(0, 10) : savedVal
+    if (String(draftVal) !== String(norm)) return true
+  }
+  return false
 }
 
 function ReadField({ label, value }) {

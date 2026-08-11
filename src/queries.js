@@ -46,7 +46,7 @@ import {
 import { searchUsers, listUsersByRole, unwrapList as unwrapUsers } from './apis/users'
 import { listBranchesByState, listSdesByBranch } from './apis/dropdowns'
 import {
-  listVendors, getVendor, createVendor, updateVendor, deleteVendor,
+  listVendors, getVendor, getVendorByUser, createVendor, updateVendor, deleteVendor,
   listVendorsDropdown,
 } from './apis/vendors'
 import { listFiles } from './apis/files'
@@ -54,6 +54,11 @@ import {
   listVendorDisbursements, getVendorDisbursement,
   updateVendorDisbursement, deleteVendorDisbursement,
 } from './apis/vendorDisbursements'
+import {
+  listDisbursementCapex, getDisbursementCapex,
+  listDisbursementCapexByRegistration,
+  createDisbursementCapex, updateDisbursementCapex, deleteDisbursementCapex,
+} from './apis/disbursementCapex'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -95,12 +100,19 @@ export const keys = {
     all: ['vendors'],
     lists: () => ['vendors', 'list'],
     detail: (uuid) => ['vendors', 'detail', uuid],
+    byUser: (userId) => ['vendors', 'byUser', String(userId)],
     dropdown: () => ['vendors', 'dropdown'],
   },
   vendorDisbursements: {
     all: ['vendor-disbursements'],
     lists: () => ['vendor-disbursements', 'list'],
     detail: (id) => ['vendor-disbursements', 'detail', String(id)],
+  },
+  capex: {
+    all: ['capex'],
+    lists: () => ['capex', 'list'],
+    detail: (uuid) => ['capex', 'detail', uuid],
+    byRegistration: (regUuid) => ['capex', 'byRegistration', regUuid],
   },
   files: {
     byRegistration: (regUuid) => ['files', 'byRegistration', regUuid],
@@ -431,18 +443,15 @@ export function useSdesByBranch(branchUuid) {
 }
 
 // Resolve the vendor record for the logged-in Manpower Agency user.
-//
-// Backend workaround: the login response doesn't (yet) include the caller's
-// `vendorUuid`, so we fetch the vendor list and match by email. Cached with
-// the vendor list. Swap to a `GET /vendor/me` call (or the login response's
-// `vendorUuid`) once the backend adds it — this hook is the only place that
-// needs to change.
-export function useMyVendor(email) {
-  const q = useVendors()
-  const vendor = (q.data || []).find(
-    (v) => (v.email || '').toLowerCase() === (email || '').toLowerCase(),
-  ) || null
-  return { ...q, data: vendor }
+// Now backed by `GET /vendor/user/{userId}` — a direct single-record fetch,
+// so we no longer download the full vendor list to filter by email.
+// Pass `user.userId` from the auth session.
+export function useMyVendor(userId) {
+  return useQuery({
+    queryKey: keys.vendors.byUser(userId),
+    enabled: userId != null,
+    queryFn: ({ signal }) => getVendorByUser(userId, { signal }),
+  })
 }
 
 // ── Vendors (SDE-managed) ─────────────────────────────────────────────────
@@ -523,6 +532,24 @@ export function useVendorDisbursements() {
   })
 }
 
+// Filtered view — only the disbursements raised by the currently signed-in
+// user. Backend doesn't expose a "mine" endpoint yet, and `createdBy` is
+// currently stamped with the auth admin (not the MPA username), so we fall
+// back to the unfiltered list until backend threads the real user through.
+// When backend adds `GET /bse-salary/mine` (or filters server-side by JWT),
+// swap this hook's body — nothing else changes.
+export function useMyVendorDisbursements(username) {
+  const q = useVendorDisbursements()
+  const uname = (username || '').toLowerCase()
+  const all = q.data || []
+  const matched = uname
+    ? all.filter((d) => (d.createdBy || '').toLowerCase() === uname)
+    : []
+  // If nothing matches by createdBy, fall through to the full list so MPA
+  // still sees their notes. Server-side scoping will replace this.
+  return { ...q, data: matched.length > 0 ? matched : all }
+}
+
 export function useVendorDisbursement(id) {
   return useQuery({
     queryKey: keys.vendorDisbursements.detail(id),
@@ -547,5 +574,58 @@ export function useDeleteVendorDisbursement() {
   return useMutation({
     mutationFn: (id) => deleteVendorDisbursement(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.vendorDisbursements.all }),
+  })
+}
+
+// ── CAPEX disbursements (BSE raise → GT verify → SDE recommend) ───────────
+
+export function useDisbursementCapex() {
+  return useQuery({
+    queryKey: keys.capex.lists(),
+    queryFn: ({ signal }) => listDisbursementCapex({ signal }).then(unwrapList),
+  })
+}
+
+export function useDisbursementCapexOne(uuid) {
+  return useQuery({
+    queryKey: keys.capex.detail(uuid),
+    enabled: !!uuid,
+    queryFn: ({ signal }) => getDisbursementCapex(uuid, { signal }),
+  })
+}
+
+export function useDisbursementCapexByRegistration(registrationUuid) {
+  return useQuery({
+    queryKey: keys.capex.byRegistration(registrationUuid),
+    enabled: !!registrationUuid,
+    queryFn: ({ signal }) =>
+      listDisbursementCapexByRegistration(registrationUuid, { signal }).then(unwrapList),
+  })
+}
+
+export function useCreateDisbursementCapex() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createDisbursementCapex(values),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.capex.all }),
+  })
+}
+
+export function useUpdateDisbursementCapex() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ uuid, values }) => updateDisbursementCapex(uuid, values),
+    onSuccess: (updated, { uuid }) => {
+      if (updated) qc.setQueryData(keys.capex.detail(uuid), updated)
+      qc.invalidateQueries({ queryKey: keys.capex.all })
+    },
+  })
+}
+
+export function useDeleteDisbursementCapex() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (uuid) => deleteDisbursementCapex(uuid),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.capex.all }),
   })
 }

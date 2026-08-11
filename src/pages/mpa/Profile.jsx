@@ -19,7 +19,7 @@ import { monoFont } from '../../theme'
 
 export default function Profile() {
   const { user, roleInfo } = useAuth()
-  const vendorQ = useMyVendor(user?.email)
+  const vendorQ = useMyVendor(user?.userId)
   const v = vendorQ.data
 
   if (vendorQ.isLoading) {
@@ -87,7 +87,7 @@ export default function Profile() {
       {!v && (
         <Alert severity="warning" sx={{ mb: 2.5 }}>
           Your login isn&apos;t linked to a vendor record on the SDE side yet.
-          Ask SIDBI SDE to add a vendor whose email matches your login (<strong>{user?.email}</strong>).
+          Ask SIDBI SDE to add a vendor and link it to your user account (<strong>{user?.username}</strong>).
           Until then, only your account details are shown.
         </Alert>
       )}
@@ -110,8 +110,8 @@ export default function Profile() {
           <ProfileCard icon={<BusinessOutlinedIcon />} title="Company & Contact" subtitle="From your vendor record.">
             <FieldRow label="Vendor / Consultancy" value={v?.vendorName} />
             <FieldRow label="Legal / Company Name" value={v?.companyName} />
-            <FieldRow label="Contact Person" value={v?.contactPerson} />
-            <FieldRow label="Mobile" value={v?.mobileNo} mono />
+            <FieldRow label="Contact Person" value={v?.spocName || v?.contactPerson} />
+            <FieldRow label="Contact Mobile" value={v?.spocMobileNo || v?.mobileNo} mono />
           </ProfileCard>
         </Grid>
 
