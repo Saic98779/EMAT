@@ -55,6 +55,11 @@ import {
   updateVendorDisbursement, deleteVendorDisbursement,
 } from './apis/vendorDisbursements'
 import {
+  listBseAttendance, getBseAttendance, createBseAttendance,
+  updateBseAttendance, deleteBseAttendance,
+  listBseAttendanceByRecommendation,
+} from './apis/bseAttendance'
+import {
   listDisbursementCapex, getDisbursementCapex,
   listDisbursementCapexByRegistration,
   createDisbursementCapex, updateDisbursementCapex, deleteDisbursementCapex,
@@ -116,6 +121,12 @@ export const keys = {
   },
   files: {
     byRegistration: (regUuid) => ['files', 'byRegistration', regUuid],
+  },
+  bseAttendance: {
+    all: ['bse-attendance'],
+    lists: () => ['bse-attendance', 'list'],
+    detail: (id) => ['bse-attendance', 'detail', String(id)],
+    byRecommendation: (recUuid) => ['bse-attendance', 'byRecommendation', recUuid],
   },
 }
 
@@ -627,5 +638,78 @@ export function useDeleteDisbursementCapex() {
   return useMutation({
     mutationFn: (uuid) => deleteDisbursementCapex(uuid),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.capex.all }),
+  })
+}
+
+
+// ── BSE attendance ────────────────────────────────────────────────────────
+// One record = one day of presence for one BSE. Vendor-filled from the MPA
+// "View Attendance of My Resources" page.
+
+export function useBseAttendanceByRecommendation(recommendationId) {
+  return useQuery({
+    queryKey: keys.bseAttendance.byRecommendation(recommendationId),
+    enabled: !!recommendationId,
+    queryFn: ({ signal }) => listBseAttendanceByRecommendation(recommendationId, { signal }).then(unwrapList),
+  })
+}
+
+export function useBseAttendanceList() {
+  return useQuery({
+    queryKey: keys.bseAttendance.lists(),
+    queryFn: ({ signal }) => listBseAttendance({ signal }).then(unwrapList),
+  })
+}
+
+export function useBseAttendance(id) {
+  return useQuery({
+    queryKey: keys.bseAttendance.detail(id),
+    enabled: id != null,
+    queryFn: ({ signal }) => getBseAttendance(id, { signal }),
+  })
+}
+
+export function useCreateBseAttendance() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createBseAttendance(values),
+    onSuccess: (_data, values) => {
+      qc.invalidateQueries({ queryKey: keys.bseAttendance.all })
+      if (values?.bseRecommendationId) {
+        qc.invalidateQueries({
+          queryKey: keys.bseAttendance.byRecommendation(values.bseRecommendationId),
+        })
+      }
+    },
+  })
+}
+
+export function useUpdateBseAttendance() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }) => updateBseAttendance(id, values),
+    onSuccess: (_data, { values }) => {
+      qc.invalidateQueries({ queryKey: keys.bseAttendance.all })
+      if (values?.bseRecommendationId) {
+        qc.invalidateQueries({
+          queryKey: keys.bseAttendance.byRecommendation(values.bseRecommendationId),
+        })
+      }
+    },
+  })
+}
+
+export function useDeleteBseAttendance() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }) => deleteBseAttendance(id),
+    onSuccess: (_data, { recommendationId }) => {
+      qc.invalidateQueries({ queryKey: keys.bseAttendance.all })
+      if (recommendationId) {
+        qc.invalidateQueries({
+          queryKey: keys.bseAttendance.byRecommendation(recommendationId),
+        })
+      }
+    },
   })
 }

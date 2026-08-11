@@ -12,8 +12,9 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
 import { PageHeader, Mono } from '../../components/shared'
 import { useAuth } from '../../auth'
-import { useMyVendor, useBseByUserSelected } from '../../queries'
+import { useMyVendor, useBseByUserSelected, useBseAttendanceByRecommendation } from '../../queries'
 import { createVendorDisbursement, netSalOf } from '../../apis/vendorDisbursements'
+import { workingDaysInMonth } from '../../apis/bseAttendance'
 
 // Raise Salary Disbursement Note — Manpower Agency / Vendor screen.
 //
@@ -100,6 +101,17 @@ export default function MpaRaiseDisbursement() {
   // override would leak into Net Sal / Disbursement Sought / the payload.
   const [tdsApplicable, setTdsApplicable] = useState(!!vendor?.tdsApplicable)
 
+  // Attendance for the selected BSE. Working Days on Annexure I is now
+  // derived from this list — the vendor marks each day of presence in the
+  // "Attendance of My Resources" workspace, and that count flows straight
+  // into the disbursement note here.
+  const attendanceQ = useBseAttendanceByRecommendation(selectedId)
+  const monthNum = MONTHS.indexOf(month) + 1  // "January" → 1
+  const attendanceDays = useMemo(
+    () => workingDaysInMonth(attendanceQ.data || [], monthNum, year),
+    [attendanceQ.data, monthNum, year],
+  )
+
   // One BSE selected → one row in the Annexure. Under the new backend
   // contract, `details[]` supports multiple months for the same BSE
   // (arrears), but the current UI captures one month at a time — extend
@@ -107,9 +119,9 @@ export default function MpaRaiseDisbursement() {
   const annexureRows = useMemo(() => {
     const selected = resources.find((r) => r.uuid === selectedId)
     if (!selected) return []
-    const built = buildRow(selected, rowOverrides[selected.uuid])
+    const built = buildRow(selected, rowOverrides[selected.uuid], attendanceDays)
     return [tdsApplicable ? built : { ...built, tds: 0 }]
-  }, [resources, selectedId, rowOverrides, tdsApplicable])
+  }, [resources, selectedId, rowOverrides, tdsApplicable, attendanceDays])
 
   const disbursementSought = useMemo(
     () => annexureRows.reduce((sum, r) => sum + netSalOf(r), 0),
@@ -287,6 +299,10 @@ export default function MpaRaiseDisbursement() {
           onSet={setRowField}
           total={disbursementSought}
           showTds={tdsApplicable}
+          attendanceDays={attendanceDays}
+          attendanceLoading={attendanceQ.isLoading && !!selectedId}
+          month={month}
+          year={year}
           error={showAllErrors ? errors.rows : ''}
         />
 
@@ -631,7 +647,11 @@ const ResourceRow = memo(function ResourceRow({ resource, checked, onSelect }) {
 
 // ── Section 3: Annexure I table ────────────────────────────────────────────
 
-const AnnexureTable = memo(function AnnexureTable({ step, rows, onSet, total, showTds, error = '' }) {
+const AnnexureTable = memo(function AnnexureTable({
+  step, rows, onSet, total, showTds,
+  attendanceDays = 0, attendanceLoading = false, month, year,
+  error = '',
+}) {
   const colSpan = showTds ? 10 : 9  // total row spans everything before Net Sal
   return (
     <Card>
@@ -643,6 +663,20 @@ const AnnexureTable = memo(function AnnexureTable({ step, rows, onSet, total, sh
             ? 'PF, TDS, and Deductions are editable per row. Net Sal auto-updates. Disbursement Sought = Σ Net Sal.'
             : 'PF and Deductions are editable per row. TDS column is hidden because TDS is not applicable for this disbursement.'}
         />
+        {rows.length > 0 && (
+          <Alert
+            severity={attendanceDays > 0 ? 'success' : 'info'}
+            variant="outlined"
+            icon={attendanceLoading ? <CircularProgress size={16} /> : undefined}
+            sx={{ mb: 2 }}
+          >
+            {attendanceLoading
+              ? `Loading marked attendance for ${month} ${year}…`
+              : attendanceDays > 0
+                ? <>Working Days auto-filled from <strong>{attendanceDays}</strong> attendance day{attendanceDays === 1 ? '' : 's'} you marked for {month} {year}.</>
+                : <>No attendance marked for {month} {year} yet. Mark days in <strong>My Resources → Attendance</strong> and Working Days will fill in automatically.</>}
+          </Alert>
+        )}
         {error && (
           <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>
         )}
@@ -963,14 +997,17 @@ function ReadField({ label, value, span = 6, mono }) {
 
 // Merge a BSE record + the user's row-level overrides into the canonical
 // Annexure I row shape used by the table and the payload adapter.
-function buildRow(bse, override = {}) {
+// `attendanceDays` is the count of days the vendor has marked as present
+// in the Attendance workspace for the picked month — used as the default
+// Working Days unless the user has overridden it inline.
+function buildRow(bse, override = {}, attendanceDays = 0) {
   return {
     bseId: bse.uuid,
     iaId: bse.registrationUuid,
     bseName: bse.bseName,
     iaName: bse.industryAssociationName,
     grossSalary: grossSalaryOf(bse),
-    workingDays: override.workingDays ?? 30,
+    workingDays: override.workingDays ?? attendanceDays,
     pf: override.pf ?? '',
     tds: override.tds ?? '',
     deductions: override.deductions ?? '',
