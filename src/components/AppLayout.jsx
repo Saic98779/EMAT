@@ -72,6 +72,7 @@ export const NAV = {
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'SIDBI HO Maker' },
     { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
     { icon: 'groups', label: 'BSE Approvals', path: '/sde/bse-approvals', overline: 'Approvals', title: 'BSE Approvals' },
+    { icon: 'payments', label: 'Vendor Disbursements', path: '/sde/vendor-disbursements', overline: 'Approvals', title: 'Vendor Disbursements' },
   ],
   // GT_PMU rides the /gt workspace but only sees the PMU review screens.
   pmu: [

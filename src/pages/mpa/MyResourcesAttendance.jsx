@@ -6,7 +6,7 @@ import {
 import ConstructionIcon from '@mui/icons-material/Construction'
 import { PageHeader, Mono } from '../../components/shared'
 import { useAuth } from '../../auth'
-import { useMyVendor, useBseByVendorSelected } from '../../queries'
+import { useBseByUserSelected } from '../../queries'
 
 // Vendor / Consultancy — "View Attendance of My Resources".
 // Per spec: build the menu + basic structure now, real attendance data comes
@@ -24,9 +24,7 @@ const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2]
 
 export default function MyResourcesAttendance() {
   const { user } = useAuth()
-  const vendorQ = useMyVendor(user?.email)
-  const vendorUuid = vendorQ.data?.vendorId
-  const bsesQ = useBseByVendorSelected(vendorUuid)
+  const bsesQ = useBseByUserSelected(user?.userId)
 
   const [month, setMonth] = useState(() => MONTHS[new Date().getMonth()])
   const [year, setYear] = useState(CURRENT_YEAR)

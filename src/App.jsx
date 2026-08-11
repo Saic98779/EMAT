@@ -43,6 +43,8 @@ import ClusterExpertDashboard from './pages/ce/ClusterExpertDashboard'
 import HoMakerDashboard from './pages/ho/HoMakerDashboard'
 import HoIaApprovals from './pages/ho/HoIaApprovals'
 import HoIaReview from './pages/ho/HoIaReview'
+import HoDisbursementApprovals from './pages/ho/HoDisbursementApprovals'
+import HoDisbursementReview from './pages/ho/HoDisbursementReview'
 import HoBseApprovals from './pages/ho/HoBseApprovals'
 import HoBseReview from './pages/ho/HoBseReview'
 
@@ -128,6 +130,8 @@ export default function App() {
         <Route path="/sde/ias/:id/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoIaReview /></DenyRawRoles>} />
         <Route path="/sde/bse-approvals" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseApprovals /></DenyRawRoles>} />
         <Route path="/sde/vendors" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><Vendors /></DenyRawRoles>} />
+        <Route path="/sde/vendor-disbursements" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoDisbursementApprovals /></DenyRawRoles>} />
+        <Route path="/sde/vendor-disbursements/:id" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoDisbursementReview /></DenyRawRoles>} />
         <Route path="/sde/bse/:uuid/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseReview /></DenyRawRoles>} />
       </Route>
 

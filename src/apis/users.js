@@ -30,6 +30,16 @@ export function createUser(body, { signal } = {}) {
   return apiFetch(PATH, { method: 'POST', body, signal })
 }
 
+// GET /users/by-role?role=<role>
+// Filters users by their backend role code. Returns `[{ id, username,
+// firstName, lastName, email, district, state, role, active }]`.
+// Used by the BSE candidate form to populate the "Offer Letter Vendor"
+// dropdown (with role=MANPOWER_AGENCY).
+export function listUsersByRole(role, { signal } = {}) {
+  const q = new URLSearchParams({ role: role ?? '' }).toString()
+  return apiFetch(`${PATH}/by-role?${q}`, { signal })
+}
+
 // GET /users/search?district=…&state=…&role=…
 // All three params are optional; omit falsy ones so we don't send `role=`.
 export function searchUsers({ district, state, role } = {}, { signal } = {}) {

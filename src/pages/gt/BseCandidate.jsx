@@ -9,7 +9,8 @@ import { createBseRecommendation } from '../../apis/bseRecommendations'
 import { uploadFilesBatch } from '../../apis/files'
 import { encodeFilename } from '../../fileFieldLabels'
 import { useData } from '../../store'
-import { useVendorsDropdown } from '../../queries'
+import { useUsersByRole } from '../../queries'
+import { formatUser } from '../../apis/users'
 
 // Every File instance picked across all file-typed fields, tagged with the
 // field name so DocUpload can later show which slot each file came from.
@@ -61,11 +62,16 @@ export default function BseCandidate() {
     [ias],
   )
 
-  // Third-party vendors that will mail the offer letter. Fetched once and
-  // cached (backend list is small and rarely changes).
-  const vendorsQ = useVendorsDropdown()
+  // "Offer Letter Vendor" dropdown — now sourced from user accounts with role
+  // `MANPOWER_AGENCY` (via GET /users/by-role) rather than the standalone
+  // `vendor` table. Backend has consolidated the notion of a vendor onto the
+  // user record for BSE-assignment purposes.
+  //
+  // Value = user.id (backend expects the linked-user id in `vendorUuid`).
+  // Label = "First Last — District, State" via `formatUser`.
+  const vendorsQ = useUsersByRole('MANPOWER_AGENCY')
   const vendorOptions = useMemo(
-    () => (vendorsQ.data || []).map((v) => ({ value: v.uuid, label: v.name })),
+    () => (vendorsQ.data || []).map((u) => ({ value: String(u.id), label: formatUser(u) })),
     [vendorsQ.data],
   )
 

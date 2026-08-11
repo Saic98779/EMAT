@@ -70,8 +70,15 @@ export function toPayload(v = {}) {
   // Disbursement sought = sum of Net Sal across the Annexure I table.
   const disbursementSought = rows.reduce((sum, r) => sum + netSalOf(r), 0)
 
+  // `registrationUuid` refers to the IA registration this disbursement is
+  // scoped to (empirically verified — passing a BSE uuid or vendor uuid
+  // returns 404 REGISTRATION_NOT_FOUND). One disbursement = one IA. We take
+  // the first Annexure row's `iaId`; callers are expected to enforce that
+  // every row belongs to the same IA (see MpaRaiseDisbursement.jsx).
+  const registrationUuid = v.registrationUuid || (rows[0]?.iaId ?? null)
+
   return {
-    manpowerAgencyName: str(v.vendorName),
+    registrationUuid: str(registrationUuid),
     gstinOfAgency: str(v.gstinOfAgency),
     reasonForNoGstin: str(v.reasonForNoGstin),
     gstinOfSdbi: str(v.gstinOfSdbi),
@@ -87,6 +94,7 @@ export function toPayload(v = {}) {
     invoiceDate: toIsoDate(v.invoiceDate),
     invoiceNumber: str(v.invoiceNumber),
     invoiceValue,
+    detailsOfItems: str(v.detailsOfItems),
     gstAmount,
     totalAmount,
 

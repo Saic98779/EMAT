@@ -1,6 +1,13 @@
-// Base URL for the backend. Set via `.env` → VITE_API_BASE_URL=/emat/v1
-// (relative, when using the Vite dev proxy) or a full https://… URL in prod.
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+// Base URL for the backend.
+//
+// Default: `/emat/v1` — matches the Vite dev proxy in dev, and the nginx
+// reverse-proxy expected in prod. Baking the default in so builds don't
+// depend on env-var wiring in the CI/Jenkins pipeline; a bare `npm run
+// build` still produces working paths.
+//
+// Override with `.env` → `VITE_API_BASE_URL=…` if you need a different
+// prefix (e.g. an absolute API host during a cross-origin test).
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/emat/v1'
 
 // Kept in sync with STORAGE_KEY in auth.jsx. Duplicated here rather than
 // imported to avoid a circular dependency (auth.jsx already imports api.js).

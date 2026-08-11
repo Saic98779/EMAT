@@ -48,13 +48,15 @@ export function listBseRecommendationsByRegistration(registrationUuid, { signal 
   )
 }
 
-// GET /bse-recommendations/vendor/{vendorUuid}/selected
-// Active BSE recommendations mapped to `vendorUuid` and flagged `iaSelected`.
-// Feeds the Manpower Agency workspace ("View My Resources" + the disbursement
-// note's BSE picker).
-export function listBseByVendorSelected(vendorUuid, { signal } = {}) {
+// GET /bse-recommendations/user/{userId}/selected
+// Active BSE recommendations linked to `userId` (the MANPOWER_AGENCY user)
+// and flagged `iaSelected`. Feeds the MPA workspace — the disbursement
+// note's BSE picker + "View My Resources" + attendance list.
+//
+// (Was `/vendor/{uuid}/selected` before the backend vendor→user migration.)
+export function listBseByUserSelected(userId, { signal } = {}) {
   return apiFetch(
-    `${PATH}/vendor/${encodeURIComponent(vendorUuid)}/selected`,
+    `${PATH}/user/${encodeURIComponent(userId)}/selected`,
     { signal },
   )
 }
