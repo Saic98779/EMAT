@@ -3,20 +3,23 @@ import { useNavigate } from 'react-router-dom'
 import {
   Box, Card, CardContent, Grid, Stack, Typography, Button, Snackbar, Alert, Chip,
   Paper, CircularProgress, TextField, MenuItem, InputAdornment, Table, TableHead,
-  TableBody, TableRow, TableCell, Checkbox, FormControlLabel, Switch, Divider,
+  TableBody, TableRow, TableCell, Checkbox, FormControlLabel, Switch,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SendIcon from '@mui/icons-material/Send'
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
 import { PageHeader, Mono } from '../../components/shared'
 import { useAuth } from '../../auth'
-import { useMyVendor, useBseByVendorSelected } from '../../queries'
+import { useMyVendor, useBseByUserSelected } from '../../queries'
 import { createVendorDisbursement, netSalOf } from '../../apis/vendorDisbursements'
 
 // Raise Salary Disbursement Note — Manpower Agency / Vendor screen.
 //
 // Data sources (no more hardcoded profiles):
 //   • Vendor autofill  ← useMyVendor(session.email)
-//   • Resource list    ← useBseByVendorSelected(vendorUuid) — the
+//   • Resource list    ← useBseByUserSelected(user.userId) — the
 //                        committee-selected BSEs mapped to this vendor.
 //   • Post             ← POST /vendor-disbursements
 //
@@ -49,11 +52,13 @@ export default function MpaRaiseDisbursement() {
   const navigate = useNavigate()
   const { user } = useAuth()
 
+  // Vendor record is still needed for the header autofill (agency name,
+  // GSTIN, bank details). BSE list is now keyed off `user.userId` directly —
+  // no dependency on the vendor lookup succeeding.
   const vendorQ = useMyVendor(user?.email)
   const vendor = vendorQ.data
-  const vendorUuid = vendor?.vendorId
 
-  const bsesQ = useBseByVendorSelected(vendorUuid)
+  const bsesQ = useBseByUserSelected(user?.userId)
   // `useMemo` gives the fallback a stable reference — otherwise every parent
   // render would recreate `[]` and re-trigger the resource-sync effect below.
   const resources = useMemo(() => bsesQ.data || EMPTY_RESOURCES, [bsesQ.data])
@@ -105,12 +110,23 @@ export default function MpaRaiseDisbursement() {
     setSelectedIds(checked ? new Set(resources.map((r) => r.uuid)) : new Set())
   }, [resources])
 
-  // Compose the concrete Annexure I rows we'll send.
+  // TDS applicability is chosen by the MPA per disbursement (below in the
+  // Vendor Details block). Declared early so the memo below can zero out the
+  // per-row TDS value when the column is hidden — otherwise a lingering
+  // override would leak into Net Sal / Disbursement Sought / the payload.
+  const [tdsApplicable, setTdsApplicable] = useState(!!vendor?.tdsApplicable)
+
+  // Compose the concrete Annexure I rows we'll send. When TDS is not
+  // applicable, force the row's `tds` to 0 so `netSalOf` and the payload's
+  // `paymentToBse` both ignore any stale override the user may have typed.
   const annexureRows = useMemo(
     () => resources
       .filter((r) => selectedIds.has(r.uuid))
-      .map((r) => buildRow(r, rowOverrides[r.uuid])),
-    [resources, selectedIds, rowOverrides],
+      .map((r) => {
+        const built = buildRow(r, rowOverrides[r.uuid])
+        return tdsApplicable ? built : { ...built, tds: 0 }
+      }),
+    [resources, selectedIds, rowOverrides, tdsApplicable],
   )
 
   const disbursementSought = useMemo(
@@ -129,25 +145,39 @@ export default function MpaRaiseDisbursement() {
   // record (autofilled + read-only).
   const [compliance, setCompliance] = useState(false)
 
-  // TDS is inferred from vendor profile; the vendor DTO doesn't have a TDS
-  // column today, so default to false with a note. Swap for the real field
-  // once backend adds it.
-  const tdsApplicable = false
-  const tdsNotApplicableReason = null
+  // GSTIN not-applicable reason — shown only when the vendor record has no
+  // GSTIN. MPA-editable so users without a GSTIN can still submit.
+  const [reasonForNoGstin, setReasonForNoGstin] = useState('')
+
+  // `tdsApplicable` is declared above with the annexure-row memo so its value
+  // can feed the row transform. The reason input is gated on the same flag.
+  const [tdsNotApplicableReason, setTdsNotApplicableReason] = useState('')
 
   const salaryMonth = `${month}-${year}`
   const natureOfPayment = `Payment towards Salary for the month ${salaryMonth} of ${annexureRows.length} BSE${annexureRows.length === 1 ? '' : 's'}. BSE-wise Details in Annexure I.`
 
   const [toast, setToast] = useState({ severity: '', msg: '' })
   const [busy, setBusy] = useState(false)
+  const [showAllErrors, setShowAllErrors] = useState(false)
+
+  // Field-level errors — computed each render so inline messages stay live
+  // even before the user clicks Submit. Individual TextFields consume their
+  // own key; the sticky footer summarises the first blocker for the user.
+  const errors = useMemo(() => computeErrors({
+    vendor, annexureRows, invoiceDate, invoiceNumber, invoiceValue, compliance,
+    tdsApplicable, tdsNotApplicableReason, reasonForNoGstin,
+  }), [
+    vendor, annexureRows, invoiceDate, invoiceNumber, invoiceValue, compliance,
+    tdsApplicable, tdsNotApplicableReason, reasonForNoGstin,
+  ])
+  const firstError = errors._first
+  const isValid = !firstError
 
   const submit = useCallback(async () => {
     if (busy) return
-    const problem = validate({
-      vendor, annexureRows, invoiceDate, invoiceNumber, invoiceValue, compliance,
-    })
-    if (problem) {
-      setToast({ severity: 'warning', msg: problem })
+    if (firstError) {
+      setShowAllErrors(true)
+      setToast({ severity: 'warning', msg: firstError })
       return
     }
     setBusy(true)
@@ -155,7 +185,7 @@ export default function MpaRaiseDisbursement() {
       await createVendorDisbursement({
         vendorName: vendor.vendorName,
         gstinOfAgency: vendor.gstNo,
-        reasonForNoGstin: null,
+        reasonForNoGstin: !vendor.gstNo ? (reasonForNoGstin || null) : null,
         gstinOfSdbi: SIDBI_GSTIN,
         // TODO: sanctionedAmount / disbursedTillDate live on a per-vendor
         // ledger the backend hasn't shipped yet — leave blank until it does.
@@ -163,7 +193,8 @@ export default function MpaRaiseDisbursement() {
         disbursedTillDate: null,
         natureOfPayment,
         invoiceDate, invoiceNumber, invoiceValue,
-        tdsApplicable, tdsNotApplicableReason,
+        tdsApplicable,
+        tdsNotApplicableReason: tdsApplicable ? null : (tdsNotApplicableReason || null),
         accountCode: DEFAULT_ACCOUNT_CODE,
         complianceTerms: compliance ? 'Yes' : 'No',
         salaryMonth,
@@ -177,6 +208,7 @@ export default function MpaRaiseDisbursement() {
       setBusy(false)
     }
   }, [busy, vendor, annexureRows, invoiceDate, invoiceNumber, invoiceValue, compliance,
+      reasonForNoGstin, tdsApplicable, tdsNotApplicableReason,
       natureOfPayment, salaryMonth, navigate])
 
   if (vendorQ.isLoading || (bsesQ.isLoading && resources.length === 0)) {
@@ -195,55 +227,119 @@ export default function MpaRaiseDisbursement() {
     )
   }
 
+  const selectedCount = annexureRows.length
+
   return (
-    <Box sx={{ maxWidth: 1080, mx: 'auto', pb: 9 }}>
+    <Box sx={{ maxWidth: 1080, mx: 'auto', pb: 12 }}>
       <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/mpa')} sx={{ mb: 2 }} disabled={busy}>
         Back
       </Button>
-      <Box textAlign="center" mb={3}>
-        <Chip label="Vendor / Consultancy · New Disbursement"
-          sx={{ bgcolor: 'primary.light', color: 'primary.dark', mb: 1.5, fontWeight: 700 }} />
-        <Typography variant="h4">Raise Salary Disbursement</Typography>
-        <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 640, mx: 'auto' }}>
-          Select the BSEs paid this cycle, fill Annexure I, attach invoice details, and submit
-          to the SIDBI HO Maker for review.
-        </Typography>
-      </Box>
 
+      {/* ── Page header ───────────────────────────────────────────────────── */}
+      <Card sx={{ mb: 3, overflow: 'hidden' }}>
+        <Box sx={{
+          background: (t) => `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,
+          color: 'primary.contrastText',
+          px: { xs: 2.5, md: 3.5 }, py: { xs: 2, md: 2.5 },
+        }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+              <Typography variant="overline" sx={{ opacity: 0.75, letterSpacing: '0.14em' }}>
+                Vendor / Consultancy
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>Raise Salary Disbursement</Typography>
+              <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.25, maxWidth: 640 }}>
+                Select the BSEs paid this cycle, fill Annexure I, attach invoice details, and submit
+                to the SIDBI HO Maker for review.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Chip
+                icon={<GroupsOutlinedIcon />}
+                label={`${selectedCount} BSE${selectedCount === 1 ? '' : 's'} selected`}
+                sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'inherit', fontWeight: 700 }}
+              />
+              <Chip
+                label={`Total ₹${disbursementSought.toLocaleString('en-IN')}`}
+                sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'inherit', fontWeight: 700 }}
+              />
+            </Stack>
+          </Stack>
+        </Box>
+      </Card>
+
+      {/* ── Sections ──────────────────────────────────────────────────────── */}
       <Stack spacing={2.5}>
-        <VendorDetails vendor={vendor} />
+        <VendorDetails
+          step={1}
+          vendor={vendor}
+          reasonForNoGstin={reasonForNoGstin}
+          onReasonForNoGstin={setReasonForNoGstin}
+          tdsApplicable={tdsApplicable}
+          onTdsApplicable={setTdsApplicable}
+          tdsNotApplicableReason={tdsNotApplicableReason}
+          onTdsNotApplicableReason={setTdsNotApplicableReason}
+          errorGstinReason={showAllErrors ? errors.reasonForNoGstin : ''}
+          errorTdsReason={showAllErrors ? errors.tdsNotApplicableReason : ''}
+        />
 
         <ResourceSelection
+          step={2}
           month={month} setMonth={setMonth}
           year={year} setYear={setYear}
           resources={resources}
           selectedIds={selectedIds}
           onToggle={toggleResource}
           onSelectAll={selectAll}
+          error={showAllErrors ? errors.resources : ''}
         />
 
-        <AnnexureTable rows={annexureRows} onSet={setRowField} total={disbursementSought} />
+        <AnnexureTable
+          step={3}
+          rows={annexureRows}
+          onSet={setRowField}
+          total={disbursementSought}
+          showTds={tdsApplicable}
+          error={showAllErrors ? errors.rows : ''}
+        />
 
         <DisbursementSummary
+          step={4}
           total={disbursementSought}
           natureOfPayment={natureOfPayment}
         />
 
         <InvoiceDetails
+          step={5}
           date={invoiceDate} onDate={setInvoiceDate}
           number={invoiceNumber} onNumber={setInvoiceNumber}
           value={invoiceValue} onValue={setInvoiceValue}
           gstAmount={gstAmount} total={invoiceTotal}
+          errorDate={showAllErrors ? errors.invoiceDate : ''}
+          errorNumber={showAllErrors ? errors.invoiceNumber : ''}
+          errorValue={showAllErrors ? errors.invoiceValue : ''}
         />
 
-        <TdsAndCompliance
-          vendor={vendor}
+        <ComplianceSection
+          step={6}
           compliance={compliance}
           onCompliance={setCompliance}
+          error={showAllErrors ? errors.compliance : ''}
         />
       </Stack>
 
-      <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
+      {/* ── Sticky footer with validation summary + actions ───────────────── */}
+      <Paper elevation={3} sx={{
+        position: 'sticky', bottom: 16, mt: 3, p: 1.25, borderRadius: 3,
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5,
+      }}>
+        <StatusChipsFooter
+          isValid={isValid}
+          firstError={firstError}
+          selectedCount={selectedCount}
+          total={disbursementSought}
+        />
+        <Box sx={{ flexGrow: 1 }} />
         <Button color="inherit" onClick={() => navigate('/mpa')} disabled={busy}>Cancel</Button>
         <Button
           variant="contained"
@@ -267,20 +363,120 @@ export default function MpaRaiseDisbursement() {
   )
 }
 
-// ── Section 1: Vendor Details (autofilled, read-only) ──────────────────────
+// ── Section 1: Vendor Details ──────────────────────────────────────────────
+// Visually split into two groups so the read-only autofill (bordered fields
+// with a subtle grey background) is unambiguously distinct from the inputs
+// the MPA has to fill (TDS applicability + N/A reasons + GSTIN reason).
+// Every field is a `TextField` — same shape, same size — so the grid stays
+// tidy regardless of which column is editable.
 
-const VendorDetails = memo(function VendorDetails({ vendor }) {
+const VendorDetails = memo(function VendorDetails({
+  step,
+  vendor,
+  reasonForNoGstin, onReasonForNoGstin,
+  tdsApplicable, onTdsApplicable,
+  tdsNotApplicableReason, onTdsNotApplicableReason,
+  errorGstinReason = '', errorTdsReason = '',
+}) {
+  const noGstin = !vendor.gstNo
+  const onChangeGstinReason = useCallback((e) => onReasonForNoGstin(e.target.value), [onReasonForNoGstin])
+  const onChangeTdsReason = useCallback((e) => onTdsNotApplicableReason(e.target.value), [onTdsNotApplicableReason])
+  const onChangeTdsApplicable = useCallback((e) => onTdsApplicable(e.target.value === 'yes'), [onTdsApplicable])
+
+  const sanctionedAmount = vendor?.sanctionedAmount
+  const disbursedTillDate = vendor?.disbursedTillDate
+
+  const hasError = !!errorGstinReason || !!errorTdsReason
+
   return (
     <Card>
       <CardContent>
-        <SectionTitle title="Vendor Details" subtitle="Autofilled from your vendor record. Managed by SDE." />
+        <SectionTitle
+          step={step} hasError={hasError}
+          title="Vendor Details"
+          subtitle="Autofilled from your vendor record. Managed by SDE."
+        />
+
+        {/* Group 1 — Autofilled (read-only) */}
+        <GroupLabel>Autofilled</GroupLabel>
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <ReadOnlyInput label="Manpower Agency Name" value={vendor.vendorName} />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 3 }}>
+            <ReadOnlyInput label="GSTIN of the Agency" value={vendor.gstNo || 'Not applicable'} mono />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 3 }}>
+            <ReadOnlyInput label="GSTIN of SIDBI" value={SIDBI_GSTIN} mono />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 3 }}>
+            <ReadOnlyInput
+              label="Sanctioned Amount (₹)"
+              value={sanctionedAmount != null ? formatMoney(sanctionedAmount) : ''}
+              placeholder="—" prefix="₹"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 3 }}>
+            <ReadOnlyInput
+              label="Disbursed till date (₹)"
+              value={disbursedTillDate != null ? formatMoney(disbursedTillDate) : ''}
+              placeholder="—" prefix="₹"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <ReadOnlyInput label="Company" value={vendor.companyName} />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <ReadOnlyInput label="Contact Person" value={vendor.contactPerson} />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <ReadOnlyInput
+              label="Contact"
+              value={[vendor.email, vendor.mobileNo].filter(Boolean).join(' · ')}
+              mono
+            />
+          </Grid>
+        </Grid>
+
+        {/* Group 2 — For this disbursement (MPA fills) */}
+        <GroupLabel required>For this disbursement</GroupLabel>
         <Grid container spacing={2}>
-          <ReadField label="Manpower Agency Name" value={vendor.vendorName} span={6} />
-          <ReadField label="GSTIN of the Agency" value={vendor.gstNo} span={3} mono />
-          <ReadField label="GSTIN of SIDBI" value={SIDBI_GSTIN} span={3} mono />
-          <ReadField label="Company" value={vendor.companyName} span={6} />
-          <ReadField label="Contact Person" value={vendor.contactPerson} span={3} />
-          <ReadField label="Contact" value={`${vendor.email || ''} · ${vendor.mobileNo || ''}`} span={3} mono />
+          <Grid size={{ xs: 12, sm: tdsApplicable ? 12 : 4 }}>
+            <TextField
+              select fullWidth size="small"
+              label="Applicability of TDS *"
+              value={tdsApplicable ? 'yes' : 'no'}
+              onChange={onChangeTdsApplicable}
+              helperText="TDS column in the Annexure I table shows only when applicable."
+            >
+              <MenuItem value="yes">Yes — TDS applicable</MenuItem>
+              <MenuItem value="no">No — not applicable</MenuItem>
+            </TextField>
+          </Grid>
+          {!tdsApplicable && (
+            <Grid size={{ xs: 12, sm: 8 }}>
+              <TextField
+                fullWidth size="small"
+                label="If TDS not applicable — reason *"
+                value={tdsNotApplicableReason}
+                onChange={onChangeTdsReason}
+                error={!!errorTdsReason}
+                helperText={errorTdsReason || 'e.g. Below the deduction threshold as per FY declaration.'}
+              />
+            </Grid>
+          )}
+          {noGstin && (
+            <Grid size={12}>
+              <TextField
+                fullWidth size="small"
+                label="If GSTIN not applicable — reason *"
+                value={reasonForNoGstin}
+                onChange={onChangeGstinReason}
+                error={!!errorGstinReason}
+                helperText={errorGstinReason || 'Your vendor record has no GSTIN. Explain the reason (e.g. below the GST threshold).'}
+              />
+            </Grid>
+          )}
         </Grid>
       </CardContent>
     </Card>
@@ -291,11 +487,15 @@ const VendorDetails = memo(function VendorDetails({ vendor }) {
 // "Disbursement Sought" and "Nature of Payment" both derive from the Annexure
 // I total per the spec — displayed here as read-only fields immediately after
 // the table so the connection is visible.
-const DisbursementSummary = memo(function DisbursementSummary({ total, natureOfPayment }) {
+const DisbursementSummary = memo(function DisbursementSummary({ step, total, natureOfPayment }) {
   return (
     <Card>
       <CardContent>
-        <SectionTitle title="Disbursement Summary" subtitle="Auto-derived from the Annexure I table above." />
+        <SectionTitle
+          step={step}
+          title="Disbursement Summary"
+          subtitle="Auto-derived from the Annexure I table above."
+        />
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 4 }}>
             <TextField
@@ -324,87 +524,153 @@ const DisbursementSummary = memo(function DisbursementSummary({ total, natureOfP
 })
 
 // ── Section 2: Resource Selection ──────────────────────────────────────────
+// No outer Card wrapper — this section is a lightweight bar (month/year
+// selectors + count) plus a compact table of the vendor's BSEs. Much
+// smoother visually between the two heavier bordered sections above and
+// below (Vendor Details, Annexure I).
 
 const ResourceSelection = memo(function ResourceSelection({
-  month, setMonth, year, setYear, resources, selectedIds, onToggle, onSelectAll,
+  step, month, setMonth, year, setYear, resources, selectedIds, onToggle, onSelectAll,
+  error = '',
 }) {
   const selectedCount = selectedIds.size
   const allChecked = resources.length > 0 && selectedCount === resources.length
   const partial = selectedCount > 0 && !allChecked
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle title="Resource Selection"
-          subtitle="Pick the cycle month and the BSEs paid this cycle." />
+    <Box>
+      <SectionTitle
+        step={step} hasError={!!error}
+        title="Resource Selection"
+        subtitle="Pick the cycle month and the BSEs paid this cycle."
+      />
+      {error && (
+        <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>
+      )}
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
-          <TextField select size="small" label="Month" value={month}
-            onChange={(e) => setMonth(e.target.value)} sx={{ minWidth: 160 }}>
-            {MONTHS.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-          </TextField>
-          <TextField select size="small" label="Year" value={year}
-            onChange={(e) => setYear(Number(e.target.value))} sx={{ minWidth: 120 }}>
-            {YEARS.map((y) => <MenuItem key={y} value={y}>{y}</MenuItem>)}
-          </TextField>
-          <Box sx={{ flexGrow: 1 }} />
-          <Chip label={`${selectedCount} / ${resources.length} selected`} color="primary"
-            variant={selectedCount ? 'filled' : 'outlined'} sx={{ alignSelf: 'center', fontWeight: 700 }} />
-        </Stack>
+      {/* Toolbar — month + year picker + running select-count */}
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}
+        alignItems={{ sm: 'center' }} sx={{ mb: 1.5 }}>
+        <TextField select size="small" label="Month" value={month}
+          onChange={(e) => setMonth(e.target.value)} sx={{ minWidth: 160 }}>
+          {MONTHS.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+        </TextField>
+        <TextField select size="small" label="Year" value={year}
+          onChange={(e) => setYear(Number(e.target.value))} sx={{ minWidth: 120 }}>
+          {YEARS.map((y) => <MenuItem key={y} value={y}>{y}</MenuItem>)}
+        </TextField>
+        <Box sx={{ flexGrow: 1 }} />
+        {resources.length > 0 && (
+          <Typography variant="body2" color="text.secondary">
+            <Box component="span" sx={{ fontWeight: 700, color: selectedCount ? 'primary.dark' : 'text.primary' }}>
+              {selectedCount}
+            </Box>
+            {' of '}{resources.length}{' selected'}
+          </Typography>
+        )}
+      </Stack>
 
-        {resources.length === 0 ? (
-          <Alert severity="info">
-            No selected BSEs mapped to you yet. Once SIDBI HO onboards resources under your
-            vendor, they&apos;ll appear here.
-          </Alert>
-        ) : (
-          <>
-            <FormControlLabel
-              control={<Checkbox
-                checked={allChecked} indeterminate={partial}
-                onChange={(_, checked) => onSelectAll(checked)} />}
-              label={allChecked ? 'Deselect all' : 'Select all'}
-              sx={{ mb: 0.5 }}
-            />
-            <Divider />
-            <Stack sx={{ maxHeight: 260, overflow: 'auto' }}>
+      {resources.length === 0 ? (
+        <Box sx={{
+          textAlign: 'center', py: 4, px: 2,
+          border: '1px dashed', borderColor: 'divider', borderRadius: 2,
+          bgcolor: 'action.hover',
+        }}>
+          <GroupsOutlinedIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+          <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
+            No resources assigned yet
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 420, mx: 'auto' }}>
+            Once SIDBI HO onboards BSEs under your login, they&apos;ll appear here for
+            you to include in a disbursement.
+          </Typography>
+        </Box>
+      ) : (
+        <Box sx={{
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1.5,
+          overflow: 'hidden',
+        }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'action.hover' }}>
+                <TableCell padding="checkbox" sx={{ width: 44 }}>
+                  <Checkbox
+                    size="small"
+                    checked={allChecked}
+                    indeterminate={partial}
+                    onChange={(_, checked) => onSelectAll(checked)}
+                  />
+                </TableCell>
+                <TableCell sx={{ fontWeight: 700, py: 1 }}>Resource</TableCell>
+                <TableCell sx={{ fontWeight: 700, py: 1 }}>Industry Association</TableCell>
+                <TableCell sx={{ fontWeight: 700, py: 1 }}>Mobile</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700, py: 1 }}>Gross Sal (₹)</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {resources.map((r) => (
                 <ResourceRow key={r.uuid} resource={r}
                   checked={selectedIds.has(r.uuid)} onToggle={onToggle} />
               ))}
-            </Stack>
-          </>
-        )}
-      </CardContent>
-    </Card>
+            </TableBody>
+          </Table>
+        </Box>
+      )}
+    </Box>
   )
 })
 
+// Single BSE row. Whole row is clickable so the user doesn't have to hit the
+// checkbox precisely; selected rows get a subtle tinted background.
 const ResourceRow = memo(function ResourceRow({ resource, checked, onToggle }) {
-  const handleChange = useCallback(() => onToggle(resource.uuid), [onToggle, resource.uuid])
+  const handleClick = useCallback(() => onToggle(resource.uuid), [onToggle, resource.uuid])
   return (
-    <Stack direction="row" alignItems="center" spacing={1.5}
-      sx={{ py: 0.75, borderBottom: '1px solid', borderColor: 'divider', ':last-child': { border: 0 } }}>
-      <Checkbox size="small" checked={checked} onChange={handleChange} />
-      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography fontWeight={600} noWrap>{resource.bseName || '—'}</Typography>
-        <Mono>{resource.industryAssociationName || '—'} · {resource.mobileNumber || '—'}</Mono>
-      </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-        Gross ₹{resource.approvedSalary ?? '—'}
-      </Typography>
-    </Stack>
+    <TableRow
+      hover
+      onClick={handleClick}
+      sx={{
+        cursor: 'pointer',
+        bgcolor: checked ? 'primary.50' : 'inherit',
+        '& td': { borderColor: 'divider' },
+      }}
+    >
+      <TableCell padding="checkbox">
+        <Checkbox
+          size="small"
+          checked={checked}
+          onClick={(e) => e.stopPropagation()}
+          onChange={handleClick}
+        />
+      </TableCell>
+      <TableCell sx={{ fontWeight: 600 }}>{resource.bseName || '—'}</TableCell>
+      <TableCell>{resource.industryAssociationName || '—'}</TableCell>
+      <TableCell><Mono>{resource.mobileNumber || '—'}</Mono></TableCell>
+      <TableCell align="right">
+        <Mono>{resource.approvedSalary != null ? Number(resource.approvedSalary).toLocaleString('en-IN') : '—'}</Mono>
+      </TableCell>
+    </TableRow>
   )
 })
 
 // ── Section 3: Annexure I table ────────────────────────────────────────────
 
-const AnnexureTable = memo(function AnnexureTable({ rows, onSet, total }) {
+const AnnexureTable = memo(function AnnexureTable({ step, rows, onSet, total, showTds, error = '' }) {
+  const colSpan = showTds ? 10 : 9  // total row spans everything before Net Sal
   return (
     <Card>
       <CardContent>
-        <SectionTitle title="Annexure I — BSE-wise Details"
-          subtitle="PF, TDS, and Deductions are editable per row. Net Sal auto-updates. Disbursement Sought = Σ Net Sal." />
+        <SectionTitle
+          step={step} hasError={!!error}
+          title="Annexure I — BSE-wise Details"
+          subtitle={showTds
+            ? 'PF, TDS, and Deductions are editable per row. Net Sal auto-updates. Disbursement Sought = Σ Net Sal.'
+            : 'PF and Deductions are editable per row. TDS column is hidden because TDS is not applicable for this disbursement.'}
+        />
+        {error && (
+          <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>
+        )}
 
         {rows.length === 0 ? (
           <Alert severity="info">Select at least one resource above to build Annexure I.</Alert>
@@ -419,17 +685,19 @@ const AnnexureTable = memo(function AnnexureTable({ rows, onSet, total }) {
                   <TableCell align="right">Working Days</TableCell>
                   <TableCell align="right">Gross Sal (₹)</TableCell>
                   <TableCell align="right">PF (₹)</TableCell>
-                  <TableCell align="right">TDS (₹)</TableCell>
+                  {showTds && <TableCell align="right">TDS (₹)</TableCell>}
                   <TableCell align="right">Deductions (₹)</TableCell>
+                  <TableCell align="right">Additional (₹)</TableCell>
+                  <TableCell>Reason</TableCell>
                   <TableCell align="right">Net Sal (₹)</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {rows.map((r, i) => (
-                  <AnnexureRow key={r.bseId} row={r} index={i + 1} onSet={onSet} />
+                  <AnnexureRow key={r.bseId} row={r} index={i + 1} onSet={onSet} showTds={showTds} />
                 ))}
                 <TableRow>
-                  <TableCell colSpan={8} align="right" sx={{ fontWeight: 700 }}>
+                  <TableCell colSpan={colSpan} align="right" sx={{ fontWeight: 700 }}>
                     Total (Disbursement Sought)
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.dark' }}>
@@ -445,12 +713,16 @@ const AnnexureTable = memo(function AnnexureTable({ rows, onSet, total }) {
   )
 })
 
-const AnnexureRow = memo(function AnnexureRow({ row, index, onSet }) {
+const AnnexureRow = memo(function AnnexureRow({ row, index, onSet, showTds }) {
   const bseId = row.bseId
-  const setPf  = useCallback((e) => onSet(bseId, 'pf',         e.target.value), [bseId, onSet])
-  const setTds = useCallback((e) => onSet(bseId, 'tds',        e.target.value), [bseId, onSet])
-  const setDed = useCallback((e) => onSet(bseId, 'deductions', e.target.value), [bseId, onSet])
+  const setPf  = useCallback((e) => onSet(bseId, 'pf',                e.target.value), [bseId, onSet])
+  const setTds = useCallback((e) => onSet(bseId, 'tds',               e.target.value), [bseId, onSet])
+  const setDed = useCallback((e) => onSet(bseId, 'deductions',        e.target.value), [bseId, onSet])
+  const setAdd = useCallback((e) => onSet(bseId, 'additionalAmount',  e.target.value), [bseId, onSet])
+  const setRsn = useCallback((e) => onSet(bseId, 'additionalReason',  e.target.value), [bseId, onSet])
 
+  // `row.tds` is already forced to 0 upstream when TDS isn't applicable, so
+  // `netSalOf` handles both cases without extra branching here.
   const net = netSalOf(row)
 
   return (
@@ -461,8 +733,10 @@ const AnnexureRow = memo(function AnnexureRow({ row, index, onSet }) {
       <TableCell align="right"><Mono>{row.workingDays ?? '—'}</Mono></TableCell>
       <TableCell align="right"><Mono>{formatMoney(row.grossSalary)}</Mono></TableCell>
       <TableCell align="right"><CellMoney value={row.pf} onChange={setPf} /></TableCell>
-      <TableCell align="right"><CellMoney value={row.tds} onChange={setTds} /></TableCell>
+      {showTds && <TableCell align="right"><CellMoney value={row.tds} onChange={setTds} /></TableCell>}
       <TableCell align="right"><CellMoney value={row.deductions} onChange={setDed} /></TableCell>
+      <TableCell align="right"><CellMoney value={row.additionalAmount} onChange={setAdd} /></TableCell>
+      <TableCell><CellText value={row.additionalReason} onChange={setRsn} /></TableCell>
       <TableCell align="right" sx={{ fontWeight: 700 }}>
         <Mono>{formatMoney(net)}</Mono>
       </TableCell>
@@ -480,31 +754,53 @@ const CellMoney = memo(function CellMoney({ value, onChange }) {
   )
 })
 
+const CellText = memo(function CellText({ value, onChange }) {
+  return (
+    <TextField
+      size="small" value={value ?? ''} onChange={onChange}
+      placeholder="Reason (optional)"
+      sx={{ minWidth: 160 }}
+    />
+  )
+})
+
 // ── Section 4: Invoice Details ─────────────────────────────────────────────
 
 const InvoiceDetails = memo(function InvoiceDetails({
-  date, onDate, number, onNumber, value, onValue, gstAmount, total,
+  step, date, onDate, number, onNumber, value, onValue, gstAmount, total,
+  errorDate = '', errorNumber = '', errorValue = '',
 }) {
   const setDate = useCallback((e) => onDate(e.target.value), [onDate])
   const setNumber = useCallback((e) => onNumber(e.target.value), [onNumber])
   const setValue = useCallback((e) => onValue(e.target.value), [onValue])
+  const hasError = !!(errorDate || errorNumber || errorValue)
 
   return (
     <Card>
       <CardContent>
-        <SectionTitle title="Invoice Details" subtitle="Invoice Date / Number / Value are also modifiable at HO Maker level." />
+        <SectionTitle
+          step={step} hasError={hasError}
+          title="Invoice Details"
+          subtitle="Invoice Date / Number / Value are also modifiable at HO Maker level."
+        />
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField fullWidth size="small" type="date" label="Invoice Date *"
-              InputLabelProps={{ shrink: true }} value={date} onChange={setDate} />
+              InputLabelProps={{ shrink: true }} value={date} onChange={setDate}
+              error={!!errorDate}
+              helperText={errorDate || ' '} />
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField fullWidth size="small" label="Invoice Number *"
-              value={number} onChange={setNumber} />
+              value={number} onChange={setNumber}
+              error={!!errorNumber}
+              helperText={errorNumber || ' '} />
           </Grid>
           <Grid size={{ xs: 12, sm: 2 }}>
             <TextField fullWidth size="small" type="number" label="Value of Service *"
               value={value} onChange={setValue}
+              error={!!errorValue}
+              helperText={errorValue || ' '}
               InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
           </Grid>
           <Grid size={{ xs: 12, sm: 2 }}>
@@ -527,23 +823,36 @@ const InvoiceDetails = memo(function InvoiceDetails({
 
 // ── Section 5: TDS & Compliance ────────────────────────────────────────────
 
-const TdsAndCompliance = memo(function TdsAndCompliance({ vendor, compliance, onCompliance }) {
+// TDS applicability + reason live in Vendor Details (per the spec's autofill
+// block at the top). This section is just the row-12 compliance toggle plus
+// the row-11 read-only Account Code.
+const ComplianceSection = memo(function ComplianceSection({ step, compliance, onCompliance, error = '' }) {
   return (
     <Card>
       <CardContent>
-        <SectionTitle title="TDS & Compliance" subtitle="TDS applicability is inferred from your vendor profile. Compliance confirmation is required to submit." />
+        <SectionTitle
+          step={step} hasError={!!error}
+          title="Compliance"
+          subtitle="Confirm pre-disbursement terms before submitting. Modifiable at HO Maker level."
+        />
         <Grid container spacing={2} alignItems="center">
-          <ReadField label="Applicability of TDS"
-            value={vendor?.tdsApplicable ? 'Yes' : 'No'} span={3} />
-          <ReadField label="Account Code" value={DEFAULT_ACCOUNT_CODE} span={3} mono />
-          <Grid size={{ xs: 12, sm: 6 }}>
+          <Grid size={{ xs: 12, sm: 3 }}>
+            <ReadOnlyInput label="Account Code" value={DEFAULT_ACCOUNT_CODE} mono />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 9 }}>
             <FormControlLabel
               control={<Switch checked={compliance}
                 onChange={(_, v) => onCompliance(v)} />}
               label={compliance
                 ? 'Compliance of pre-disbursement terms confirmed'
                 : 'Confirm compliance of pre-disbursement terms & conditions *'}
+              sx={{ color: error ? 'error.main' : undefined }}
             />
+            {error && (
+              <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5, ml: 4.5 }}>
+                {error}
+              </Typography>
+            )}
           </Grid>
         </Grid>
       </CardContent>
@@ -553,15 +862,117 @@ const TdsAndCompliance = memo(function TdsAndCompliance({ vendor, compliance, on
 
 // ── Shared bits ────────────────────────────────────────────────────────────
 
-const SectionTitle = memo(function SectionTitle({ title, subtitle }) {
+// Section title with a numbered step badge on the left. Colour comes from
+// `hasError` — red circle if the section has any inline error, primary blue
+// otherwise. Keeps the eye moving through the page in order.
+const SectionTitle = memo(function SectionTitle({ step, title, subtitle, hasError }) {
   return (
-    <Box sx={{ mb: 2 }}>
-      <Typography variant="subtitle1" fontWeight={700}>{title}</Typography>
-      {subtitle && <Typography variant="body2" color="text.secondary">{subtitle}</Typography>}
+    <Stack direction="row" spacing={1.75} alignItems="flex-start" sx={{ mb: 2 }}>
+      {step != null && (
+        <Box sx={{
+          width: 30, height: 30, borderRadius: '50%',
+          bgcolor: hasError ? 'error.main' : 'primary.main',
+          color: 'primary.contrastText',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 700, fontSize: '0.9rem', flexShrink: 0, mt: 0.25,
+        }}>
+          {step}
+        </Box>
+      )}
+      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Typography variant="subtitle1" fontWeight={700}>{title}</Typography>
+        {subtitle && <Typography variant="body2" color="text.secondary">{subtitle}</Typography>}
+      </Box>
+    </Stack>
+  )
+})
+
+// Sticky-footer summary. Shows a green "ready to submit" chip when the form
+// is valid; otherwise a red chip with the first blocker so the user knows
+// exactly what to fix. Plus a compact total-and-count chip.
+const StatusChipsFooter = memo(function StatusChipsFooter({ isValid, firstError, selectedCount, total }) {
+  return (
+    <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+      {isValid ? (
+        <Chip
+          size="small" color="success" variant="filled"
+          icon={<CheckCircleOutlineIcon />}
+          label="Ready to submit"
+          sx={{ fontWeight: 700 }}
+        />
+      ) : (
+        <Chip
+          size="small" color="warning" variant="filled"
+          icon={<ErrorOutlineIcon />}
+          label={firstError || 'Complete the highlighted fields'}
+          sx={{ fontWeight: 600, maxWidth: 520 }}
+        />
+      )}
+      <Chip
+        size="small" variant="outlined"
+        label={`${selectedCount} BSE${selectedCount === 1 ? '' : 's'} · ₹${total.toLocaleString('en-IN')}`}
+      />
+    </Stack>
+  )
+})
+
+// Sub-section header inside a Card — used to visually separate the read-only
+// "Autofilled" block from the "For this disbursement" inputs. Small, subdued.
+const GroupLabel = memo(function GroupLabel({ children, required }) {
+  return (
+    <Typography
+      variant="overline"
+      sx={{
+        display: 'block',
+        color: 'text.secondary',
+        letterSpacing: '0.14em',
+        mb: 1.25,
+        borderLeft: 3,
+        borderColor: required ? 'primary.main' : 'action.disabled',
+        pl: 1,
+      }}
+    >
+      {children}{required && ' — please fill below'}
+    </Typography>
+  )
+})
+
+// Plain-text label + value. Replaces the previous filled-TextField look —
+// autofilled data now reads as clean typography, not as inputs the user
+// might mistake for editable. Small overline label above, value below.
+const ReadOnlyInput = memo(function ReadOnlyInput({ label, value, mono, prefix, placeholder }) {
+  const display = value === '' || value == null
+    ? (placeholder || '—')
+    : value
+  const isEmpty = value === '' || value == null
+  return (
+    <Box sx={{ py: 0.25 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.7rem' }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        sx={{
+          mt: 0.25,
+          fontWeight: 600,
+          fontSize: '0.95rem',
+          color: isEmpty ? 'text.disabled' : 'text.primary',
+          fontFamily: mono ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' : undefined,
+          wordBreak: 'break-word',
+        }}
+      >
+        {prefix && <Box component="span" sx={{ color: 'text.secondary', mr: 0.5 }}>{prefix}</Box>}
+        {display}
+      </Typography>
     </Box>
   )
 })
 
+// Kept as a fallback for any legacy caller (Disbursement Summary etc. still
+// uses it). Prefer `<ReadOnlyInput />` in new code.
 function ReadField({ label, value, span = 6, mono }) {
   return (
     <Grid size={{ xs: 12, sm: span }}>
@@ -598,18 +1009,60 @@ function formatMoney(v) {
   return Number(v).toLocaleString('en-IN')
 }
 
-function validate({ annexureRows, invoiceDate, invoiceNumber, invoiceValue, compliance }) {
-  if (annexureRows.length === 0) return 'Select at least one BSE for this disbursement.'
-  for (const r of annexureRows) {
-    if (Number(r.workingDays) <= 0) return `${r.bseName}: working days must be greater than 0.`
-    if (Number(r.pf) < 0) return `${r.bseName}: PF cannot be negative.`
-    if (Number(r.tds) < 0) return `${r.bseName}: TDS cannot be negative.`
-    if (Number(r.deductions) < 0) return `${r.bseName}: Deductions cannot be negative.`
-    if (netSalOf(r) <= 0) return `${r.bseName}: Net Sal must be greater than 0 (check PF/TDS/Deductions).`
+// Compute every field-level error in one pass. Returns an object keyed by
+// field name so inline inputs can pick up their own error text; also stores
+// the first-in-order blocker as `_first` for the sticky footer + toast.
+function computeErrors({
+  vendor, annexureRows, invoiceDate, invoiceNumber, invoiceValue, compliance,
+  tdsApplicable, tdsNotApplicableReason, reasonForNoGstin,
+}) {
+  const e = {}
+  const set = (k, msg) => { if (!e[k]) e[k] = msg }
+
+  // Vendor Details (conditional inputs)
+  if (!vendor?.gstNo && !reasonForNoGstin.trim()) {
+    set('reasonForNoGstin', 'Reason is required when the vendor has no GSTIN.')
   }
-  if (!invoiceDate) return 'Invoice date is required.'
-  if (!invoiceNumber?.trim()) return 'Invoice number is required.'
-  if (invoiceValue === '' || Number(invoiceValue) <= 0) return 'Value of service must be greater than 0.'
-  if (!compliance) return 'You must confirm compliance of pre-disbursement terms & conditions.'
-  return null
+  if (!tdsApplicable && !tdsNotApplicableReason.trim()) {
+    set('tdsNotApplicableReason', 'Reason is required when TDS is not applicable.')
+  }
+
+  // Resource selection + Annexure rows
+  if (annexureRows.length === 0) {
+    set('resources', 'Select at least one BSE for this disbursement.')
+  } else {
+    // Backend scopes each disbursement to a single IA via `registrationUuid`
+    // — one disbursement = one IA. Block cross-IA selection with a clear
+    // message telling the user to split the note.
+    const uniqueIas = new Set(annexureRows.map((r) => r.iaId).filter(Boolean))
+    if (uniqueIas.size > 1) {
+      set('resources', 'Selected BSEs span multiple IAs. Raise a separate disbursement per IA.')
+    }
+    // First blocking row-level issue (so the footer message names the BSE).
+    for (const r of annexureRows) {
+      if (Number(r.workingDays) <= 0) { set('rows', `${r.bseName}: working days must be greater than 0.`); break }
+      if (Number(r.pf) < 0) { set('rows', `${r.bseName}: PF cannot be negative.`); break }
+      if (Number(r.tds) < 0) { set('rows', `${r.bseName}: TDS cannot be negative.`); break }
+      if (Number(r.deductions) < 0) { set('rows', `${r.bseName}: Deductions cannot be negative.`); break }
+      if (netSalOf(r) <= 0) { set('rows', `${r.bseName}: Net Sal must be greater than 0 — adjust PF / TDS / Deductions.`); break }
+    }
+  }
+
+  // Invoice
+  if (!invoiceDate) set('invoiceDate', 'Invoice date is required.')
+  if (!invoiceNumber?.trim()) set('invoiceNumber', 'Invoice number is required.')
+  if (invoiceValue === '' || Number(invoiceValue) <= 0) {
+    set('invoiceValue', 'Value of service must be greater than 0.')
+  }
+
+  // Compliance
+  if (!compliance) set('compliance', 'Confirm compliance to submit.')
+
+  // Preserve reading order so the "first problem" chip matches how the user
+  // scans the page top-to-bottom.
+  e._first = e.reasonForNoGstin || e.tdsNotApplicableReason
+    || e.resources || e.rows
+    || e.invoiceDate || e.invoiceNumber || e.invoiceValue
+    || e.compliance || null
+  return e
 }

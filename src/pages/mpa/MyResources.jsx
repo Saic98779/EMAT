@@ -7,21 +7,21 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import SearchIcon from '@mui/icons-material/Search'
 import { PageHeader, Mono } from '../../components/shared'
 import { useAuth } from '../../auth'
-import { useMyVendor, useBseByVendorSelected } from '../../queries'
+import { useMyVendor, useBseByUserSelected } from '../../queries'
 
 // Manpower Agency workspace — "View My Resources".
 // Grid per spec: S.No · IA Name · Resource Name · Mob No · Email · Selection Date.
-// Source: GET /bse-recommendations/vendor/{vendorUuid}/selected — filtered
+// Source: GET /bse-recommendations/user/{userId}/selected — filtered
 // to committee-selected BSEs mapped to the logged-in vendor.
 export default function MyResources() {
   const { user } = useAuth()
 
-  // Resolve the logged-in Manpower Agency user → their vendor record. The
-  // hook currently matches by email (workaround); when backend surfaces
-  // vendorUuid on the login response, we replace this with that instead.
+  // Vendor is still resolved for the header display (name / logo etc.), but
+  // the BSE list now keys off `user.userId` directly — backend switched from
+  // vendor-linked to user-linked BSE assignment. No round-trip to /vendor is
+  // needed to know which BSEs are ours.
   const vendorQ = useMyVendor(user?.email)
-  const vendorUuid = vendorQ.data?.vendorId
-  const bsesQ = useBseByVendorSelected(vendorUuid)
+  const bsesQ = useBseByUserSelected(user?.userId)
 
   const [q, setQ] = useState('')
   const rows = useMemo(() => {
@@ -48,7 +48,7 @@ export default function MyResources() {
           <Button variant="outlined"
             startIcon={refetching ? <CircularProgress size={16} /> : <RefreshIcon />}
             onClick={() => bsesQ.refetch()}
-            disabled={!vendorUuid || bsesQ.isLoading}>
+            disabled={!user?.userId || bsesQ.isLoading}>
             {refetching ? 'Refreshing…' : 'Refresh'}
           </Button>
         }

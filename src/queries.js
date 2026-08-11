@@ -38,18 +38,22 @@ import {
   listBseRecommendationsByHoStatus,
   listBseRecommendationsByMappedStatus,
   listBseRecommendationsByRegistration,
-  listBseByVendorSelected,
+  listBseByUserSelected,
   createBseRecommendation,
   updateBseRecommendation,
   fromDto as bseFromDto,
 } from './apis/bseRecommendations'
-import { searchUsers, unwrapList as unwrapUsers } from './apis/users'
+import { searchUsers, listUsersByRole, unwrapList as unwrapUsers } from './apis/users'
 import { listBranchesByState, listSdesByBranch } from './apis/dropdowns'
 import {
   listVendors, getVendor, createVendor, updateVendor, deleteVendor,
   listVendorsDropdown,
 } from './apis/vendors'
 import { listFiles } from './apis/files'
+import {
+  listVendorDisbursements, getVendorDisbursement,
+  updateVendorDisbursement, deleteVendorDisbursement,
+} from './apis/vendorDisbursements'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -74,11 +78,12 @@ export const keys = {
     byHoStatus: (status) => ['bse', 'ho-status', status],
     byMappedStatus: (status) => ['bse', 'mapped', status],
     byRegistration: (regUuid) => ['bse', 'byRegistration', regUuid],
-    byVendorSelected: (vendorUuid) => ['bse', 'byVendorSelected', vendorUuid],
+    byUserSelected: (userId) => ['bse', 'byUserSelected', String(userId)],
   },
   users: {
     all: ['users'],
     search: (params) => ['users', 'search', params],
+    byRole: (role) => ['users', 'byRole', role],
   },
   branches: {
     byState: (state) => ['branches', 'byState', state],
@@ -91,6 +96,11 @@ export const keys = {
     lists: () => ['vendors', 'list'],
     detail: (uuid) => ['vendors', 'detail', uuid],
     dropdown: () => ['vendors', 'dropdown'],
+  },
+  vendorDisbursements: {
+    all: ['vendor-disbursements'],
+    lists: () => ['vendor-disbursements', 'list'],
+    detail: (id) => ['vendor-disbursements', 'detail', String(id)],
   },
   files: {
     byRegistration: (regUuid) => ['files', 'byRegistration', regUuid],
@@ -326,11 +336,11 @@ export function useBseByRegistration(regUuid) {
 // the vendor's own resource pool (View My Resources + Raise Disbursement).
 // Returns the raw DTOs (not `fromDto`-adapted) because we want the extra
 // vendor-side fields like `iaSelected`, `vendorName`, `createdAt`.
-export function useBseByVendorSelected(vendorUuid) {
+export function useBseByUserSelected(userId) {
   return useQuery({
-    queryKey: keys.bse.byVendorSelected(vendorUuid),
-    enabled: !!vendorUuid,
-    queryFn: ({ signal }) => listBseByVendorSelected(vendorUuid, { signal }).then(unwrapList),
+    queryKey: keys.bse.byUserSelected(userId),
+    enabled: userId != null,
+    queryFn: ({ signal }) => listBseByUserSelected(userId, { signal }).then(unwrapList),
   })
 }
 
@@ -362,6 +372,18 @@ export function useUsersSearch(params) {
     queryKey: keys.users.search(params),
     enabled: !!params && Object.values(params).some(Boolean),
     queryFn: ({ signal }) => searchUsers(params, { signal }).then((d) => unwrapUsers(d)),
+  })
+}
+
+// All users with a given role — e.g. `MANPOWER_AGENCY` for the vendor picker
+// on the BSE candidate form. Returns `[{ id, username, firstName, lastName,
+// email, district, state, ... }]`.
+export function useUsersByRole(role) {
+  return useQuery({
+    queryKey: keys.users.byRole(role),
+    enabled: !!role,
+    queryFn: ({ signal }) => listUsersByRole(role, { signal }).then((d) => unwrapUsers(d)),
+    staleTime: 5 * 60_000,
   })
 }
 
@@ -487,5 +509,43 @@ export function useFilesByRegistration(regUuid) {
     queryKey: keys.files.byRegistration(regUuid),
     enabled: !!regUuid,
     queryFn: ({ signal }) => listFiles(regUuid, { signal }),
+  })
+}
+
+// ── Vendor disbursements (HO Maker review) ────────────────────────────────
+// MPA raises disbursements via `createVendorDisbursement`; HO Maker reviews
+// them through the list + detail + PUT hooks below.
+
+export function useVendorDisbursements() {
+  return useQuery({
+    queryKey: keys.vendorDisbursements.lists(),
+    queryFn: ({ signal }) => listVendorDisbursements({ signal }).then(unwrapList),
+  })
+}
+
+export function useVendorDisbursement(id) {
+  return useQuery({
+    queryKey: keys.vendorDisbursements.detail(id),
+    enabled: id != null,
+    queryFn: ({ signal }) => getVendorDisbursement(id, { signal }),
+  })
+}
+
+export function useUpdateVendorDisbursement() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }) => updateVendorDisbursement(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.vendorDisbursements.detail(id), updated)
+      qc.invalidateQueries({ queryKey: keys.vendorDisbursements.all })
+    },
+  })
+}
+
+export function useDeleteVendorDisbursement() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => deleteVendorDisbursement(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.vendorDisbursements.all }),
   })
 }
