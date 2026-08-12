@@ -16,7 +16,9 @@ import { useVendors, useCreateVendor, useUpdateVendor, useDeleteVendor } from '.
 import { STATES, districtsOf } from '../../geo'
 
 const EMPTY_VENDOR = {
-  vendorName: '', companyName: '', contactPerson: '', email: '', mobileNo: '',
+  vendorName: '', companyName: '',
+  spocName: '', spocMobileNo: '',
+  email: '', mobileNo: '',
   gstNo: '', panNo: '',
   address: '', district: '', state: '', pinCode: '',
   bankName: '', accountNumber: '', ifscCode: '', branchName: '',
@@ -51,6 +53,7 @@ function firstProblem(v) {
   }
   return (
     opt(v.mobileNo,      'mobile',  'Mobile') ||
+    opt(v.spocMobileNo,  'mobile',  'SPOC Mobile') ||
     opt(v.pinCode,       'pin',     'Pincode') ||
     opt(v.gstNo,         'gst',     'GSTIN') ||
     opt(v.panNo,         'pan',     'PAN') ||
@@ -75,7 +78,7 @@ export default function Vendors() {
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
     if (!term) return vendors
-    return vendors.filter((v) => [v.vendorName, v.companyName, v.contactPerson, v.email, v.gstNo]
+    return vendors.filter((v) => [v.vendorName, v.companyName, v.spocName, v.email, v.gstNo]
       .some((f) => (f || '').toLowerCase().includes(term)))
   }, [vendors, q])
 
@@ -179,8 +182,8 @@ export default function Vendors() {
                     <Mono>{v.companyName || '—'}</Mono>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2">{v.contactPerson || '—'}</Typography>
-                    <Mono>{v.email} · {v.mobileNo}</Mono>
+                    <Typography variant="body2">{v.spocName || '—'}</Typography>
+                    <Mono>{v.email} · {v.spocMobileNo || v.mobileNo}</Mono>
                   </TableCell>
                   <TableCell><Mono>{v.gstNo || '—'}</Mono></TableCell>
                   <TableCell>
@@ -288,7 +291,8 @@ function VendorDialog({ open, initial, saving, onClose, onSave }) {
           <Grid container spacing={2}>
             <GridCell><Field name="vendorName" value={v.vendorName} onSet={set} label="Vendor Name *" disabled={saving} /></GridCell>
             <GridCell><Field name="companyName" value={v.companyName} onSet={set} label="Company Name" disabled={saving} /></GridCell>
-            <GridCell><Field name="contactPerson" value={v.contactPerson} onSet={set} label="Contact Person" disabled={saving} /></GridCell>
+            <GridCell><Field name="spocName" value={v.spocName} onSet={set} label="SPOC Name" disabled={saving} /></GridCell>
+            <GridCell><Field name="spocMobileNo" value={v.spocMobileNo} onSet={set} label="SPOC Mobile" disabled={saving} /></GridCell>
             <GridCell><Field name="email" value={v.email} onSet={set} label="Email *" type="email" disabled={saving} /></GridCell>
             <GridCell><Field name="mobileNo" value={v.mobileNo} onSet={set} label="Mobile" disabled={saving} /></GridCell>
           </Grid>
