@@ -33,6 +33,20 @@ export function updateVendorDisbursement(id, values, { signal } = {}) {
   })
 }
 
+// PUT /bse-salary/{id} for reviewers (GT / HO). Sends ONLY the fields the
+// reviewer changed — no re-echoing of financials, no `toPayload` round-trip.
+// Assumes backend applies non-null fields to the existing entity (Spring-
+// style merge-on-PUT). If backend turns out to hard-replace, financial
+// fields would null out on the next GET — swap this for the full-record
+// merge in `toReviewerPayload` below.
+export function reviewerUpdateVendorDisbursement(id, patch, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: patch,
+    signal,
+  })
+}
+
 // DELETE /vendor-disbursements/{id}
 export function deleteVendorDisbursement(id, { signal } = {}) {
   return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
@@ -113,20 +127,100 @@ export function toPayload(v = {}) {
     verifiedBy: str(v.verifiedBy),      // GT stamps this on verification
     approvedBy: str(v.approvedBy),      // HO stamps this on approval
 
-    // One detail row per BSE. `bseId` now sits inside each row so the note
-    // can span multiple resources.
-    details: rows.map((r) => ({
-      bseId: str(r.bseId),
-      salaryMonth: str(r.salaryMonth || v.salaryMonth),
-      salaryDays: int(r.workingDays),
-      paidDays: int(r.workingDays),
-      additionalAmount: num(r.additionalAmount),
-      additionalAmountReason: str(r.additionalReason),
-      paymentToBse: netSalOf(r),
-      gtAttendanceComments: str(r.gtAttendanceComments),
-      gtAdditionalComments: str(r.gtAdditionalComments),
-      monthlySalary: num(r.grossSalary),
-    })),
+    // One detail row per BSE. `bseId` identifies the BSE for POST (new
+    // rows); `id` is the salary-detail row's own PK, sent on PUT so the
+    // backend can match existing rows without needing bseId (which the
+    // backend GET currently doesn't return — see monthlySalaryDetails
+    // schema). `id` is omitted when null so POST payloads stay clean.
+    details: rows.map((r) => {
+      const detailId = int(r.id)
+      const row = {
+        bseId: str(r.bseId),
+        salaryMonth: str(r.salaryMonth || v.salaryMonth),
+        salaryDays: int(r.workingDays),
+        paidDays: int(r.workingDays),
+        additionalAmount: num(r.additionalAmount),
+        additionalAmountReason: str(r.additionalReason),
+        paymentToBse: netSalOf(r),
+        gtAttendanceComments: str(r.gtAttendanceComments),
+        gtAdditionalComments: str(r.gtAdditionalComments),
+        monthlySalary: num(r.grossSalary),
+      }
+      if (detailId != null) row.id = detailId
+      return row
+    }),
+  }
+}
+
+// ── Reviewer-only payload ─────────────────────────────────────────────────
+// The regular `toPayload` above is fine for the creator (MPA) — it starts
+// from the full form values and (re)computes every derived field. That's
+// exactly what we DON'T want on a reviewer PUT: reviewers only ever change
+// a handful of fields, and the GET response the frontend uses as its
+// starting point is lossy (backend doesn't return `monthlySalary` /
+// `bseId` on the detail rows, so recomputing `paymentToBse` from the GET'd
+// row yields `additionalAmount` only → the ₹49,797 → ₹2,000 corruption bug
+// we saw on the GT dialog).
+//
+// This adapter sends the existing DTO verbatim and overlays ONLY the fields
+// each reviewer role owns:
+//   patch = {
+//     // Any top-level fields the reviewer wants to change:
+//     verifiedBy, approvedBy, status, recommendation,
+//     recommendedDisbursementAmount, complianceTerms,
+//     // HO can also edit invoice — gstAmount/totalAmount will be recomputed
+//     // ONLY when invoiceValue is in the patch:
+//     invoiceDate, invoiceNumber, invoiceValue,
+//     // Per-detail-row edits, keyed by row id (never by index — indexes
+//     // aren't stable across GETs):
+//     detailPatches: {
+//       [id]: { gtAttendanceComments, gtAdditionalComments },
+//     },
+//   }
+//
+// Everything else on the DTO passes through untouched. `paymentToBse`,
+// `disbursementSoughtIn`, per-row `monthlySalary`, `bseId`, etc. are
+// preserved as the backend gave them to us.
+export function toReviewerPayload(existingDto = {}, patch = {}) {
+  const {
+    invoiceDate, invoiceNumber, invoiceValue,
+    detailPatches,
+    ...topPatch
+  } = patch
+
+  // Invoice value edits (HO only) → recompute the two derived amounts. If
+  // the value isn't in the patch, leave the existing DTO's values alone.
+  const derived = {}
+  if (invoiceValue !== undefined) {
+    const v = num(invoiceValue)
+    derived.invoiceValue = v
+    derived.gstAmount = v != null ? +(v * 0.18).toFixed(2) : null
+    derived.totalAmount = v != null ? +(v * 1.18).toFixed(2) : null
+  }
+  if (invoiceDate !== undefined) derived.invoiceDate = toIsoDate(invoiceDate)
+  if (invoiceNumber !== undefined) derived.invoiceNumber = str(invoiceNumber)
+
+  // Preserve the detail rows verbatim; overlay only per-row comment patches
+  // matched on `id`. Backend gives us `monthlySalaryDetails`; older builds
+  // used `details`. Look at both.
+  const existingRows = Array.isArray(existingDto.monthlySalaryDetails)
+    ? existingDto.monthlySalaryDetails
+    : Array.isArray(existingDto.details)
+      ? existingDto.details
+      : []
+  const detailPatchMap = detailPatches || {}
+
+  const details = existingRows.map((row) => {
+    const p = row.id != null ? detailPatchMap[row.id] : null
+    if (!p) return row
+    return { ...row, ...p }
+  })
+
+  return {
+    ...existingDto,
+    ...topPatch,
+    ...derived,
+    details,
   }
 }
 

@@ -255,11 +255,13 @@ function ExpandedDetail({ d, rows }) {
                 <TableHead>
                   <TableRow>
                     <TableCell width={40}>#</TableCell>
+                    <TableCell>BSE</TableCell>
                     <TableCell>Salary Month</TableCell>
                     <TableCell align="right">Salary Days</TableCell>
                     <TableCell align="right">Paid Days</TableCell>
                     <TableCell align="right">Additional (₹)</TableCell>
                     <TableCell>Reason</TableCell>
+                    <TableCell>GT Attendance</TableCell>
                     <TableCell align="right">Payment (₹)</TableCell>
                   </TableRow>
                 </TableHead>
@@ -267,6 +269,9 @@ function ExpandedDetail({ d, rows }) {
                   {rows.map((r, i) => (
                     <TableRow key={r.id ?? `${r.salaryMonth}-${i}`} hover>
                       <TableCell><Mono>{i + 1}</Mono></TableCell>
+                      <TableCell>
+                        <Typography fontWeight={600} fontSize="0.88rem">{r.bseName || '—'}</Typography>
+                      </TableCell>
                       <TableCell>{r.salaryMonth || '—'}</TableCell>
                       <TableCell align="right">{r.salaryDays ?? '—'}</TableCell>
                       <TableCell align="right">{r.paidDays ?? '—'}</TableCell>
@@ -274,13 +279,18 @@ function ExpandedDetail({ d, rows }) {
                       <TableCell sx={{ color: r.additionalAmountReason ? 'text.primary' : 'text.disabled' }}>
                         {r.additionalAmountReason || '—'}
                       </TableCell>
+                      <TableCell sx={{ maxWidth: 180 }}>
+                        {r.gtAttendanceComments
+                          ? <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{r.gtAttendanceComments}</Typography>
+                          : <Typography variant="body2" color="text.disabled">Pending</Typography>}
+                      </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 700 }}>
                         {formatMoney(r.paymentToBse)}
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow sx={{ bgcolor: 'grey.50' }}>
-                    <TableCell colSpan={6} align="right" sx={{ fontWeight: 700, letterSpacing: '0.04em' }}>
+                    <TableCell colSpan={8} align="right" sx={{ fontWeight: 700, letterSpacing: '0.04em' }}>
                       TOTAL
                     </TableCell>
                     <TableCell align="right" sx={{ fontWeight: 800, color: 'primary.dark', fontSize: '0.95rem' }}>

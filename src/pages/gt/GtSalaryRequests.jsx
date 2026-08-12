@@ -9,7 +9,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import { PageHeader, Mono } from '../../components/shared'
 import { useAuth } from '../../auth'
-import { useVendorDisbursements, useUpdateVendorDisbursement } from '../../queries'
+import { useVendorDisbursements, useReviewerUpdateVendorDisbursement } from '../../queries'
 
 // GT Field Team — Salary Requests queue.
 //
@@ -194,7 +194,7 @@ const QueueRow = memo(function QueueRow({ row, onOpen }) {
 // details[] carrying gtAttendanceComments + gtAdditionalComments.
 // On Reject → PUT with `recommendation: false` + `status: "Rejected by GT"`.
 function ReviewDialog({ open, row, gtUsername, onClose, onToast }) {
-  const updateM = useUpdateVendorDisbursement()
+  const updateM = useReviewerUpdateVendorDisbursement()
   const [comments, setComments] = useState({})  // { [rowKey]: { att, add } }
 
   const details = detailsOf(row)
@@ -223,28 +223,6 @@ function ReviewDialog({ open, row, gtUsername, onClose, onToast }) {
     }))
   }, [])
 
-  const buildMergedDetails = useCallback(() => (
-    details.map((d, i) => {
-      const c = comments[detailKey(d, i)] || { att: '', add: '' }
-      return {
-        // Preserve everything from the GET response; only the two comment
-        // fields change. `bseId` isn't returned by the backend GET yet, so
-        // POST-side adapter fields (bseId, workingDays, grossSalary) are
-        // taken from what we have; missing bseId is passed as null and the
-        // backend keeps the existing linkage on PUT.
-        id: d.id,
-        bseId: d.bseId ?? null,
-        salaryMonth: d.salaryMonth,
-        workingDays: d.salaryDays ?? d.paidDays,
-        grossSalary: d.monthlySalary,
-        additionalAmount: d.additionalAmount,
-        additionalReason: d.additionalAmountReason,
-        gtAttendanceComments: c.att || null,
-        gtAdditionalComments: c.add || null,
-      }
-    })
-  ), [details, comments])
-
   const submit = useCallback(async () => {
     if (!row) return
     const id = row.id ?? row.uuid
@@ -263,13 +241,27 @@ function ReviewDialog({ open, row, gtUsername, onClose, onToast }) {
       onToast({ severity: 'warning', msg: `Add an attendance comment for ${d.bseName || `row ${missingIdx + 1}`} before verifying.` })
       return
     }
+    // Minimal patch — only the fields GT actually changed. Backend is
+    // expected to apply non-null fields to the existing entity and leave
+    // everything else (invoice, monthlySalaryDetails financials, bseId
+    // linkage) untouched.
+    const detailPatches = details
+      .map((d, i) => {
+        const c = comments[detailKey(d, i)] || { att: '', add: '' }
+        if (d.id == null) return null   // can't match without id — skip
+        return {
+          id: d.id,
+          gtAttendanceComments: c.att || null,
+          gtAdditionalComments: c.add || null,
+        }
+      })
+      .filter(Boolean)
     try {
       await updateM.mutateAsync({
         id,
-        values: {
-          ...row,
-          rows: buildMergedDetails(),
+        patch: {
           verifiedBy: gtUsername || 'GT',
+          monthlySalaryDetails: detailPatches,
         },
       })
       onToast({ severity: 'success', msg: 'Verified and sent to HO Maker.' })
@@ -277,7 +269,7 @@ function ReviewDialog({ open, row, gtUsername, onClose, onToast }) {
     } catch (err) {
       onToast({ severity: 'error', msg: err.message || 'Failed to save GT review.' })
     }
-  }, [row, details, comments, buildMergedDetails, gtUsername, updateM, onClose, onToast])
+  }, [row, details, comments, gtUsername, updateM, onClose, onToast])
 
   if (!row) return null
   const busy = updateM.isPending

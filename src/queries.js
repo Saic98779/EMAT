@@ -52,7 +52,8 @@ import {
 import { listFiles } from './apis/files'
 import {
   listVendorDisbursements, getVendorDisbursement,
-  updateVendorDisbursement, deleteVendorDisbursement,
+  updateVendorDisbursement, reviewerUpdateVendorDisbursement,
+  deleteVendorDisbursement,
 } from './apis/vendorDisbursements'
 import {
   listBseAttendance, getBseAttendance, createBseAttendance,
@@ -146,6 +147,15 @@ export function useIAs({ enabled = true } = {}) {
   return useQuery({
     queryKey: keys.ias.lists(),
     enabled,
+    // Big joined payload (registrations + appraisals). Every IA mutation
+    // already invalidates the cache, so a long stale window here only
+    // skips redundant refetches during idle navigation — the data isn't
+    // actually stale, we just stop re-hitting two big endpoints on every
+    // page mount of the sidebar's live-badge hook.
+    staleTime: 5 * 60 * 1000,   // 5 min
+    gcTime: 30 * 60 * 1000,     // keep in memory 30 min after last use
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     queryFn: async ({ signal }) => {
       const [regsRaw, apprsRaw] = await Promise.all([
         listIndustryAssociations({ signal }),
@@ -214,6 +224,11 @@ export function useAppraisals({ enabled = true } = {}) {
   return useQuery({
     queryKey: keys.appraisals.lists(),
     enabled,
+    // Same rationale as useIAs — cache aggressively; mutations invalidate.
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     queryFn: ({ signal }) => listAppraisals({ signal }).then((d) => unwrapList(d).map(appraisalFromDto)),
   })
 }
@@ -573,6 +588,19 @@ export function useUpdateVendorDisbursement() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, values }) => updateVendorDisbursement(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.vendorDisbursements.detail(id), updated)
+      qc.invalidateQueries({ queryKey: keys.vendorDisbursements.all })
+    },
+  })
+}
+
+// Minimal PUT for reviewer roles (GT, HO). Sends only the reviewer's
+// changed fields; assumes backend does merge-on-PUT.
+export function useReviewerUpdateVendorDisbursement() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, patch }) => reviewerUpdateVendorDisbursement(id, patch),
     onSuccess: (updated, { id }) => {
       if (updated) qc.setQueryData(keys.vendorDisbursements.detail(id), updated)
       qc.invalidateQueries({ queryKey: keys.vendorDisbursements.all })
