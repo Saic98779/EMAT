@@ -49,17 +49,21 @@ export function listApprovedIndustryAssociations({ signal } = {}) {
 //
 // Expected shape from the disbursement page:
 //   {
-//     vendorName, gstinOfAgency, reasonForNoGstin, gstinOfSdbi,
+//     gstinOfAgency, reasonForNoGstin, gstinOfSdbi,
 //     sanctionedAmount, disbursedTillDate,        // vendor-profile snapshot
 //     natureOfPayment,                             // auto-composed
 //     invoiceDate, invoiceNumber, invoiceValue,   // MPA fills
-//     tdsApplicable, tdsNotApplicableReason,      // vendor-profile snapshot
+//     tdsApplicable, tdsNotApplicableReason,      // MPA fills
 //     accountCode, complianceTerms,               // MPA fills
-//     rows: [{ iaId, bseId, bseName, iaName, salaryMonth,
-//              workingDays, grossSalary, pf, tds, deductions,
-//              additionalAmount, additionalReason }],
-//     salaryMonth, resourceCount,                 // header-level
+//     rows: [{ bseId, bseName, iaName, salaryMonth, workingDays,
+//              grossSalary, pf, tds, deductions, additionalAmount,
+//              additionalReason }],
+//     salaryMonth,                                // header-level month tag
 //   }
+//
+// New backend schema (Aug '26): `bseId` lives inside each `details[]` row,
+// so a single note can carry multiple BSEs at once. No `registrationUuid`
+// / top-level `bseId` anymore.
 //
 // HO-owned fields (`recommendedDisbursementAmount`, `recommendation`,
 // `status`, `verifiedBy`, `approvedBy`) are sent as null on create — the
@@ -74,16 +78,7 @@ export function toPayload(v = {}) {
   // Disbursement sought = sum of Net Sal across the Annexure I table.
   const disbursementSought = rows.reduce((sum, r) => sum + netSalOf(r), 0)
 
-  // `registrationUuid` refers to the IA this note is scoped to; `bseId` is
-  // the specific BSE the salary is for. Backend now enforces one note per
-  // BSE (per invoice) — `details[]` rows are per-month for that same BSE.
-  // Both are lifted from the caller directly, or fall back to the first row.
-  const registrationUuid = v.registrationUuid || (rows[0]?.iaId ?? null)
-  const bseId = v.bseId || (rows[0]?.bseId ?? null)
-
   return {
-    registrationUuid: str(registrationUuid),
-    bseId: str(bseId),
     gstinOfAgency: str(v.gstinOfAgency),
     reasonForNoGstin: str(v.reasonForNoGstin),
     gstinOfSdbi: str(v.gstinOfSdbi),
@@ -117,9 +112,10 @@ export function toPayload(v = {}) {
     verifiedBy: null,
     approvedBy: null,
 
-    // Per the new schema, iaId + bseId are no longer per-row — they live at
-    // the top level. Each row is just month + salary/attendance + comments.
+    // One detail row per BSE. `bseId` now sits inside each row so the note
+    // can span multiple resources.
     details: rows.map((r) => ({
+      bseId: str(r.bseId),
       salaryMonth: str(r.salaryMonth || v.salaryMonth),
       salaryDays: int(r.workingDays),
       paidDays: int(r.workingDays),
@@ -128,6 +124,7 @@ export function toPayload(v = {}) {
       paymentToBse: netSalOf(r),
       gtAttendanceComments: str(r.gtAttendanceComments),
       gtAdditionalComments: str(r.gtAdditionalComments),
+      monthlySalary: num(r.grossSalary),
     })),
   }
 }

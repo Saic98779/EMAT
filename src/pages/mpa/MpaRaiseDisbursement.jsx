@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Box, Card, CardContent, Grid, Stack, Typography, Button, Snackbar, Alert, Chip,
   Paper, CircularProgress, TextField, MenuItem, InputAdornment, Table, TableHead,
-  TableBody, TableRow, TableCell, Checkbox, Radio, FormControlLabel, Switch,
+  TableBody, TableRow, TableCell, Checkbox, FormControlLabel, Switch,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SendIcon from '@mui/icons-material/Send'
@@ -12,7 +12,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
 import { PageHeader, Mono } from '../../components/shared'
 import { useAuth } from '../../auth'
-import { useMyVendor, useBseByUserSelected, useBseAttendanceByRecommendation } from '../../queries'
+import { useMyVendor, useBseByUserSelected, useBseAttendanceForRecommendations } from '../../queries'
 import { createVendorDisbursement, netSalOf } from '../../apis/vendorDisbursements'
 import { workingDaysInMonth } from '../../apis/bseAttendance'
 
@@ -74,17 +74,20 @@ export default function MpaRaiseDisbursement() {
   const [month, setMonth] = useState(monthNow)
   const [year, setYear] = useState(CURRENT_YEAR)
 
-  // Single-BSE selection — backend enforces one note per BSE. Auto-clears
-  // if the picked BSE disappears from the resource list (e.g. was demapped
-  // between page loads).
-  const [selectedId, setSelectedId] = useState(null)
+  // Multi-BSE selection — backend now accepts one note carrying multiple
+  // BSEs (each detail row has its own bseId). Selection state is a Set of
+  // uuids so toggling is cheap and the order stays stable. Auto-prunes any
+  // uuids that disappear from the resource list (e.g. demapped mid-session).
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
   useEffect(() => {
-    if (!selectedId) return
-    if (!resources.some((r) => r.uuid === selectedId)) setSelectedId(null)
-  }, [resources, selectedId])
+    setSelectedIds((prev) => {
+      const alive = new Set([...prev].filter((id) => resources.some((r) => r.uuid === id)))
+      return alive.size === prev.size ? prev : alive
+    })
+  }, [resources])
 
   // Annexure row overrides — user edits to PF/TDS/Deductions/etc. Keyed by
-  // BSE uuid so switching BSEs preserves any per-BSE edits.
+  // BSE uuid so switching selection preserves any per-BSE edits.
   const [rowOverrides, setRowOverrides] = useState({})
   const setRowField = useCallback((bseUuid, field, value) => {
     setRowOverrides((prev) => ({
@@ -93,7 +96,20 @@ export default function MpaRaiseDisbursement() {
     }))
   }, [])
 
-  const selectResource = useCallback((bseUuid) => setSelectedId(bseUuid), [])
+  const toggleResource = useCallback((bseUuid) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(bseUuid)) next.delete(bseUuid)
+      else next.add(bseUuid)
+      return next
+    })
+  }, [])
+  const toggleAllResources = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === resources.length) return new Set()
+      return new Set(resources.map((r) => r.uuid))
+    })
+  }, [resources])
 
   // TDS applicability is chosen by the MPA per disbursement (below in the
   // Vendor Details block). Declared early so the memo below can zero out the
@@ -101,27 +117,38 @@ export default function MpaRaiseDisbursement() {
   // override would leak into Net Sal / Disbursement Sought / the payload.
   const [tdsApplicable, setTdsApplicable] = useState(!!vendor?.tdsApplicable)
 
-  // Attendance for the selected BSE. Working Days on Annexure I is now
-  // derived from this list — the vendor marks each day of presence in the
-  // "Attendance of My Resources" workspace, and that count flows straight
-  // into the disbursement note here.
-  const attendanceQ = useBseAttendanceByRecommendation(selectedId)
+  // Attendance for each selected BSE. Working Days on Annexure I is derived
+  // from this — the vendor marks each day of presence in the "Attendance of
+  // My Resources" workspace, and that count flows into the row here.
+  const selectedIdList = useMemo(() => [...selectedIds], [selectedIds])
+  const attendance = useBseAttendanceForRecommendations(selectedIdList)
   const monthNum = MONTHS.indexOf(month) + 1  // "January" → 1
-  const attendanceDays = useMemo(
-    () => workingDaysInMonth(attendanceQ.data || [], monthNum, year),
-    [attendanceQ.data, monthNum, year],
+  const attendanceDaysById = useMemo(() => {
+    const out = {}
+    for (const id of selectedIdList) {
+      out[id] = workingDaysInMonth(attendance.byId[id] || [], monthNum, year)
+    }
+    return out
+  }, [selectedIdList, attendance.byId, monthNum, year])
+  // Total marked-attendance days across the selected BSEs — used for the
+  // Annexure table's summary alert.
+  const totalAttendanceDays = useMemo(
+    () => selectedIdList.reduce((n, id) => n + (attendanceDaysById[id] || 0), 0),
+    [selectedIdList, attendanceDaysById],
   )
 
-  // One BSE selected → one row in the Annexure. Under the new backend
-  // contract, `details[]` supports multiple months for the same BSE
-  // (arrears), but the current UI captures one month at a time — extend
-  // this array to a repeater if / when we support multi-month claims.
+  // One Annexure row per selected BSE. Rows follow the resource-list order
+  // so the on-screen order matches the selection above. TDS override is
+  // zeroed when the column is hidden (see comment on `tdsApplicable`).
   const annexureRows = useMemo(() => {
-    const selected = resources.find((r) => r.uuid === selectedId)
-    if (!selected) return []
-    const built = buildRow(selected, rowOverrides[selected.uuid], attendanceDays)
-    return [tdsApplicable ? built : { ...built, tds: 0 }]
-  }, [resources, selectedId, rowOverrides, tdsApplicable, attendanceDays])
+    const rows = []
+    for (const r of resources) {
+      if (!selectedIds.has(r.uuid)) continue
+      const built = buildRow(r, rowOverrides[r.uuid], attendanceDaysById[r.uuid] || 0)
+      rows.push(tdsApplicable ? built : { ...built, tds: 0 })
+    }
+    return rows
+  }, [resources, selectedIds, rowOverrides, tdsApplicable, attendanceDaysById])
 
   const disbursementSought = useMemo(
     () => annexureRows.reduce((sum, r) => sum + netSalOf(r), 0),
@@ -176,14 +203,10 @@ export default function MpaRaiseDisbursement() {
     }
     setBusy(true)
     try {
-      // New backend contract: one bse-salary note = one BSE. Lift the BSE
-      // and IA identifiers to the top level of the payload; each row in
-      // `details[]` is now just the per-month breakdown for that BSE.
-      const selected = annexureRows[0]
+      // Backend schema (Aug '26): one bse-salary note can span multiple
+      // BSEs; `bseId` sits inside each `details[]` row. Nothing to lift to
+      // the top level anymore — the adapter maps rows straight through.
       await createVendorDisbursement({
-        registrationUuid: selected?.iaId,
-        bseId: selected?.bseId,
-        vendorName: vendor.vendorName,
         gstinOfAgency: vendor.gstNo,
         reasonForNoGstin: !vendor.gstNo ? (reasonForNoGstin || null) : null,
         gstinOfSdbi: SIDBI_GSTIN,
@@ -288,8 +311,9 @@ export default function MpaRaiseDisbursement() {
           month={month} setMonth={setMonth}
           year={year} setYear={setYear}
           resources={resources}
-          selectedId={selectedId}
-          onSelect={selectResource}
+          selectedIds={selectedIds}
+          onToggle={toggleResource}
+          onToggleAll={toggleAllResources}
           error={showAllErrors ? errors.resources : ''}
         />
 
@@ -299,8 +323,8 @@ export default function MpaRaiseDisbursement() {
           onSet={setRowField}
           total={disbursementSought}
           showTds={tdsApplicable}
-          attendanceDays={attendanceDays}
-          attendanceLoading={attendanceQ.isLoading && !!selectedId}
+          attendanceDays={totalAttendanceDays}
+          attendanceLoading={attendance.isLoading && selectedIds.size > 0}
           month={month}
           year={year}
           error={showAllErrors ? errors.rows : ''}
@@ -400,7 +424,8 @@ const VendorDetails = memo(function VendorDetails({
           subtitle="Autofilled from your vendor record. Managed by SDE."
         />
 
-        {/* Group 1 — Autofilled (read-only) */}
+        {/* Only the spec fields — everything else on the vendor record
+              (SPOC, bank, address) is out of scope for the disbursement note. */}
         <GroupLabel>Autofilled</GroupLabel>
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -412,31 +437,18 @@ const VendorDetails = memo(function VendorDetails({
           <Grid size={{ xs: 12, sm: 3 }}>
             <ReadOnlyInput label="GSTIN of SIDBI" value={SIDBI_GSTIN} mono />
           </Grid>
-          <Grid size={{ xs: 12, sm: 3 }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <ReadOnlyInput
               label="Sanctioned Amount (₹)"
               value={sanctionedAmount != null ? formatMoney(sanctionedAmount) : ''}
               placeholder="—" prefix="₹"
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 3 }}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <ReadOnlyInput
               label="Disbursed till date (₹)"
               value={disbursedTillDate != null ? formatMoney(disbursedTillDate) : ''}
               placeholder="—" prefix="₹"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <ReadOnlyInput label="Company" value={vendor.companyName} />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <ReadOnlyInput label="Contact Person" value={vendor.spocName || vendor.contactPerson} />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6 }}>
-            <ReadOnlyInput
-              label="Contact"
-              value={[vendor.email, vendor.spocMobileNo || vendor.mobileNo].filter(Boolean).join(' · ')}
-              mono
             />
           </Grid>
         </Grid>
@@ -533,15 +545,19 @@ const DisbursementSummary = memo(function DisbursementSummary({ step, total, nat
 // below (Vendor Details, Annexure I).
 
 const ResourceSelection = memo(function ResourceSelection({
-  step, month, setMonth, year, setYear, resources, selectedId, onSelect,
+  step, month, setMonth, year, setYear, resources, selectedIds, onToggle, onToggleAll,
   error = '',
 }) {
+  const selectedCount = selectedIds.size
+  const allSelected = resources.length > 0 && selectedCount === resources.length
+  const someSelected = selectedCount > 0 && !allSelected
+
   return (
     <Box>
       <SectionTitle
         step={step} hasError={!!error}
         title="Resource Selection"
-        subtitle="Pick the cycle month and the BSE this disbursement is for. One BSE per note — raise a separate note for each additional resource."
+        subtitle="Pick the cycle month and every BSE this disbursement covers. One note can carry multiple BSEs — the Annexure below will get a row per selected resource."
       />
       {error && (
         <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>
@@ -561,9 +577,9 @@ const ResourceSelection = memo(function ResourceSelection({
         <Box sx={{ flexGrow: 1 }} />
         {resources.length > 0 && (
           <Typography variant="body2" color="text.secondary">
-            {selectedId
-              ? <><Box component="span" sx={{ fontWeight: 700, color: 'primary.dark' }}>1</Box>{' of '}{resources.length}{' selected'}</>
-              : <>Choose a BSE below</>}
+            {selectedCount > 0
+              ? <><Box component="span" sx={{ fontWeight: 700, color: 'primary.dark' }}>{selectedCount}</Box>{' of '}{resources.length}{' selected'}</>
+              : <>Pick one or more BSEs below</>}
           </Typography>
         )}
       </Stack>
@@ -593,7 +609,15 @@ const ResourceSelection = memo(function ResourceSelection({
           <Table size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: 'action.hover' }}>
-                <TableCell padding="checkbox" sx={{ width: 44 }} />
+                <TableCell padding="checkbox" sx={{ width: 44 }}>
+                  <Checkbox
+                    size="small"
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={onToggleAll}
+                    inputProps={{ 'aria-label': 'Select all resources' }}
+                  />
+                </TableCell>
                 <TableCell sx={{ fontWeight: 700, py: 1 }}>Resource</TableCell>
                 <TableCell sx={{ fontWeight: 700, py: 1 }}>Industry Association</TableCell>
                 <TableCell sx={{ fontWeight: 700, py: 1 }}>Mobile</TableCell>
@@ -603,7 +627,7 @@ const ResourceSelection = memo(function ResourceSelection({
             <TableBody>
               {resources.map((r) => (
                 <ResourceRow key={r.uuid} resource={r}
-                  checked={r.uuid === selectedId} onSelect={onSelect} />
+                  checked={selectedIds.has(r.uuid)} onToggle={onToggle} />
               ))}
             </TableBody>
           </Table>
@@ -613,10 +637,10 @@ const ResourceSelection = memo(function ResourceSelection({
   )
 })
 
-// Single BSE row. Radio-style single-select — click anywhere on the row to
-// pick that BSE. Selected row gets a subtle tinted background.
-const ResourceRow = memo(function ResourceRow({ resource, checked, onSelect }) {
-  const handleClick = useCallback(() => onSelect(resource.uuid), [onSelect, resource.uuid])
+// Single BSE row. Multi-select via checkbox — click anywhere on the row to
+// toggle. Selected row gets a subtle tinted background.
+const ResourceRow = memo(function ResourceRow({ resource, checked, onToggle }) {
+  const handleClick = useCallback(() => onToggle(resource.uuid), [onToggle, resource.uuid])
   return (
     <TableRow
       hover
@@ -628,7 +652,7 @@ const ResourceRow = memo(function ResourceRow({ resource, checked, onSelect }) {
       }}
     >
       <TableCell padding="checkbox">
-        <Radio
+        <Checkbox
           size="small"
           checked={checked}
           onClick={(e) => e.stopPropagation()}
@@ -673,7 +697,7 @@ const AnnexureTable = memo(function AnnexureTable({
             {attendanceLoading
               ? `Loading marked attendance for ${month} ${year}…`
               : attendanceDays > 0
-                ? <>Working Days auto-filled from <strong>{attendanceDays}</strong> attendance day{attendanceDays === 1 ? '' : 's'} you marked for {month} {year}.</>
+                ? <>Working Days per row auto-filled from your marked attendance for {month} {year} — <strong>{attendanceDays}</strong> day{attendanceDays === 1 ? '' : 's'} across {rows.length} BSE{rows.length === 1 ? '' : 's'}.</>
                 : <>No attendance marked for {month} {year} yet. Mark days in <strong>My Resources → Attendance</strong> and Working Days will fill in automatically.</>}
           </Alert>
         )}
@@ -682,7 +706,7 @@ const AnnexureTable = memo(function AnnexureTable({
         )}
 
         {rows.length === 0 ? (
-          <Alert severity="info">Pick a BSE above to build Annexure I.</Alert>
+          <Alert severity="info">Pick one or more BSEs above to build Annexure I.</Alert>
         ) : (
           <Box sx={{ overflowX: 'auto' }}>
             <Table size="small" sx={{ minWidth: 900 }}>

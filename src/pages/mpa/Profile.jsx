@@ -100,8 +100,6 @@ export default function Profile() {
             <FieldRow label="Username" value={user?.username} mono />
             <FieldRow label="Email" value={user?.email} mono />
             <FieldRow label="Role" value={roleLabel} />
-            <FieldRow label="Posting"
-              value={[user?.district, user?.state].filter(Boolean).join(', ') || null} />
           </ProfileCard>
         </Grid>
 
@@ -110,8 +108,8 @@ export default function Profile() {
           <ProfileCard icon={<BusinessOutlinedIcon />} title="Company & Contact" subtitle="From your vendor record.">
             <FieldRow label="Vendor / Consultancy" value={v?.vendorName} />
             <FieldRow label="Legal / Company Name" value={v?.companyName} />
-            <FieldRow label="Contact Person" value={v?.spocName || v?.contactPerson} />
-            <FieldRow label="Contact Mobile" value={v?.spocMobileNo || v?.mobileNo} mono />
+            <FieldRow label="SPOC Name" value={v?.spocName} />
+            <FieldRow label="SPOC Mobile" value={v?.spocMobileNo} mono />
           </ProfileCard>
         </Grid>
 

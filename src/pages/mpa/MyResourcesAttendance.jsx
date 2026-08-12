@@ -2,12 +2,10 @@ import { memo, useCallback, useMemo, useState } from 'react'
 import {
   Box, Card, Table, TableHead, TableBody, TableRow, TableCell, Typography, Button,
   Alert, CircularProgress, TextField, MenuItem, Chip, Stack,
-  Dialog, DialogTitle, DialogContent, DialogActions, Snackbar, Grid, IconButton, Tooltip,
+  Dialog, DialogContent, DialogActions, Snackbar, IconButton,
 } from '@mui/material'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
-import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import CloseIcon from '@mui/icons-material/Close'
@@ -478,44 +476,82 @@ function DayEditorDialog({ open, date, existing, recommendationId, onClose }) {
     }
   }, [deleteM, existing, recommendationId, onClose])
 
+  const hours = durationHours(inTime, outTime)
+  const canSave = !!inTime && !!outTime && hours != null && hours > 0
+
   return (
     <>
       <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle>{isEdit ? 'Edit attendance' : 'Mark attendance'}</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2}>
-            <TextField size="small" fullWidth type="date" label="Date"
-              InputLabelProps={{ shrink: true }} value={date || ''} disabled />
-            <Stack direction="row" spacing={2}>
-              <TextField size="small" fullWidth type="time" label="In time *"
-                InputLabelProps={{ shrink: true }}
-                value={inTime} onChange={(e) => setInTime(e.target.value)}
-                disabled={busy} />
-              <TextField size="small" fullWidth type="time" label="Out time *"
-                InputLabelProps={{ shrink: true }}
-                value={outTime} onChange={(e) => setOutTime(e.target.value)}
-                disabled={busy} />
-            </Stack>
+        PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}>
+        {/* Compact header: pretty date + close, no shouty title */}
+        <Stack direction="row" alignItems="center" spacing={1}
+          sx={{ px: 2.5, pt: 2, pb: 1 }}>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Typography variant="caption" color="text.secondary"
+              sx={{ letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              {isEdit ? 'Edit attendance' : 'Mark attendance'}
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={700} noWrap>
+              {prettyDate(date)}
+            </Typography>
+          </Box>
+          <IconButton size="small" onClick={onClose} disabled={busy} aria-label="Close">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+
+        <DialogContent sx={{ px: 2.5, pt: 1, pb: 2 }}>
+          <Stack direction="row" spacing={1.5}>
+            <TextField size="small" fullWidth type="time" label="In time"
+              InputLabelProps={{ shrink: true }}
+              value={inTime} onChange={(e) => setInTime(e.target.value)}
+              disabled={busy} />
+            <TextField size="small" fullWidth type="time" label="Out time"
+              InputLabelProps={{ shrink: true }}
+              value={outTime} onChange={(e) => setOutTime(e.target.value)}
+              disabled={busy} />
+          </Stack>
+
+          {/* Quiet duration pill — updates as the user picks times */}
+          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 1.5 }}>
+            <AccessTimeIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+            <Typography variant="caption" color="text.secondary">
+              {hours == null
+                ? 'Set both times to see total.'
+                : hours <= 0
+                  ? 'Out time must be after in time.'
+                  : `Total: ${formatHours(hours)}`}
+            </Typography>
           </Stack>
         </DialogContent>
-        <DialogActions>
+
+        <DialogActions sx={{ px: 2, py: 1.25, gap: 0.5 }}>
           {isEdit && (
-            <Tooltip title="Remove this attendance record">
-              <IconButton color="error" onClick={remove} disabled={busy}>
-                {deleteM.isPending ? <CircularProgress size={16} /> : <DeleteOutlineIcon />}
-              </IconButton>
-            </Tooltip>
+            <Button
+              size="small" color="error"
+              startIcon={deleteM.isPending
+                ? <CircularProgress size={12} color="inherit" />
+                : <DeleteOutlineIcon fontSize="small" />}
+              onClick={remove} disabled={busy}
+              sx={{ textTransform: 'none' }}
+            >
+              Remove
+            </Button>
           )}
           <Box sx={{ flexGrow: 1 }} />
-          <Button onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="contained"
-            startIcon={(createM.isPending || updateM.isPending)
-              ? <CircularProgress size={14} color="inherit" />
-              : (isEdit ? <EditOutlinedIcon /> : <AddIcon />)}
+          <Button size="small" onClick={onClose} disabled={busy}
+            sx={{ textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button
+            size="small" variant="contained" disableElevation
             onClick={save}
-            disabled={busy || !inTime || !outTime}>
-            {isEdit ? 'Save' : 'Mark present'}
+            disabled={busy || !canSave}
+            startIcon={(createM.isPending || updateM.isPending)
+              ? <CircularProgress size={12} color="inherit" /> : null}
+            sx={{ textTransform: 'none', minWidth: 84 }}
+          >
+            {isEdit ? 'Save' : 'Mark'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -530,6 +566,39 @@ function DayEditorDialog({ open, date, existing, recommendationId, onClose }) {
       </Snackbar>
     </>
   )
+}
+
+// "2026-08-12" → "Wed, 12 Aug 2026". Falls back to the raw value.
+function prettyDate(iso) {
+  if (!iso) return '—'
+  const d = new Date(`${iso}T00:00:00`)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-IN', {
+    weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+  })
+}
+
+// Duration in hours between two "HH:mm" strings. Returns null when either
+// side is missing/invalid so the UI can show a distinct "not yet" hint.
+function durationHours(inT, outT) {
+  const parse = (s) => {
+    if (!s) return null
+    const m = String(s).match(/^(\d{1,2}):(\d{1,2})/)
+    if (!m) return null
+    return Number(m[1]) * 60 + Number(m[2])
+  }
+  const a = parse(inT), b = parse(outT)
+  if (a == null || b == null) return null
+  return (b - a) / 60
+}
+
+function formatHours(h) {
+  const sign = h < 0 ? '-' : ''
+  const abs = Math.abs(h)
+  const hh = Math.floor(abs)
+  const mm = Math.round((abs - hh) * 60)
+  if (mm === 0) return `${sign}${hh}h`
+  return `${sign}${hh}h ${mm}m`
 }
 
 // ── Empty state ────────────────────────────────────────────────────────────

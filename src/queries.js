@@ -654,6 +654,24 @@ export function useBseAttendanceByRecommendation(recommendationId) {
   })
 }
 
+// Parallel per-BSE attendance fetch. Used by MpaRaiseDisbursement's
+// Annexure I so each selected BSE gets its own attendance count for the
+// working-days column. Returns an object of results keyed by BSE uuid,
+// plus an aggregate `isLoading` flag.
+export function useBseAttendanceForRecommendations(recommendationIds = []) {
+  const ids = recommendationIds.filter(Boolean)
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: keys.bseAttendance.byRecommendation(id),
+      queryFn: ({ signal }) => listBseAttendanceByRecommendation(id, { signal }).then(unwrapList),
+    })),
+  })
+  const byId = {}
+  ids.forEach((id, i) => { byId[id] = results[i]?.data || [] })
+  const isLoading = results.some((r) => r.isLoading)
+  return { byId, isLoading }
+}
+
 export function useBseAttendanceList() {
   return useQuery({
     queryKey: keys.bseAttendance.lists(),

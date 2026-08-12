@@ -54,7 +54,8 @@ export function toPayload(v = {}) {
   return {
     vendorName: str(v.vendorName),
     companyName: str(v.companyName),
-    contactPerson: str(v.contactPerson),
+    spocName: str(v.spocName),
+    spocMobileNo: str(v.spocMobileNo),
     email: str(v.email),
     mobileNo: str(v.mobileNo),
     gstNo: str(v.gstNo),
