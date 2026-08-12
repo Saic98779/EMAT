@@ -71,6 +71,27 @@ const theme = createTheme({
         },
       },
     },
+    // Global rule for every TextField (and its OutlinedInput / FilledInput /
+    // Input variants): kill native ⯅ ⯆ spinner arrows on `type="number"`
+    // and reject the minus key so users can't enter negative amounts.
+    // Individual fields no longer need to opt in.
+    MuiTextField: {
+      defaultProps: {
+        onKeyDown: (e) => {
+          if (e.target && e.target.type === 'number' && (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+')) {
+            e.preventDefault()
+          }
+        },
+      },
+      styleOverrides: {
+        root: {
+          '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': {
+            WebkitAppearance: 'none', margin: 0,
+          },
+          '& input[type=number]': { MozAppearance: 'textfield' },
+        },
+      },
+    },
   },
 })
 
