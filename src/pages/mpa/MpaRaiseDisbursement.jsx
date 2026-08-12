@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box, Card, CardContent, Grid, Stack, Typography, Button, Snackbar, Alert, Chip,
@@ -156,9 +156,13 @@ export default function MpaRaiseDisbursement() {
   )
 
   // Invoice section state.
+  //
+  // `invoiceValue` isn't a separate input — the value of service = total
+  // disbursement sought (Σ Net Sal). The Annexure table drives it. IGST +
+  // Total flow from there.
   const [invoiceDate, setInvoiceDate] = useState('')
   const [invoiceNumber, setInvoiceNumber] = useState('')
-  const [invoiceValue, setInvoiceValue] = useState('')
+  const invoiceValue = disbursementSought > 0 ? disbursementSought : ''
   const gstAmount = invoiceValue === '' ? '' : +(Number(invoiceValue) * 0.18).toFixed(2)
   const invoiceTotal = invoiceValue === '' ? '' : +(Number(invoiceValue) * 1.18).toFixed(2)
 
@@ -223,7 +227,7 @@ export default function MpaRaiseDisbursement() {
         salaryMonth,
         rows: annexureRows,
       })
-      setToast({ severity: 'success', msg: 'Disbursement request submitted to HO Maker.' })
+      setToast({ severity: 'success', msg: 'Disbursement request sent to GT Field Team for verification.' })
       setTimeout(() => navigate('/mpa'), 1200)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to submit. Please try again.' })
@@ -273,7 +277,7 @@ export default function MpaRaiseDisbursement() {
               <Typography variant="h5" fontWeight={700}>Raise Salary Disbursement</Typography>
               <Typography variant="body2" sx={{ opacity: 0.85, mt: 0.25, maxWidth: 640 }}>
                 Pick a BSE, fill Annexure I, attach invoice details, and submit
-                to the SIDBI HO Maker for review.
+                to the GT Field Team for verification, then on to SIDBI HO Maker.
               </Typography>
             </Box>
             <Stack direction="row" spacing={1}>
@@ -340,7 +344,7 @@ export default function MpaRaiseDisbursement() {
           step={5}
           date={invoiceDate} onDate={setInvoiceDate}
           number={invoiceNumber} onNumber={setInvoiceNumber}
-          value={invoiceValue} onValue={setInvoiceValue}
+          value={invoiceValue}
           gstAmount={gstAmount} total={invoiceTotal}
           errorDate={showAllErrors ? errors.invoiceDate : ''}
           errorNumber={showAllErrors ? errors.invoiceNumber : ''}
@@ -374,7 +378,7 @@ export default function MpaRaiseDisbursement() {
           onClick={submit}
           disabled={busy}
         >
-          {busy ? 'Submitting…' : 'Submit to HO Maker'}
+          {busy ? 'Submitting…' : 'Submit to GT Field Team'}
         </Button>
       </Paper>
 
@@ -748,11 +752,14 @@ const AnnexureTable = memo(function AnnexureTable({
 
 const AnnexureRow = memo(function AnnexureRow({ row, index, onSet, showTds }) {
   const bseId = row.bseId
-  const setPf  = useCallback((e) => onSet(bseId, 'pf',                e.target.value), [bseId, onSet])
-  const setTds = useCallback((e) => onSet(bseId, 'tds',               e.target.value), [bseId, onSet])
-  const setDed = useCallback((e) => onSet(bseId, 'deductions',        e.target.value), [bseId, onSet])
-  const setAdd = useCallback((e) => onSet(bseId, 'additionalAmount',  e.target.value), [bseId, onSet])
-  const setRsn = useCallback((e) => onSet(bseId, 'additionalReason',  e.target.value), [bseId, onSet])
+  // `onCommit` handlers take the raw value from the cell (not an event) so
+  // the cell can debounce / stage its local state and only push upstream
+  // once. Keeps typing off the parent's re-render path.
+  const commitPf  = useCallback((val) => onSet(bseId, 'pf',                val), [bseId, onSet])
+  const commitTds = useCallback((val) => onSet(bseId, 'tds',               val), [bseId, onSet])
+  const commitDed = useCallback((val) => onSet(bseId, 'deductions',        val), [bseId, onSet])
+  const commitAdd = useCallback((val) => onSet(bseId, 'additionalAmount',  val), [bseId, onSet])
+  const commitRsn = useCallback((val) => onSet(bseId, 'additionalReason',  val), [bseId, onSet])
 
   // `row.tds` is already forced to 0 upstream when TDS isn't applicable, so
   // `netSalOf` handles both cases without extra branching here.
@@ -765,11 +772,11 @@ const AnnexureRow = memo(function AnnexureRow({ row, index, onSet, showTds }) {
       <TableCell>{row.bseName || '—'}</TableCell>
       <TableCell align="right"><Mono>{row.workingDays ?? '—'}</Mono></TableCell>
       <TableCell align="right"><Mono>{formatMoney(row.grossSalary)}</Mono></TableCell>
-      <TableCell align="right"><CellMoney value={row.pf} onChange={setPf} /></TableCell>
-      {showTds && <TableCell align="right"><CellMoney value={row.tds} onChange={setTds} /></TableCell>}
-      <TableCell align="right"><CellMoney value={row.deductions} onChange={setDed} /></TableCell>
-      <TableCell align="right"><CellMoney value={row.additionalAmount} onChange={setAdd} /></TableCell>
-      <TableCell><CellText value={row.additionalReason} onChange={setRsn} /></TableCell>
+      <TableCell align="right"><CellMoney value={row.pf} onCommit={commitPf} /></TableCell>
+      {showTds && <TableCell align="right"><CellMoney value={row.tds} onCommit={commitTds} /></TableCell>}
+      <TableCell align="right"><CellMoney value={row.deductions} onCommit={commitDed} /></TableCell>
+      <TableCell align="right"><CellMoney value={row.additionalAmount} onCommit={commitAdd} /></TableCell>
+      <TableCell><CellText value={row.additionalReason} onCommit={commitRsn} /></TableCell>
       <TableCell align="right" sx={{ fontWeight: 700 }}>
         <Mono>{formatMoney(net)}</Mono>
       </TableCell>
@@ -777,22 +784,76 @@ const AnnexureRow = memo(function AnnexureRow({ row, index, onSet, showTds }) {
   )
 })
 
-const CellMoney = memo(function CellMoney({ value, onChange }) {
+// Stable sx refs so `memo` on the cell doesn't invalidate every render.
+const CELL_MONEY_SX = { width: 96 }
+const CELL_MONEY_INPUT_PROPS = { min: 0, step: 1, style: { textAlign: 'right' } }
+const CELL_TEXT_SX = { minWidth: 160 }
+
+// Uncontrolled cell — holds its own value while the user types and only
+// commits upstream on blur / Enter. This is the key perf win: keystrokes
+// re-render just the cell, not the whole disbursement page. External
+// updates (e.g. TDS toggle zeroing the column) still sync in via `value`.
+const CellMoney = memo(function CellMoney({ value, onCommit }) {
+  const [local, setLocal] = useState(value ?? '')
+  const externalRef = useRef(value ?? '')
+
+  useEffect(() => {
+    const next = value ?? ''
+    if (next !== externalRef.current) {
+      externalRef.current = next
+      setLocal(next)
+    }
+  }, [value])
+
+  const commit = () => {
+    if (local === externalRef.current) return
+    externalRef.current = local
+    onCommit(local)
+  }
+
   return (
     <TextField
-      size="small" type="number" value={value ?? ''} onChange={onChange}
-      inputProps={{ min: 0, step: 1, style: { textAlign: 'right' } }}
-      sx={{ width: 96 }}
+      size="small" type="number"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') { e.preventDefault(); return }
+        if (e.key === 'Enter') { e.preventDefault(); commit() }
+      }}
+      inputProps={CELL_MONEY_INPUT_PROPS}
+      sx={CELL_MONEY_SX}
     />
   )
 })
 
-const CellText = memo(function CellText({ value, onChange }) {
+const CellText = memo(function CellText({ value, onCommit }) {
+  const [local, setLocal] = useState(value ?? '')
+  const externalRef = useRef(value ?? '')
+
+  useEffect(() => {
+    const next = value ?? ''
+    if (next !== externalRef.current) {
+      externalRef.current = next
+      setLocal(next)
+    }
+  }, [value])
+
+  const commit = () => {
+    if (local === externalRef.current) return
+    externalRef.current = local
+    onCommit(local)
+  }
+
   return (
     <TextField
-      size="small" value={value ?? ''} onChange={onChange}
+      size="small"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
       placeholder="Reason (optional)"
-      sx={{ minWidth: 160 }}
+      sx={CELL_TEXT_SX}
     />
   )
 })
@@ -800,13 +861,15 @@ const CellText = memo(function CellText({ value, onChange }) {
 // ── Section 4: Invoice Details ─────────────────────────────────────────────
 
 const InvoiceDetails = memo(function InvoiceDetails({
-  step, date, onDate, number, onNumber, value, onValue, gstAmount, total,
+  step, date, onDate, number, onNumber, value, gstAmount, total,
   errorDate = '', errorNumber = '', errorValue = '',
 }) {
   const setDate = useCallback((e) => onDate(e.target.value), [onDate])
   const setNumber = useCallback((e) => onNumber(e.target.value), [onNumber])
-  const setValue = useCallback((e) => onValue(e.target.value), [onValue])
   const hasError = !!(errorDate || errorNumber || errorValue)
+  // Cap the date picker at today — an invoice for a future month makes no
+  // sense here and would fail the same check on the payload side anyway.
+  const today = todayIsoDate()
 
   return (
     <Card>
@@ -814,14 +877,15 @@ const InvoiceDetails = memo(function InvoiceDetails({
         <SectionTitle
           step={step} hasError={hasError}
           title="Invoice Details"
-          subtitle="Invoice Date / Number / Value are also modifiable at HO Maker level."
+          subtitle="Invoice Date / Number are modifiable later by HO Maker. Value of Service is auto-set to the Disbursement Sought total from the Annexure above."
         />
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField fullWidth size="small" type="date" label="Invoice Date *"
               InputLabelProps={{ shrink: true }} value={date} onChange={setDate}
+              inputProps={{ max: today }}
               error={!!errorDate}
-              helperText={errorDate || ' '} />
+              helperText={errorDate || `On or before ${today}`} />
           </Grid>
           <Grid size={{ xs: 12, sm: 3 }}>
             <TextField fullWidth size="small" label="Invoice Number *"
@@ -830,11 +894,16 @@ const InvoiceDetails = memo(function InvoiceDetails({
               helperText={errorNumber || ' '} />
           </Grid>
           <Grid size={{ xs: 12, sm: 2 }}>
-            <TextField fullWidth size="small" type="number" label="Value of Service *"
-              value={value} onChange={setValue}
+            <TextField fullWidth size="small" label="Value of Service"
+              value={value === '' ? '' : formatMoney(value)}
               error={!!errorValue}
-              helperText={errorValue || ' '}
-              InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+              helperText={errorValue || 'Auto from Disbursement Sought'}
+              InputProps={{
+                readOnly: true,
+                startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+              }}
+              sx={{ '& .MuiInputBase-root': { bgcolor: 'action.hover', fontWeight: 700 } }}
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 2 }}>
             <TextField fullWidth size="small" label="IGST @18%"
@@ -1057,6 +1126,16 @@ function formatMoney(v) {
   return Number(v).toLocaleString('en-IN')
 }
 
+// Today as YYYY-MM-DD in local time — used both as `max` on the invoice
+// date input and by the validator to reject future dates.
+function todayIsoDate() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 // Compute every field-level error in one pass. Returns an object keyed by
 // field name so inline inputs can pick up their own error text; also stores
 // the first-in-order blocker as `_first` for the sticky footer + toast.
@@ -1091,10 +1170,14 @@ function computeErrors({
   }
 
   // Invoice
-  if (!invoiceDate) set('invoiceDate', 'Invoice date is required.')
+  if (!invoiceDate) {
+    set('invoiceDate', 'Invoice date is required.')
+  } else if (invoiceDate > todayIsoDate()) {
+    set('invoiceDate', 'Invoice date cannot be in the future.')
+  }
   if (!invoiceNumber?.trim()) set('invoiceNumber', 'Invoice number is required.')
   if (invoiceValue === '' || Number(invoiceValue) <= 0) {
-    set('invoiceValue', 'Value of service must be greater than 0.')
+    set('invoiceValue', 'Pick at least one BSE — Value of Service is the total of Annexure I Net Sal.')
   }
 
   // Compliance

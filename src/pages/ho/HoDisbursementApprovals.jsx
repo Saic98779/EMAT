@@ -12,19 +12,27 @@ import { useVendorDisbursements } from '../../queries'
 
 const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 
-// HO Maker's queue for vendor disbursement requests raised by Manpower
-// Agencies. "Pending" = no `recommendation` recorded yet by HO.
+// HO Maker's queue for vendor disbursement requests. Flow: MPA raises →
+// GT verifies (stamps `verifiedBy`) → HO sees only GT-verified notes here
+// and approves / rejects. Anything without a `verifiedBy` is still with GT.
 export default function HoDisbursementApprovals() {
   const navigate = useNavigate()
   const { data: rows = [], isLoading, isFetching, error, refetch } = useVendorDisbursements()
   const [q, setQ] = useState('')
 
+  // Gate the queue on GT verification. Notes MPA raised but GT hasn't
+  // touched yet are hidden from HO — they show up in the GT queue.
+  const gtVerified = useMemo(
+    () => rows.filter((r) => !!(r.verifiedBy && String(r.verifiedBy).trim())),
+    [rows],
+  )
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
-    if (!term) return rows
-    return rows.filter((r) => [r.manpowerAgencyName, r.invoiceNumber, r.gstinOfAgency, r.natureOfPayment]
+    if (!term) return gtVerified
+    return gtVerified.filter((r) => [r.manpowerAgencyName, r.invoiceNumber, r.gstinOfAgency, r.natureOfPayment]
       .some((f) => (f || '').toLowerCase().includes(term)))
-  }, [rows, q])
+  }, [gtVerified, q])
 
   const initialLoading = isLoading && rows.length === 0
   const refetching = isFetching && rows.length > 0
@@ -33,7 +41,9 @@ export default function HoDisbursementApprovals() {
     <Box>
       <PageHeader
         title="Vendor Disbursements"
-        subtitle={initialLoading ? 'Loading…' : `${filtered.length} disbursement${filtered.length === 1 ? '' : 's'} raised by Manpower Agencies`}
+        subtitle={initialLoading
+          ? 'Loading…'
+          : `${filtered.length} GT-verified disbursement${filtered.length === 1 ? '' : 's'} ready for HO decision (${rows.length - gtVerified.length} awaiting GT)`}
         action={
           <Button variant="outlined" startIcon={refetching ? <CircularProgress size={16} /> : <RefreshIcon />}
             onClick={() => refetch()} disabled={isLoading}>

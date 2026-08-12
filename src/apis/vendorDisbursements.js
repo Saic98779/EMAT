@@ -101,16 +101,17 @@ export function toPayload(v = {}) {
     tdsApplicable: bool(v.tdsApplicable),
     tdsNotApplicableReason: v.tdsApplicable === false ? str(v.tdsNotApplicableReason) : null,
 
-    // HO Maker owns these — sent null on create.
-    recommendedDisbursementAmount: null,
+    // Reviewer-owned fields. Passed through so PUT can set them; POST leaves
+    // them at null (caller doesn't set them on create).
+    recommendedDisbursementAmount: num(v.recommendedDisbursementAmount),
     accountCode: str(v.accountCode),
     complianceTerms: yesNoLabel(v.complianceTerms),
 
-    recommendation: null,
-    status: null,
-    createdBy: null,
-    verifiedBy: null,
-    approvedBy: null,
+    recommendation: bool(v.recommendation),
+    status: str(v.status),
+    createdBy: str(v.createdBy),
+    verifiedBy: str(v.verifiedBy),      // GT stamps this on verification
+    approvedBy: str(v.approvedBy),      // HO stamps this on approval
 
     // One detail row per BSE. `bseId` now sits inside each row so the note
     // can span multiple resources.
