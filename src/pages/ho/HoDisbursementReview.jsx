@@ -241,37 +241,59 @@ const AnnexureTable = memo(function AnnexureTable({ rows, total }) {
         <Alert severity="info">No BSE rows in this disbursement.</Alert>
       ) : (
         <Box sx={{ overflowX: 'auto' }}>
-          <Table size="small" sx={{ minWidth: 900 }}>
+          <Table
+            size="small"
+            sx={{
+              minWidth: 900,
+              '& thead th': {
+                bgcolor: 'grey.50', color: 'text.secondary',
+                fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              },
+              '& tbody td': { fontVariantNumeric: 'tabular-nums' },
+              '& tbody tr:last-of-type td': { borderBottom: 0 },
+            }}
+          >
             <TableHead>
               <TableRow>
-                <TableCell width={48}>#</TableCell>
-                <TableCell>IA</TableCell>
+                <TableCell width={40}>#</TableCell>
                 <TableCell>BSE</TableCell>
                 <TableCell>Salary Month</TableCell>
+                <TableCell align="right">Salary Days</TableCell>
                 <TableCell align="right">Paid Days</TableCell>
                 <TableCell align="right">Additional (₹)</TableCell>
                 <TableCell>Reason</TableCell>
+                <TableCell>GT Attendance</TableCell>
                 <TableCell align="right">Payment to BSE (₹)</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {rows.map((r, i) => (
-                <TableRow key={r.id ?? r.bseId ?? i}>
+                <TableRow key={r.id ?? i} hover>
                   <TableCell><Mono>{i + 1}</Mono></TableCell>
-                  <TableCell><Mono>{r.iaId || '—'}</Mono></TableCell>
-                  <TableCell><Mono>{r.bseId || '—'}</Mono></TableCell>
+                  <TableCell>
+                    <Typography fontWeight={600} fontSize="0.88rem">{r.bseName || '—'}</Typography>
+                  </TableCell>
                   <TableCell>{r.salaryMonth || '—'}</TableCell>
-                  <TableCell align="right"><Mono>{r.paidDays ?? r.salaryDays ?? '—'}</Mono></TableCell>
-                  <TableCell align="right"><Mono>{formatNumber(r.additionalAmount)}</Mono></TableCell>
-                  <TableCell>{r.additionalAmountReason || '—'}</TableCell>
+                  <TableCell align="right">{r.salaryDays ?? '—'}</TableCell>
+                  <TableCell align="right">{r.paidDays ?? '—'}</TableCell>
+                  <TableCell align="right">{formatNumber(r.additionalAmount)}</TableCell>
+                  <TableCell sx={{ color: r.additionalAmountReason ? 'text.primary' : 'text.disabled' }}>
+                    {r.additionalAmountReason || '—'}
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 180 }}>
+                    {r.gtAttendanceComments
+                      ? <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{r.gtAttendanceComments}</Typography>
+                      : <Typography variant="body2" color="text.disabled">Pending</Typography>}
+                  </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>
-                    <Mono>{formatNumber(r.paymentToBse)}</Mono>
+                    {formatNumber(r.paymentToBse)}
                   </TableCell>
                 </TableRow>
               ))}
-              <TableRow>
-                <TableCell colSpan={7} align="right" sx={{ fontWeight: 700 }}>Total</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.dark' }}>
+              <TableRow sx={{ bgcolor: 'grey.50' }}>
+                <TableCell colSpan={8} align="right" sx={{ fontWeight: 700, letterSpacing: '0.04em' }}>TOTAL</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 800, color: 'primary.dark', fontSize: '0.95rem' }}>
                   ₹{total.toLocaleString('en-IN')}
                 </TableCell>
               </TableRow>
