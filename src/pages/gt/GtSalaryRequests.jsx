@@ -39,11 +39,19 @@ export default function GtSalaryRequests() {
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
-    if (!term) return currentRows
-    return currentRows.filter((r) =>
+    const base = !term ? currentRows : currentRows.filter((r) =>
       [r.manpowerAgencyName, r.invoiceNumber, r.gstinOfAgency, r.natureOfPayment]
         .some((f) => (f || '').toLowerCase().includes(term)),
     )
+    // Newest first — sort by invoiceDate (ISO string sorts lexicographically),
+    // falling back to record `id` so freshly-created notes (same date) still
+    // land on top.
+    return [...base].sort((a, b) => {
+      const da = a.invoiceDate || ''
+      const db = b.invoiceDate || ''
+      if (da !== db) return db.localeCompare(da)
+      return (b.id ?? 0) - (a.id ?? 0)
+    })
   }, [currentRows, q])
 
   const initialLoading = isLoading && rows.length === 0
