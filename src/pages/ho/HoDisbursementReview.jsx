@@ -7,8 +7,12 @@ import {
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SaveIcon from '@mui/icons-material/Save'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import BlockIcon from '@mui/icons-material/Block'
+import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline'
 import { SectionCard, Mono } from '../../components/shared'
-import { useVendorDisbursement, useUpdateVendorDisbursement } from '../../queries'
+import { useVendorDisbursement, useReviewerUpdateVendorDisbursement } from '../../queries'
+import { useAuth } from '../../auth'
 
 // HO Maker's review page for a single vendor disbursement.
 //
@@ -21,6 +25,27 @@ import { useVendorDisbursement, useUpdateVendorDisbursement } from '../../querie
 
 const RECOMMENDATION_OPTIONS = ['Recommended', 'Not Recommended', 'Hold']
 
+// Map the HO recommendation to the status stamped on the record. Matches
+// the same vocabulary the queue chip uses (see statusColor below).
+function statusFromRecommendation(rec) {
+  switch (String(rec || '').toLowerCase()) {
+    case 'recommended':      return 'Approved'
+    case 'not recommended':  return 'Rejected'
+    case 'hold':             return 'On Hold'
+    default:                 return null
+  }
+}
+
+// YYYY-MM-DD in the browser's local timezone — used as `max` on the invoice
+// date input so HO can't record a future-dated invoice.
+function todayIso() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function statusColor(status) {
   const s = String(status || '').toLowerCase()
   if (s === 'approved') return 'success'
@@ -32,12 +57,19 @@ function statusColor(status) {
 export default function HoDisbursementReview() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const q = useVendorDisbursement(id)
-  const updateM = useUpdateVendorDisbursement()
+  const updateM = useReviewerUpdateVendorDisbursement()
   const dto = q.data
 
   const [toast, setToast] = useState({ severity: '', msg: '' })
+  // Latch the "just saved" state so the completion banner persists past the
+  // toast timeout. Cleared if the user hits "Edit review" to make changes.
+  const [justSaved, setJustSaved] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+
+  const MAX_DATE = useMemo(() => todayIso(), [])
 
   // Only the fields HO can touch. `verifiedBy` (from GT) and `approvedBy`
   // / `status` (backend-owned) aren't editable — they show up in the header
@@ -82,40 +114,55 @@ export default function HoDisbursementReview() {
   // literal re-created each render.
   const cap = invoiceTotal === '' || invoiceTotal == null ? null : Number(invoiceTotal)
 
+  // Reject > cap up-front so the save button can be disabled and the
+  // Amount Recommended field can render an inline error immediately.
+  const amtNum = numOrNull(edit.recommendedDisbursementAmount)
+  const amountOverCap = amtNum != null && cap != null && amtNum > cap
+  const dateInFuture = edit.invoiceDate && edit.invoiceDate > MAX_DATE
+  const recommendationMissing = !edit.recommendation
+  const canSave = !amountOverCap && !dateInFuture && !recommendationMissing
+
   const save = useCallback(async () => {
     if (!dto) return
-    // Cap enforcement — Amount Recommended can't exceed the invoice total.
-    const amt = numOrNull(edit.recommendedDisbursementAmount)
-    const cap = numOrNull(invoiceTotal)
-    if (amt != null && cap != null && amt > cap) {
-      setToast({ severity: 'warning', msg: `Amount Recommended (₹${amt.toLocaleString('en-IN')}) can't exceed the invoice total (₹${cap.toLocaleString('en-IN')}).` })
+    if (amountOverCap) {
+      setToast({ severity: 'warning', msg: `Amount Recommended (₹${amtNum.toLocaleString('en-IN')}) can't exceed the invoice total (₹${cap.toLocaleString('en-IN')}).` })
+      return
+    }
+    if (dateInFuture) {
+      setToast({ severity: 'warning', msg: 'Invoice Date can\'t be in the future.' })
+      return
+    }
+    if (recommendationMissing) {
+      setToast({ severity: 'warning', msg: 'Pick a recommendation.' })
       return
     }
     try {
+      // Minimal PUT — only the fields HO changes. Backend merges with the
+      // existing entity so financials + GT comments round-trip untouched.
+      // `status` is derived from the recommendation; `approvedBy` is the
+      // logged-in HO user.
       await updateM.mutateAsync({
         id,
-        values: {
-          ...dto,
-          // HO-modifiable invoice fields (with IGST + Total recomputed).
+        patch: {
           invoiceDate: edit.invoiceDate || null,
           invoiceNumber: edit.invoiceNumber || null,
           invoiceValue: numOrNull(edit.invoiceValue),
           gstAmount: numOrNull(gstAmount),
           totalAmount: numOrNull(invoiceTotal),
-          // HO-modifiable compliance.
           complianceTerms: edit.complianceTerms || null,
-          // HO decision — only these two are HO-owned. `verifiedBy` came
-          // from GT (leave as-is); `approvedBy` / `status` are backend-
-          // stamped once recommendation is captured.
-          recommendedDisbursementAmount: amt,
+          recommendedDisbursementAmount: amtNum,
           recommendation: edit.recommendation || null,
+          status: statusFromRecommendation(edit.recommendation),
+          approvedBy: user?.email || user?.username || 'HO Maker',
         },
       })
-      setToast({ severity: 'success', msg: 'HO review saved.' })
+      setJustSaved(true)
+      setEditMode(false)
+      setToast({ severity: 'success', msg: 'HO review submitted.' })
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to save review.' })
     }
-  }, [dto, id, edit, gstAmount, invoiceTotal, updateM])
+  }, [dto, id, edit, gstAmount, invoiceTotal, updateM, amtNum, amountOverCap, cap, dateInFuture, recommendationMissing, user, MAX_DATE])
 
   if (q.isLoading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
@@ -131,6 +178,11 @@ export default function HoDisbursementReview() {
   if (!dto) return null
 
   const saving = updateM.isPending
+  // "Completed" state — either we just saved, or the record already has a
+  // recorded recommendation and the user hasn't clicked Edit review.
+  const completed = (justSaved || !!dto.recommendation) && !editMode
+  // Snapshot of what the server currently holds, for the completion banner.
+  const finalStatus = dto.status || statusFromRecommendation(dto.recommendation)
 
   return (
     <Box sx={{ pb: 9 }}>
@@ -156,6 +208,17 @@ export default function HoDisbursementReview() {
         </CardContent>
       </Card>
 
+      {completed && (
+        <CompletionBanner
+          status={finalStatus}
+          recommendation={dto.recommendation}
+          amount={dto.recommendedDisbursementAmount}
+          approvedBy={dto.approvedBy}
+          onEdit={() => { setEditMode(true); setJustSaved(false) }}
+          onBack={() => navigate('/sde/vendor-disbursements')}
+        />
+      )}
+
       <Stack spacing={2.5}>
         {/* Read-only sections — what the MPA submitted */}
         <VendorDetails dto={dto} />
@@ -169,35 +232,48 @@ export default function HoDisbursementReview() {
           value={edit.invoiceValue}
           gstAmount={gstAmount}
           total={invoiceTotal}
+          maxDate={MAX_DATE}
+          dateError={dateInFuture ? 'Invoice date can\'t be in the future.' : null}
           onSet={setField}
-          disabled={saving}
+          disabled={saving || completed}
         />
         <TdsAndComplianceEditable
           dto={dto}
           complianceTerms={edit.complianceTerms}
           onSet={setField}
-          disabled={saving}
+          disabled={saving || completed}
         />
         <HoDecisionBlock
           amount={edit.recommendedDisbursementAmount}
           recommendation={edit.recommendation}
           cap={cap}
+          amountError={amountOverCap
+            ? `Cannot exceed the invoice total (₹${cap.toLocaleString('en-IN')}).`
+            : null}
           onSet={setField}
-          disabled={saving}
+          disabled={saving || completed}
         />
       </Stack>
 
-      <Card sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
-        <Button color="inherit" onClick={() => navigate('/sde/vendor-disbursements')} disabled={saving}>Cancel</Button>
-        <Button
-          variant="contained"
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-          onClick={save}
-          disabled={saving}
-        >
-          {saving ? 'Saving…' : 'Save HO Review'}
-        </Button>
-      </Card>
+      {!completed && (
+        <Card sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography variant="body2" color={canSave ? 'text.secondary' : 'warning.main'} sx={{ flexGrow: 1 }}>
+            {amountOverCap ? `Amount Recommended exceeds the invoice total (₹${cap.toLocaleString('en-IN')}).`
+              : dateInFuture ? 'Invoice Date can\'t be in the future.'
+              : recommendationMissing ? 'Pick a recommendation before saving.'
+              : 'Ready to submit.'}
+          </Typography>
+          <Button color="inherit" onClick={() => navigate('/sde/vendor-disbursements')} disabled={saving}>Cancel</Button>
+          <Button
+            variant="contained"
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+            onClick={save}
+            disabled={saving || !canSave}
+          >
+            {saving ? 'Saving…' : 'Save HO Review'}
+          </Button>
+        </Card>
+      )}
 
       <Snackbar open={!!toast.msg} autoHideDuration={3000}
         onClose={() => setToast({ severity: '', msg: '' })}
@@ -208,6 +284,47 @@ export default function HoDisbursementReview() {
         </Alert>
       </Snackbar>
     </Box>
+  )
+}
+
+// ── Completion banner (shown after HO review is submitted) ─────────────────
+
+function CompletionBanner({ status, recommendation, amount, approvedBy, onEdit, onBack }) {
+  const tone = status === 'Approved' ? 'success'
+    : status === 'Rejected' ? 'error'
+    : status === 'On Hold' ? 'warning'
+    : 'info'
+  const Icon = status === 'Approved' ? CheckCircleIcon
+    : status === 'Rejected' ? BlockIcon
+    : PauseCircleOutlineIcon
+  const title = status === 'Approved' ? 'Recommended for disbursement'
+    : status === 'Rejected' ? 'Not recommended'
+    : status === 'On Hold' ? 'On hold'
+    : 'HO review submitted'
+
+  return (
+    <Alert
+      severity={tone}
+      variant="outlined"
+      icon={<Icon fontSize="large" />}
+      sx={{
+        mb: 2.5, alignItems: 'center', borderRadius: 2, borderWidth: 2,
+        '& .MuiAlert-message': { flexGrow: 1, py: 1 },
+      }}
+      action={
+        <Stack direction="row" spacing={1} sx={{ alignSelf: 'center' }}>
+          <Button size="small" color="inherit" onClick={onEdit}>Edit review</Button>
+          <Button size="small" variant="contained" color={tone} onClick={onBack}>Back to queue</Button>
+        </Stack>
+      }
+    >
+      <Typography fontWeight={800} sx={{ fontSize: '1rem', lineHeight: 1.2 }}>{title}</Typography>
+      <Typography variant="body2" sx={{ mt: 0.25 }}>
+        {recommendation && <>Decision: <strong>{recommendation}</strong>. </>}
+        {amount != null && <>Amount recommended: <strong>₹{Number(amount).toLocaleString('en-IN')}</strong>. </>}
+        {approvedBy && <>Approved by <strong>{approvedBy}</strong>.</>}
+      </Typography>
+    </Alert>
   )
 }
 
@@ -324,16 +441,20 @@ const DisbursementSummary = memo(function DisbursementSummary({ dto, total }) {
 
 // ── Editable sections (HO can modify these) ────────────────────────────────
 
-const InvoiceEditable = memo(function InvoiceEditable({ date, number, value, gstAmount, total, onSet, disabled }) {
+const InvoiceEditable = memo(function InvoiceEditable({ date, number, value, gstAmount, total, maxDate, dateError, onSet, disabled }) {
   const commitDate = useCallback((v) => onSet('invoiceDate', v), [onSet])
   const commitNumber = useCallback((v) => onSet('invoiceNumber', v), [onSet])
   const commitValue = useCallback((v) => onSet('invoiceValue', v), [onSet])
+  const dateInputProps = useMemo(() => (maxDate ? { max: maxDate } : undefined), [maxDate])
   return (
     <SectionCard title="Invoice Details" subtitle="Modifiable at HO Maker level. IGST and Total are auto-computed.">
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, sm: 3 }}>
           <LocalCommitField label="Invoice Date" type="date" value={date}
             onCommit={commitDate} disabled={disabled}
+            error={!!dateError}
+            helperText={dateError || undefined}
+            inputProps={dateInputProps}
             InputLabelProps={INPUT_LABEL_SHRINK} />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
@@ -382,33 +503,37 @@ const TdsAndComplianceEditable = memo(function TdsAndComplianceEditable({ dto, c
 })
 
 const HoDecisionBlock = memo(function HoDecisionBlock({
-  amount, recommendation, cap, onSet, disabled,
+  amount, recommendation, cap, amountError, onSet, disabled,
 }) {
-  // Clamp on commit (blur) — HO can type freely but any value > cap gets
-  // snapped down to the cap the moment they leave the field. Prevents
-  // full-page re-renders during typing.
-  const commitAmount = useCallback((v) => {
-    if (v === '' || v == null) return onSet('recommendedDisbursementAmount', '')
-    const n = Number(v)
-    if (!Number.isFinite(n) || n < 0) return onSet('recommendedDisbursementAmount', '')
-    if (cap != null && n > cap) return onSet('recommendedDisbursementAmount', cap)
-    onSet('recommendedDisbursementAmount', v)
-  }, [onSet, cap])
+  // Controlled (updates on every keystroke) so the "over cap" helper turns
+  // red live as HO types, instead of only after blur.
+  const onAmountChange = useCallback((e) => {
+    onSet('recommendedDisbursementAmount', e.target.value)
+  }, [onSet])
   const setRec = useCallback((e) => onSet('recommendation', e.target.value), [onSet])
 
-  const helperText = cap != null
-    ? `Max ₹${cap.toLocaleString('en-IN')} (invoice total).`
-    : 'Enter the amount to recommend for disbursement.'
+  const helperText = amountError
+    ? amountError
+    : cap != null
+      ? `Max ₹${cap.toLocaleString('en-IN')} (invoice total).`
+      : 'Enter the amount to recommend for disbursement.'
 
   return (
     <SectionCard title="HO Decision" subtitle="Recommend an amount (≤ invoice total) and pick a recommendation.">
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 4 }}>
-          <LocalCommitField label="Amount Recommended (₹)" type="number" value={amount}
-            onCommit={commitAmount} disabled={disabled}
+          <TextField
+            fullWidth size="small"
+            label="Amount Recommended (₹)"
+            type="number"
+            value={amount ?? ''}
+            onChange={onAmountChange}
+            disabled={disabled}
+            error={!!amountError}
             helperText={helperText}
             InputProps={INPUT_ADORN_RUPEE}
-            inputProps={cap != null ? { min: 0, max: cap, step: 1 } : { min: 0, step: 1 }} />
+            inputProps={{ min: 0, step: 1 }}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 4 }}>
           <TextField select fullWidth size="small" label="Recommendation"
