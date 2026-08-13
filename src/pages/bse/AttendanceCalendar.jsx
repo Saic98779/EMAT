@@ -4,15 +4,15 @@ import { attendanceCalendar } from '../../data'
 const DOW = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 
 const STYLE = {
-  visit: { bg: 'success.light', color: 'success.dark', border: 'success.light' },
-  branch: { bg: 'info.light', color: 'info.dark', border: 'info.light' },
+  visit: { bg: 'info.light', color: 'info.dark', border: 'info.light' },
+  branch: { bg: 'success.light', color: 'success.dark', border: 'success.light' },
   weekend: { bg: 'transparent', color: 'text.disabled', border: 'divider' },
   future: { bg: 'transparent', color: 'text.disabled', border: 'divider' },
 }
 
 const LEGEND = [
-  { label: 'Field visit', color: 'success.main' },
-  { label: 'At branch', color: 'info.main' },
+  { label: 'Field visit', color: 'info.main' },
+  { label: 'At branch', color: 'success.main' },
   { label: 'Weekend', color: 'action.disabled' },
 ]
 
