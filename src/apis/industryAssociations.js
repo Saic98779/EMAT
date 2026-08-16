@@ -267,7 +267,13 @@ function toIsoDate(v) {
 //   "Changes Requested"  → reserved (backend flag not exposed yet)
 export function fromDto(dto, appraisal = null) {
   const l1Approved = dto.isSidbeApproved === true
-  const l1Rejected = dto.isSidbeApproved === false
+  // Only treat `false` as rejected when the SDE actually recorded a
+  // rejection (audit user is stamped). Backend regressed Aug '26 to
+  // default new GT records to `isSidbeApproved: false` (not `null`),
+  // which without this guard would misclassify every fresh submission
+  // as "Rejected (L1)". Once backend restores null-default (or strips
+  // the field from POST), this guard becomes a no-op.
+  const l1Rejected = dto.isSidbeApproved === false && dto.sidbeApprovedByUserId != null
   const hasAppraisal = !!appraisal
   const l2Approved = appraisal?.isSidbeApproved === true
   const l2Rejected = appraisal?.isSidbeApproved === false

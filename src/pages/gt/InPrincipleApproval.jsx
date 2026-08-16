@@ -15,7 +15,7 @@ import {
 import { uploadFilesBatch } from '../../apis/files'
 import { encodeFilename } from '../../fileFieldLabels'
 import {
-  useBranchesByState, useSdesByBranch, useIA, useUpdateIA, useApproveIA, keys,
+  useBranchesByState, useSdesByBranch, useIA, useUpdateIA, keys,
 } from '../../queries'
 import { useAuth } from '../../auth'
 
@@ -58,10 +58,12 @@ export default function InPrincipleApproval() {
   const { user, role } = useAuth()
 
   // Per workflow: SDE-initiated In-Principle records are auto-approved
-  // (no separate SDE review step needed). We chain POST create + PATCH
-  // approve — the /approve endpoint is server-side role-gated to
-  // SIDBI_SDE so we can't accidentally auto-approve as another role even
-  // if this branch fires.
+  // by the backend (role-based inference on POST — SIDBI_SDE gets
+  // `isSidbeApproved=true` stamped server-side, other roles don't).
+  // The client just POSTs like normal. `isSdeActor` here is UI-only —
+  // used to route back to /sde on cancel/back and to tweak the button
+  // label / subtitle. Whether the auto-approval actually happened is
+  // read from the POST response's `isSidbeApproved` field.
   const isSdeActor = role === 'sde'
   // Where "back" / "cancel" go — SDE stays in the SDE workspace, GT stays
   // in the GT workspace. Computed early so the loading/error guards below
@@ -90,7 +92,6 @@ export default function InPrincipleApproval() {
   }, [isCompleteMode, iaQ.data])
 
   const updateM = useUpdateIA()
-  const approveM = useApproveIA()
 
   // Cascade: when `state` changes we reset the dependent branch + SDE fields
   // so stale UUIDs don't accidentally submit. Handled inline in setValue.
@@ -178,38 +179,28 @@ export default function InPrincipleApproval() {
     setBusy(true)
     try {
       let regUuid = routeUuid
+      // `autoApproved` is *reported by the backend*, not decided here.
+      // Backend inspects the caller's JWT: SIDBI_SDE → sets
+      // `isSidbeApproved = true` + stamps `sidbeApprovedByUserId` on the
+      // response. Any other role → leaves `isSidbeApproved` null. Client
+      // does no chained PATCH and no role-based branching — the only
+      // reason we still read the flag is to tune the success toast.
+      let autoApproved = false
 
       if (isCompleteMode) {
-        // PUT-merge into the existing IA. Backend confirmed to merge non-
-        // null fields (see manual smoke test 2026-08-16), so sending the
-        // full form values is safe — the four header fields are echoed
-        // back unchanged.
-        await updateM.mutateAsync({
+        // PUT-merge into the existing IA. Backend merges non-null fields
+        // (see manual smoke test 2026-08-16), so sending the full form
+        // values is safe — the four header fields round-trip unchanged.
+        const updated = await updateM.mutateAsync({
           uuid: routeUuid,
           values,
           extra: { updatedBy: user?.username },
         })
+        autoApproved = updated?.isSidbeApproved === true
       } else {
         const created = await createIndustryAssociation(values)
         regUuid = created?.uuid
-      }
-
-      // ── SDE-initiated auto-approval ──
-      // Chain PATCH /approve so the record moves straight to L1-approved.
-      // The endpoint is server-side role-gated to SIDBI_SDE; if a non-SDE
-      // user ever lands here the call 403s and we surface a warning
-      // instead of silently leaving the record un-approved.
-      let autoApproved = false
-      if (isSdeActor && regUuid) {
-        try {
-          await approveM.mutateAsync({ uuid: regUuid, isSidbeApproved: true })
-          autoApproved = true
-        } catch (err) {
-          setToast({
-            severity: 'warning',
-            msg: `IA saved but auto-approve failed (${err.message || 'unknown error'}). Approve from the queue.`,
-          })
-        }
+        autoApproved = created?.isSidbeApproved === true
       }
 
       const files = collectFiles()
@@ -224,7 +215,7 @@ export default function InPrincipleApproval() {
             msg: `IA saved. File upload failed (${err.message || 'unknown error'}). Retry from the IA page.`,
           })
         }
-      } else if (!isSdeActor || autoApproved) {
+      } else {
         setToast({
           severity: 'success',
           msg: isCompleteMode
@@ -237,7 +228,6 @@ export default function InPrincipleApproval() {
 
       qc.invalidateQueries({ queryKey: keys.ias.lists() })
       if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
-      // SDE flows land back in the SDE IA workspace; GT flows in the GT one.
       const nextPath = regUuid ? `${iaListPath}/${regUuid}` : iaListPath
       setTimeout(() => navigate(nextPath), 900)
     } catch (err) {
