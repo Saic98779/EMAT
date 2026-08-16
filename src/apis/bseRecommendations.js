@@ -119,6 +119,9 @@ export function toPayload(v = {}, registrationUuid = null) {
     userId: int(v.vendor_uuid),
     state: str(v.state),
     district: str(v.district),
+    // Optional field-visit geotag captured on the BSE candidate form.
+    latitude: num(v.latitude),
+    longitude: num(v.longitude),
     bseName: str(v.bse_name),
     mobileNumber: str(v.mobile),
     emailId: str(v.email),
@@ -204,6 +207,8 @@ export function toUpdatePayload(patch = {}) {
   if (patch.noticePeriodDays !== undefined) out.noticePeriodDays = int(patch.noticePeriodDays)
   if (patch.approvedSalary !== undefined) out.approvedSalary = num(patch.approvedSalary)
   if (patch.approvedTravelAllowance !== undefined) out.approvedTravelAllowance = num(patch.approvedTravelAllowance)
+  if (patch.latitude !== undefined) out.latitude = num(patch.latitude)
+  if (patch.longitude !== undefined) out.longitude = num(patch.longitude)
   return out
 }
 
@@ -253,6 +258,8 @@ export function fromDto(dto = {}) {
     ia: dto.industryAssociationName || dto.registrationUuid || '—',
     mobile: dto.mobileNumber || '—',
     email: dto.emailId || '—',
+    latitude: dto.latitude ?? null,
+    longitude: dto.longitude ?? null,
     qualification: dto.highestQualification || '—',
     experienceStatus: dto.experienced ? 'Yes' : 'No',
     experience: dto.experienced
