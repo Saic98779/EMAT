@@ -73,7 +73,13 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
   // acted on the record.
   const l1Decided = ia0?.raw?.isSidbeApproved != null
   const l2Decided = ia0?.appraisal?.isSidbeApproved != null
-  const canApproveL1 = isSde && ia0?.stage === 0 && !l1Decided
+  // Never surface L1 approve/reject on a matrix-only record — the profile
+  // isn't filled yet, so there's nothing for SDE to sign off on. The
+  // header already shows a primary "Complete In-Principle" CTA for that
+  // state; leaving the DecisionCard visible would let SDE approve an
+  // empty registration.
+  const isScreenedOnly = ia0?.status === 'Screened · Awaiting In-Principle'
+  const canApproveL1 = isSde && ia0?.stage === 0 && !l1Decided && !isScreenedOnly
   const canApproveL2 = isSde && ia0?.stage === 1 && ia0?.appraisal && !l2Decided
   const approving = approveL1.isPending || approveL2.isPending
 
@@ -127,7 +133,16 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
           <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" mb={3}>
             <Typography variant="h5">{ia.name}</Typography>
             <StatusChip status={ia.status} />
-            {isSde && ia.stage === 0 && (
+            {/* Screened via eligibility matrix but no In-Principle profile
+                filled yet — surface a primary CTA so the actor can pick up
+                where they left off, on whichever workspace they arrived on. */}
+            {(isGt || isSde) && ia.status === 'Screened · Awaiting In-Principle' && (
+              <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
+                onClick={() => navigate(`${backPath}/${ia.id}/in-principle`)}>
+                Complete In-Principle
+              </Button>
+            )}
+            {isSde && ia.stage === 0 && ia.status !== 'Screened · Awaiting In-Principle' && (
               <Button variant="outlined" startIcon={<EditOutlinedIcon />} sx={{ ml: 'auto' }}
                 onClick={() => navigate(`/sde/ias/${ia.id}/edit`)}>
                 Edit registration

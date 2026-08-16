@@ -61,10 +61,28 @@ import {
   listBseAttendanceByRecommendation,
 } from './apis/bseAttendance'
 import {
+  listBseAttendanceManualRequests, getBseAttendanceManualRequest,
+  listBseAttendanceManualRequestsByRecommendation,
+  listBseAttendanceManualRequestsByStatus,
+  createBseAttendanceManualRequest, updateBseAttendanceManualRequest,
+  deleteBseAttendanceManualRequest,
+  approveBseAttendanceManualRequest, rejectBseAttendanceManualRequest,
+} from './apis/bseAttendanceManualRequest'
+import {
   listDisbursementCapex, getDisbursementCapex,
   listDisbursementCapexByRegistration,
   createDisbursementCapex, updateDisbursementCapex, deleteDisbursementCapex,
 } from './apis/disbursementCapex'
+import {
+  listEligibilityMatrix, getEligibilityMatrix,
+  getEligibilityMatrixByRegistration,
+  createEligibilityMatrix, updateEligibilityMatrix, deleteEligibilityMatrix,
+} from './apis/eligibilityMatrix'
+import {
+  getSustainabilityMatrix,
+  getSustainabilityMatrixByAppraisal,
+  createSustainabilityMatrix, updateSustainabilityMatrix, deleteSustainabilityMatrix,
+} from './apis/sustainabilityMatrix'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -120,6 +138,17 @@ export const keys = {
     detail: (uuid) => ['capex', 'detail', uuid],
     byRegistration: (regUuid) => ['capex', 'byRegistration', regUuid],
   },
+  eligibility: {
+    all: ['eligibility'],
+    lists: () => ['eligibility', 'list'],
+    detail: (uuid) => ['eligibility', 'detail', uuid],
+    byRegistration: (regUuid) => ['eligibility', 'byRegistration', regUuid],
+  },
+  sustainability: {
+    all: ['sustainability'],
+    detail: (uuid) => ['sustainability', 'detail', uuid],
+    byAppraisal: (appraisalUuid) => ['sustainability', 'byAppraisal', appraisalUuid],
+  },
   files: {
     byRegistration: (regUuid) => ['files', 'byRegistration', regUuid],
   },
@@ -128,6 +157,13 @@ export const keys = {
     lists: () => ['bse-attendance', 'list'],
     detail: (id) => ['bse-attendance', 'detail', String(id)],
     byRecommendation: (recUuid) => ['bse-attendance', 'byRecommendation', recUuid],
+  },
+  bseAttendanceManualRequest: {
+    all: ['bse-attendance-manual-request'],
+    lists: () => ['bse-attendance-manual-request', 'list'],
+    detail: (id) => ['bse-attendance-manual-request', 'detail', String(id)],
+    byRecommendation: (recUuid) => ['bse-attendance-manual-request', 'byRecommendation', recUuid],
+    byStatus: (status) => ['bse-attendance-manual-request', 'byStatus', status],
   },
 }
 
@@ -633,12 +669,16 @@ export function useDisbursementCapexOne(uuid) {
   })
 }
 
+// Backend currently returns a single object (not a list) — Swagger types
+// it that way and the handler uses findOne semantics. We DON'T unwrap here
+// because unwrapList would turn a plain object into `[]`. The component
+// coerces single-vs-list itself. Once backend fixes the endpoint to
+// always return a list, restore `.then(unwrapList)`.
 export function useDisbursementCapexByRegistration(registrationUuid) {
   return useQuery({
     queryKey: keys.capex.byRegistration(registrationUuid),
     enabled: !!registrationUuid,
-    queryFn: ({ signal }) =>
-      listDisbursementCapexByRegistration(registrationUuid, { signal }).then(unwrapList),
+    queryFn: ({ signal }) => listDisbursementCapexByRegistration(registrationUuid, { signal }),
   })
 }
 
@@ -666,6 +706,107 @@ export function useDeleteDisbursementCapex() {
   return useMutation({
     mutationFn: (uuid) => deleteDisbursementCapex(uuid),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.capex.all }),
+  })
+}
+
+// ── Eligibility Matrix (GT Field Team assessment) ─────────────────────────
+
+export function useEligibilityMatrix() {
+  return useQuery({
+    queryKey: keys.eligibility.lists(),
+    queryFn: ({ signal }) => listEligibilityMatrix({ signal }).then(unwrapList),
+  })
+}
+
+export function useEligibilityMatrixOne(uuid) {
+  return useQuery({
+    queryKey: keys.eligibility.detail(uuid),
+    enabled: !!uuid,
+    queryFn: ({ signal }) => getEligibilityMatrix(uuid, { signal }),
+  })
+}
+
+// Backend may return single object or list — caller coerces defensively.
+export function useEligibilityMatrixByRegistration(registrationUuid) {
+  return useQuery({
+    queryKey: keys.eligibility.byRegistration(registrationUuid),
+    enabled: !!registrationUuid,
+    queryFn: ({ signal }) => getEligibilityMatrixByRegistration(registrationUuid, { signal }),
+  })
+}
+
+export function useCreateEligibilityMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createEligibilityMatrix(values),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.eligibility.all }),
+  })
+}
+
+export function useUpdateEligibilityMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ uuid, values }) => updateEligibilityMatrix(uuid, values),
+    onSuccess: (updated, { uuid }) => {
+      if (updated) qc.setQueryData(keys.eligibility.detail(uuid), updated)
+      qc.invalidateQueries({ queryKey: keys.eligibility.all })
+    },
+  })
+}
+
+export function useDeleteEligibilityMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (uuid) => deleteEligibilityMatrix(uuid),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.eligibility.all }),
+  })
+}
+
+
+// ── Sustainability Matrix (post In-Principle, pre Detailed Appraisal) ────
+
+export function useSustainabilityMatrixOne(uuid) {
+  return useQuery({
+    queryKey: keys.sustainability.detail(uuid),
+    enabled: !!uuid,
+    queryFn: ({ signal }) => getSustainabilityMatrix(uuid, { signal }),
+  })
+}
+
+// Used to check whether the matrix has already been submitted for this
+// IA's appraisal — gates the flow into Detailed Appraisal.
+export function useSustainabilityMatrixByAppraisal(appraisalUuid) {
+  return useQuery({
+    queryKey: keys.sustainability.byAppraisal(appraisalUuid),
+    enabled: !!appraisalUuid,
+    queryFn: ({ signal }) => getSustainabilityMatrixByAppraisal(appraisalUuid, { signal }).catch(() => null),
+  })
+}
+
+export function useCreateSustainabilityMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createSustainabilityMatrix(values),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.sustainability.all }),
+  })
+}
+
+export function useUpdateSustainabilityMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ uuid, values }) => updateSustainabilityMatrix(uuid, values),
+    onSuccess: (updated, { uuid }) => {
+      if (updated) qc.setQueryData(keys.sustainability.detail(uuid), updated)
+      qc.invalidateQueries({ queryKey: keys.sustainability.all })
+    },
+  })
+}
+
+export function useDeleteSustainabilityMatrix() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (uuid) => deleteSustainabilityMatrix(uuid),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.sustainability.all }),
   })
 }
 
@@ -757,5 +898,98 @@ export function useDeleteBseAttendance() {
         })
       }
     },
+  })
+}
+
+// ── BSE attendance — manual requests ──────────────────────────────────────
+// Backdated / missed-day attendance the BSE files themselves, subject to
+// approval. Same shape as bse-attendance + `reason` + approval fields.
+
+export function useBseAttendanceManualRequestsByRecommendation(recommendationId) {
+  return useQuery({
+    queryKey: keys.bseAttendanceManualRequest.byRecommendation(recommendationId),
+    enabled: !!recommendationId,
+    queryFn: ({ signal }) =>
+      listBseAttendanceManualRequestsByRecommendation(recommendationId, { signal }).then(unwrapList),
+  })
+}
+
+export function useBseAttendanceManualRequestsByStatus(status) {
+  return useQuery({
+    queryKey: keys.bseAttendanceManualRequest.byStatus(status),
+    enabled: !!status,
+    queryFn: ({ signal }) =>
+      listBseAttendanceManualRequestsByStatus(status, { signal }).then(unwrapList),
+  })
+}
+
+export function useBseAttendanceManualRequestList() {
+  return useQuery({
+    queryKey: keys.bseAttendanceManualRequest.lists(),
+    queryFn: ({ signal }) => listBseAttendanceManualRequests({ signal }).then(unwrapList),
+  })
+}
+
+export function useBseAttendanceManualRequest(id) {
+  return useQuery({
+    queryKey: keys.bseAttendanceManualRequest.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getBseAttendanceManualRequest(id, { signal }),
+  })
+}
+
+// Small helper to invalidate every read of this entity at once — the four
+// mutations below all need it, so keeping it in one place avoids drift.
+function invalidateManualRequests(qc, recommendationId) {
+  qc.invalidateQueries({ queryKey: keys.bseAttendanceManualRequest.all })
+  if (recommendationId) {
+    qc.invalidateQueries({
+      queryKey: keys.bseAttendanceManualRequest.byRecommendation(recommendationId),
+    })
+  }
+}
+
+export function useCreateBseAttendanceManualRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createBseAttendanceManualRequest(values),
+    onSuccess: (_data, values) => invalidateManualRequests(qc, values?.bseRecommendationId),
+  })
+}
+
+export function useUpdateBseAttendanceManualRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }) => updateBseAttendanceManualRequest(id, values),
+    onSuccess: (_data, { values }) => invalidateManualRequests(qc, values?.bseRecommendationId),
+  })
+}
+
+export function useDeleteBseAttendanceManualRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }) => deleteBseAttendanceManualRequest(id),
+    onSuccess: (_data, { recommendationId }) => invalidateManualRequests(qc, recommendationId),
+  })
+}
+
+export function useApproveBseAttendanceManualRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }) => approveBseAttendanceManualRequest(id),
+    onSuccess: (_data, { recommendationId }) => {
+      invalidateManualRequests(qc, recommendationId)
+      // Approving a request effectively becomes attendance — invalidate
+      // the primary attendance cache so calendars/counts refresh too.
+      qc.invalidateQueries({ queryKey: keys.bseAttendance.all })
+    },
+  })
+}
+
+export function useRejectBseAttendanceManualRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id }) => rejectBseAttendanceManualRequest(id),
+    onSuccess: (_data, { recommendationId }) => invalidateManualRequests(qc, recommendationId),
   })
 }

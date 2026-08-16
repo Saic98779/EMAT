@@ -29,6 +29,8 @@ import BseDisbursals from './pages/bse/BseDisbursals'
 import RaiseDisbursal from './pages/bse/RaiseDisbursal'
 import BseCapexReimbursement from './pages/bse/BseCapexReimbursement'
 import GtCapexReview from './pages/gt/GtCapexReview'
+import EligibilityMatrix from './pages/gt/EligibilityMatrix'
+import SustainabilityMatrix from './pages/gt/SustainabilityMatrix'
 import SdeCapexReview from './pages/sde/SdeCapexReview'
 
 import IaDashboard from './pages/ia/IaDashboard'
@@ -105,6 +107,11 @@ export default function App() {
         <Route path="/gt" element={<GtHome />} />
         <Route path="/gt/ias" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><IndustryAssociations /></DenyRawRoles>} />
         <Route path="/gt/ias/new" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><InPrincipleApproval /></DenyRawRoles>} />
+        {/* Complete In-Principle for an IA that already exists (created up-
+            front by the eligibility matrix step). Same component; presence
+            of the `id` param switches it to hydrate + PUT mode. */}
+        <Route path="/gt/ias/:id/in-principle" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><InPrincipleApproval /></DenyRawRoles>} />
+        <Route path="/gt/ias/:id/sustainability" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><SustainabilityMatrix /></DenyRawRoles>} />
         <Route path="/gt/ias/:id/appraisal" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Appraisal /></DenyRawRoles>} />
         <Route path="/gt/ias/:id/capex" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><CapexNote /></DenyRawRoles>} />
         <Route path="/gt/ias/:id" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><ProposalDetail /></DenyRawRoles>} />
@@ -116,6 +123,7 @@ export default function App() {
         <Route path="/gt/attendance" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Attendance /></DenyRawRoles>} />
         <Route path="/gt/disbursals" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Disbursals /></DenyRawRoles>} />
         <Route path="/gt/capex" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtCapexReview /></DenyRawRoles>} />
+        <Route path="/gt/eligibility/new" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><EligibilityMatrix /></DenyRawRoles>} />
         <Route path="/gt/pmu/queue" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuQueue /></DenyRawRoles>} />
         <Route path="/gt/pmu/:uuid" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuReview /></DenyRawRoles>} />
       </Route>
@@ -125,8 +133,15 @@ export default function App() {
         <Route path="/sde" element={<SdeHome />} />
         <Route path="/sde/queue" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><ApprovalQueue /></DenyRawRoles>} />
         <Route path="/sde/ias" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><IndustryAssociations basePath="/sde/ias" /></DenyRawRoles>} />
+        {/* SDE-initiated In-Principle. Same form; the component chains a
+            PATCH /approve after POST so the record is auto-approved
+            (workflow: SDE-initiated → no separate SDE review step). */}
+        <Route path="/sde/ias/new" element={<DenyRawRoles roles={['SIDBI_HO_MAKER', 'CLUSTER_EXPERT']}><InPrincipleApproval /></DenyRawRoles>} />
+        <Route path="/sde/eligibility/new" element={<DenyRawRoles roles={['SIDBI_HO_MAKER', 'CLUSTER_EXPERT']}><EligibilityMatrix /></DenyRawRoles>} />
+        <Route path="/sde/ias/:id/in-principle" element={<DenyRawRoles roles={['SIDBI_HO_MAKER', 'CLUSTER_EXPERT']}><InPrincipleApproval /></DenyRawRoles>} />
         <Route path="/sde/ias/:id" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><ProposalDetail backPath="/sde/ias" /></DenyRawRoles>} />
         <Route path="/sde/ias/:id/edit" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><IaEdit /></DenyRawRoles>} />
+        <Route path="/sde/ias/:id/sustainability" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><SustainabilityMatrix backPath="/sde/ias" /></DenyRawRoles>} />
         <Route path="/sde/ias/:id/appraisal" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><Appraisal backPath="/sde/ias" /></DenyRawRoles>} />
         <Route path="/sde/disbursals" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><Disbursals role="sde" /></DenyRawRoles>} />
         <Route path="/sde/team/:uuid" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><BseCandidateDetail backPath="/sde/queue" backLabel="Approval Queue" /></DenyRawRoles>} />

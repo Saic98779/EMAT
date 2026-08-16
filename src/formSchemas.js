@@ -79,12 +79,15 @@ export const makeInPrincipleSchema = ({
   branchHelp, sdeHelp,
 } = {}) => ({
   key: 'in-principle',
+  // Section 1 (State + IA Name) used to live here — those fields are now
+  // captured up-front in the GT eligibility matrix and travel with the IA
+  // record from there. Numbering starts at 1 for what remains.
   sections: [
-    { n: 1, title: 'State & Industry Association', fields: [
-      { name: 'state', label: 'State', type: 'select', options: STATES, span: 4, required: true },
-      { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 8, required: true },
-    ] },
-    { n: 2, title: 'Constitution of IA', fields: [
+    { n: 1, title: 'Constitution of IA', fields: [
+      { name: 'email', label: 'IA Email', type: 'email', span: 6, required: true },
+      { name: 'pan_no', label: 'IA PAN', type: 'text', span: 6, required: true,
+        // 10-char PAN — 5 letters + 4 digits + 1 letter (e.g. AABCS3480N).
+        validate: (v) => (!v ? '' : (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(v).trim().toUpperCase()) ? '' : '10-char PAN, e.g. AABCS3480N')) },
       { name: 'constitution_type', label: 'Constitution', type: 'select', span: 6, required: true,
         options: ['Societies Registration Act 1860', 'Section 8 Company', 'Trust', 'Other'] },
       { name: 'constitution_other', label: 'If Other — specify', type: 'text', span: 6, required: true,
@@ -110,11 +113,11 @@ export const makeInPrincipleSchema = ({
       { name: 'incorp_certificate', label: 'Incorporation Certificate', type: 'file', span: 6, required: true },
       { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 6, required: true },
     ] },
-    { n: 3, title: 'Address of IA', fields: [
+    { n: 2, title: 'Address of IA', fields: [
       { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true, help: 'Within the selected State' },
       { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE },
     ] },
-    { n: 4, title: 'Apex Office Holder Details of IA', fields: [
+    { n: 3, title: 'Apex Office Holder Details of IA', fields: [
       { name: '_apex_contact', label: 'Contact', type: 'subheading', span: 12 },
       { name: 'apex_name', label: 'Name', type: 'text', span: 6, required: true },
       { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true },
@@ -140,13 +143,13 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_kyc_file', label: 'Upload KYC document (address proof)', type: 'file', span: 6, required: true },
       { name: 'apex_id_file', label: 'Upload ID proof document', type: 'file', span: 6, required: true },
     ] },
-    { n: 5, title: 'Details of Nodal Contact of IA', fields: [
+    { n: 4, title: 'Details of Nodal Contact of IA', fields: [
       { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true },
       { name: 'nodal_designation', label: 'Designation', type: 'text', span: 6, required: true },
       { name: 'nodal_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'nodal_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
     ] },
-    { n: 6, title: 'Cluster / District Details', fields: [
+    { n: 5, title: 'Cluster / District Details', fields: [
       { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'select', options: branchOptions, span: 12, required: true,
         help: branchHelp },
       { name: 'cluster_mapped', label: 'Mapped with any identified cluster?', type: 'yesno', span: 6, required: true },
@@ -158,7 +161,7 @@ export const makeInPrincipleSchema = ({
       { name: 'msme_count', label: 'Number of MSMEs (without traders) in district', type: 'number', span: 12, required: true,
         validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
     ] },
-    { n: 7, title: 'Existing Infra Details', fields: [
+    { n: 6, title: 'Existing Infra Details', fields: [
       { name: '_members', label: 'Membership', type: 'subheading', span: 12 },
       { name: 'members_gt200', label: 'Active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 6, required: true },
       { name: 'active_members', label: 'No. of active members in IA', type: 'number', span: 6, required: true,
@@ -214,7 +217,7 @@ export const makeInPrincipleSchema = ({
       { name: 'adverse_details', label: 'If yes, details', type: 'textarea', span: 12, max: 500, required: true, showIf: (v) => v.adverse_remarks === 'yes' },
       { name: 'adverse_report', label: 'Upload web report', type: 'file', span: 12, required: true, showIf: (v) => v.adverse_remarks === 'yes' },
     ] },
-    { n: 8, title: 'DIA Specific Details', fields: [
+    { n: 7, title: 'DIA Specific Details', fields: [
       { name: 'basis_of_selection', label: 'Basis of selection (select one / multiple / all)', type: 'checkboxes', required: true,
         options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
       { name: 'willingness_comments', label: "Comments on IA's willingness to take up Micro income-generating activities", type: 'textarea', span: 12, max: 500, required: true },

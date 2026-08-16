@@ -43,6 +43,12 @@ export const NAV = {
     { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', badge: 2, overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/gt/disbursals', badge: 2, overline: 'Field ops', title: 'Disbursals' },
     { icon: 'doc', label: 'CAPEX Verification', path: '/gt/capex', overline: 'Field ops', title: 'CAPEX — Field Verification' },
+    // Eligibility Matrix intentionally not in the sidebar — it's opened
+    // as a read-only modal via the "View Eligibility Matrix" button inside
+    // the In-Principle Approval form (see InPrincipleApproval.jsx). The
+    // full-page /gt/eligibility/new route stays registered in App.jsx so
+    // the eligibility form itself is still reachable for the first-time
+    // assessment flow.
   ],
   sde: [
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'Dashboard' },

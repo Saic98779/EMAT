@@ -8,6 +8,7 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
 import EditNoteIcon from '@mui/icons-material/EditNote'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
@@ -28,10 +29,20 @@ function rowAction(ia, navigate, basePath) {
     <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
       onClick={go(`${basePath}/${ia.id}`)} sx={ACTION_SX}>View</Button>
   )
+  // "Complete In-Principle" applies on both workspaces (GT and SDE both
+  // initiate IAs). Route via `basePath` so we stay in the caller's
+  // workspace — hardcoding /gt bounces SDE via the Protected guard.
+  if (ia.status === 'Screened · Awaiting In-Principle')
+    return <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
+      onClick={go(`${basePath}/${ia.id}/in-principle`)} sx={ACTION_SX}>Complete In-Principle</Button>
   if (!basePath.startsWith('/gt')) return view
+  // 'Detailed Pending' means In-Principle is approved and the IA is ready
+  // for detailed appraisal — but the client's flow inserts a Sustainability
+  // Matrix step first (no approval req). Route the row action there; the
+  // Sustainability page hands off to /appraisal on save.
   if (ia.status === 'Detailed Pending')
     return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
-      onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Appraisal</Button>
+      onClick={go(`/gt/ias/${ia.id}/sustainability`)} sx={ACTION_SX}>Sustainability</Button>
   if (ia.status === 'Changes Requested')
     return <Button size="small" variant="outlined" color="warning" startIcon={<EditNoteIcon />}
       onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Revise</Button>
@@ -50,6 +61,10 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   // combined map to resolve each row's `sidbiBranch` UUID → branchName.
   const { byUuid: branchNameByUuid } = useBranchesByStates(ias.map((i) => i.state))
   const isGt = basePath.startsWith('/gt')
+  const isSde = basePath.startsWith('/sde')
+  // GT and SDE workspaces both host the initiation buttons — SDE-initiated
+  // records are auto-approved on the server (see InPrincipleApproval).
+  const canInitiate = isGt || isSde
   const [confirm, setConfirm] = useState(null) // IA pending soft-delete
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState({ severity: '', msg: '' })
@@ -91,10 +106,20 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
             >
               {refetching ? 'Refreshing…' : 'Refresh'}
             </Button>
-            {isGt && (
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/gt/ias/new')}>
-                In-Principle Approval
-              </Button>
+            {canInitiate && (
+              <>
+                <Button
+                  variant="outlined"
+                  startIcon={<FactCheckOutlinedIcon />}
+                  onClick={() => navigate(isSde ? '/sde/eligibility/new' : '/gt/eligibility/new')}
+                >
+                  Eligibility Matrix
+                </Button>
+                <Button variant="contained" startIcon={<AddIcon />}
+                  onClick={() => navigate(isSde ? '/sde/ias/new' : '/gt/ias/new')}>
+                  In-Principle Approval
+                </Button>
+              </>
             )}
           </Stack>
         }
@@ -130,7 +155,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                 <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
                   <Typography color="text.secondary">
                     No Industry Associations yet.
-                    {isGt && ' Click “In-Principle Approval” to add the first one.'}
+                    {canInitiate && ' Click “In-Principle Approval” to add the first one.'}
                   </Typography>
                 </TableCell>
               </TableRow>

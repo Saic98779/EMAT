@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Box, Typography, Button, Snackbar, Alert, Chip, Paper, CircularProgress } from '@mui/material'
+import { Box, Typography, Button, Snackbar, Alert, Chip, Paper, CircularProgress, Stack } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SaveIcon from '@mui/icons-material/Save'
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
+import EligibilityMatrixModal from '../../components/EligibilityMatrixModal'
 import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { makeInPrincipleSchema } from '../../formSchemas'
 import { toFormValues } from '../../apis/industryAssociations'
@@ -39,6 +41,7 @@ export default function IaEdit() {
   const [values, setValues] = useState({})
   const [toast, setToast] = useState({ severity: '', msg: '' })
   const [showAllErrors, setShowAllErrors] = useState(false)
+  const [matrixOpen, setMatrixOpen] = useState(false)
   const seeded = Boolean(values._seeded)
 
   // Cascade behaviour — mirrors InPrincipleApproval.
@@ -144,16 +147,34 @@ export default function IaEdit() {
 
   return (
     <Box sx={{ maxWidth: 940, mx: 'auto', pb: 9 }}>
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(`/sde/ias/${id}`)} sx={{ mb: 2 }}>Back to review</Button>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(`/sde/ias/${id}`)}>Back to review</Button>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AssessmentOutlinedIcon />}
+          onClick={() => setMatrixOpen(true)}
+          sx={{ textTransform: 'none' }}
+        >
+          View Eligibility Matrix
+        </Button>
+      </Stack>
       <Box textAlign="center" mb={3}>
         <Chip label="SDE · Edit Registration" sx={{ bgcolor: 'primary.light', color: 'primary.dark', mb: 1.5, fontWeight: 700 }} />
         <Typography variant="h4">Edit In-Principle Registration</Typography>
         <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 620, mx: 'auto' }}>
           {ia?.name} — modify any field submitted by the GT field team before granting L1 approval.
+          State and IA name were captured up-front on the eligibility matrix.
         </Typography>
       </Box>
 
       <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors} />
+
+      <EligibilityMatrixModal
+        open={matrixOpen}
+        onClose={() => setMatrixOpen(false)}
+        registrationUuid={id}
+      />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
         <Button color="inherit" onClick={() => navigate(`/sde/ias/${id}`)} disabled={busy}>Cancel</Button>

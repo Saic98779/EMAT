@@ -2,38 +2,38 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Box, Card, CardContent, Grid, Stack, Typography, Button, Snackbar, Alert,
-  Paper, CircularProgress, TextField, MenuItem, InputAdornment, Radio,
-  RadioGroup, FormControl, FormControlLabel, FormLabel, Divider,
+  Paper, CircularProgress, TextField, MenuItem, InputAdornment, Divider,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SendIcon from '@mui/icons-material/Send'
 import { PageHeader } from '../../components/shared'
-import { useCreateDisbursementCapex, useDisbursementCapex } from '../../queries'
+import {
+  useCreateDisbursementCapex, useDisbursementCapex,
+  useDisbursementCapexByRegistration,
+} from '../../queries'
 
 // BSE workspace — Reimbursement of CAPEX to IA.
 //
 // Backend:
-//   GET  /disbursement-capex → all prior CAPEX notes across every IA.
-//                              Used both to build the IA dropdown (unique
-//                              registrationUuid + industryAssociationName)
-//                              and to prefill fields when an IA is picked.
-//   POST /disbursement-capex → creates the new note.
+//   GET  /disbursement-capex                         → enumerate IAs for dropdown
+//   GET  /disbursement-capex/registration/{regUuid}  → autofill for picked IA
+//   POST /disbursement-capex                         → create new note
+//
+// The `registration/{regUuid}` endpoint is the "right" source for autofills
+// — it returns the CAPEX state for one IA. Two known backend quirks we
+// handle defensively:
+//   1. Swagger types it as a single `DisbursementCapexResponse`, but the
+//      handler will actually return multiple rows once an IA has 2+ notes
+//      (currently 500s in that case — noted for backend). We coerce
+//      whichever shape comes back.
+//   2. On error / 500, we fall back to filtering the shared list so a
+//      broken by-registration call doesn't kill the form.
 //
 // Downstream review fields (`gtCapexVerificationComments`,
 // `amountRecommendedForDisbursement`, `accountCode`, `recommendation`) are
 // NOT captured here — GT + SDE populate them via PUT on their own screens.
 //
-// Autofill (all from the single GET /disbursement-capex response):
-//   • IA Name → picked from dropdown built out of the list's unique
-//     (registrationUuid, industryAssociationName) pairs.
-//   • Once picked, we prefill from that IA's rows:
-//       - `gstinIa`, `gstinNotApplicable`, `gstinNotApplicableReason`
-//         from the most recent prior note
-//       - `sanctionedAmount` from the most recent prior note
-//       - `disbursedTillDate` = Σ `amountRecommendedForDisbursement` across
-//         approved (`recommendation === true`) prior notes
-//       - `tdsApplicable` + `tdsNotApplicableReason` from most recent note
-//   • GSTIN of SIDBI + Account Code are hardcoded.
+// GSTIN of SIDBI + Account Code are frontend-enforced constants.
 
 const SIDBI_GSTIN = '09AABCS3480N5ZS'
 const DEFAULT_ACCOUNT_CODE = 'EX1909010'
@@ -89,15 +89,24 @@ export default function BseCapexReimbursement() {
   })
   const [toast, setToast] = useState(null)
 
-  // Prior CAPEX notes for the picked IA — filtered from the shared list
-  // (no second network round-trip; `/disbursement-capex` already has
-  // everything). `priorSummary` collapses the rows into the fields we want
-  // to prefill.
+  // Ask the backend directly for this IA's CAPEX state. `enabled` gates
+  // the fetch on having a picked IA. If this endpoint errors (e.g. the
+  // current backend 500 when the IA has 2+ notes), we fall back to
+  // filtering the full list so the form still works.
+  const iaCapexQ = useDisbursementCapexByRegistration(v.registrationUuid)
   const priorNotes = useMemo(() => {
     if (!v.registrationUuid) return []
-    return (capexQ.data || []).filter((r) => r?.registrationUuid === v.registrationUuid)
-  }, [capexQ.data, v.registrationUuid])
+    // Prefer the dedicated endpoint's response — coerce single-object to
+    // list. Fall back to the shared list on error.
+    if (iaCapexQ.error) {
+      return (capexQ.data || []).filter((r) => r?.registrationUuid === v.registrationUuid)
+    }
+    const d = iaCapexQ.data
+    if (!d) return []
+    return Array.isArray(d) ? d : [d]
+  }, [iaCapexQ.data, iaCapexQ.error, capexQ.data, v.registrationUuid])
   const priorSummary = useMemo(() => summarisePriorNotes(priorNotes), [priorNotes])
+  const iaLoading = iaCapexQ.isLoading && !iaCapexQ.error
 
   // Single stable setter — every input reads/writes through this without
   // creating a fresh onChange function per render.
@@ -127,10 +136,12 @@ export default function BseCapexReimbursement() {
     }))
   }, [])
 
-  // Prefill once per IA switch, as soon as the shared list is available.
+  // Prefill once per IA switch, as soon as the by-registration query
+  // settles (either resolved with data, or errored so the fallback list
+  // filter has taken over).
   useEffect(() => {
     if (!v.registrationUuid) return
-    if (capexQ.isLoading) return
+    if (iaCapexQ.isLoading) return
     if (prefilledForRef.current === v.registrationUuid) return
 
     setV((prev) => ({
@@ -144,7 +155,7 @@ export default function BseCapexReimbursement() {
       tdsNotApplicableReason: priorSummary.tdsNotApplicableReason ?? '',
     }))
     prefilledForRef.current = v.registrationUuid
-  }, [v.registrationUuid, capexQ.isLoading, priorSummary])
+  }, [v.registrationUuid, iaCapexQ.isLoading, priorSummary])
 
   const value = num(v.valueOfServiceItems)
   const igst = value != null ? +(value * 0.18).toFixed(2) : null
@@ -213,35 +224,29 @@ export default function BseCapexReimbursement() {
             </Grid>
 
             <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth size="small"
+              <ReadField
                 label="GSTIN of IA"
                 value={v.gstinIa}
-                disabled={v.gstinNotApplicable === true}
-                onChange={(e) => set('gstinIa', e.target.value.toUpperCase())}
-                placeholder="15-digit GSTIN"
+                helperText="Autofilled from IA record"
               />
             </Grid>
             <Grid size={{ xs: 12, md: 6 }}>
-              <FormControl>
-                <FormLabel sx={{ fontSize: '0.78rem', mb: 0.5 }}>GSTIN Applicability</FormLabel>
-                <RadioGroup
-                  row
-                  value={v.gstinNotApplicable === true ? 'na' : v.gstinNotApplicable === false ? 'yes' : ''}
-                  onChange={(e) => set('gstinNotApplicable', e.target.value === 'na')}
-                >
-                  <FormControlLabel value="yes" control={<Radio size="small" />} label="Applicable" />
-                  <FormControlLabel value="na"  control={<Radio size="small" />} label="Not Applicable" />
-                </RadioGroup>
-              </FormControl>
+              <ReadField
+                label="GSTIN Applicability"
+                value={
+                  v.gstinNotApplicable === true ? 'Not Applicable'
+                  : v.gstinNotApplicable === false ? 'Applicable'
+                  : null
+                }
+                helperText="Autofilled from IA record"
+              />
             </Grid>
             {v.gstinNotApplicable === true && (
               <Grid size={12}>
-                <TextField
-                  fullWidth size="small" required
+                <ReadField
                   label="Reason GSTIN not applicable"
                   value={v.gstinNotApplicableReason}
-                  onChange={(e) => set('gstinNotApplicableReason', e.target.value)}
+                  helperText="Autofilled from IA record"
                 />
               </Grid>
             )}
@@ -251,41 +256,30 @@ export default function BseCapexReimbursement() {
         <SectionCard n={2} title="Grant & Disbursement Totals">
           {v.registrationUuid && (
             <PriorNotesBanner
-              loading={capexQ.isLoading}
+              loading={iaLoading}
+              error={iaCapexQ.error}
               summary={priorSummary}
             />
           )}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 4 }}>
-              <MoneyField
+              <ReadMoneyField
                 label="Sanctioned Amount"
                 value={v.sanctionedAmount}
-                onChange={(x) => set('sanctionedAmount', x)}
-                helperText={
-                  priorSummary.sanctionedAmount != null
-                    ? 'Autofilled from the most recent CAPEX note for this IA.'
-                    : 'Enter the CAPEX sanction amount for this IA.'
-                }
+                helperText="Autofilled from IA record"
               />
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
-              <MoneyField
+              <ReadMoneyField
                 label="Disbursed till Date"
                 value={v.disbursedTillDate}
-                onChange={(x) => set('disbursedTillDate', x)}
-                helperText={
-                  priorSummary.disbursedTillDate != null
-                    ? `Σ of ${priorSummary.approvedCount} approved CAPEX note${priorSummary.approvedCount === 1 ? '' : 's'} for this IA. Overridable.`
-                    : 'Total CAPEX already released to this IA.'
-                }
+                helperText="Autofilled from IA record"
               />
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
-              <MoneyField
+              <ReadMoneyField
                 label="Disbursement Sought"
                 value={total ?? ''}
-                onChange={() => {}}
-                readOnly
                 helperText="= Total (Value + IGST)"
               />
             </Grid>
@@ -354,22 +348,18 @@ export default function BseCapexReimbursement() {
         <SectionCard n={5} title="TDS & Compliance">
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl required>
-                <FormLabel sx={{ fontSize: '0.78rem', mb: 0.5 }}>Applicability of TDS</FormLabel>
-                <RadioGroup row value={v.tdsApplicable === true ? 'yes' : v.tdsApplicable === false ? 'no' : ''}
-                  onChange={(e) => set('tdsApplicable', e.target.value === 'yes')}>
-                  <FormControlLabel value="yes" control={<Radio size="small" />} label="Yes" />
-                  <FormControlLabel value="no"  control={<Radio size="small" />} label="No" />
-                </RadioGroup>
-              </FormControl>
+              <ReadField
+                label="Applicability of TDS"
+                value={v.tdsApplicable === true ? 'Yes' : v.tdsApplicable === false ? 'No' : null}
+                helperText="Autofilled from IA record"
+              />
             </Grid>
             {v.tdsApplicable === false && (
               <Grid size={{ xs: 12, md: 8 }}>
-                <TextField
-                  fullWidth size="small" required
+                <ReadField
                   label="Reason TDS not applicable"
                   value={v.tdsNotApplicableReason}
-                  onChange={(e) => set('tdsNotApplicableReason', e.target.value)}
+                  helperText="Autofilled from IA record"
                 />
               </Grid>
             )}
@@ -447,30 +437,37 @@ const SectionCard = memo(function SectionCard({ n, title, children }) {
 })
 
 // Small info strip above Grant & Disbursement Totals that explains where
-// the numbers came from. Three states: loading, prior notes found, none.
-const PriorNotesBanner = memo(function PriorNotesBanner({ loading, summary }) {
+// the autofilled numbers came from — or why they're missing.
+const PriorNotesBanner = memo(function PriorNotesBanner({ loading, error, summary }) {
   if (loading) {
     return (
       <Alert severity="info" variant="outlined" sx={{ mb: 2 }}
         icon={<CircularProgress size={16} />}>
-        Loading prior CAPEX notes for this IA…
+        Loading IA CAPEX record…
+      </Alert>
+    )
+  }
+  if (error) {
+    return (
+      <Alert severity="warning" variant="outlined" sx={{ mb: 2 }}>
+        Couldn't fetch this IA's CAPEX record from the dedicated endpoint
+        (<code>GET /disbursement-capex/registration/&#123;uuid&#125;</code>).
+        Falling back to the shared list — autofilled fields still work.
       </Alert>
     )
   }
   if (summary.count > 0) {
     return (
       <Alert severity="success" variant="outlined" sx={{ mb: 2 }}>
-        Prefilled from <strong>{summary.count}</strong> prior CAPEX note{summary.count === 1 ? '' : 's'} for this IA
-        {summary.approvedCount > 0 && <> — <strong>{summary.approvedCount}</strong> already approved.</>}
-        {' '}Sanctioned Amount, Disbursed till Date, GSTIN, and TDS applicability are pre-populated and overridable.
+        GSTIN, sanctioned amount, disbursed-till-date and TDS applicability
+        autofilled from this IA's current CAPEX record.
       </Alert>
     )
   }
   return (
-    <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
-      No prior CAPEX notes for this IA yet — fill Sanctioned Amount, GSTIN,
-      and TDS applicability manually. Once this note is saved, the next one
-      will prefill from it.
+    <Alert severity="warning" variant="outlined" sx={{ mb: 2 }}>
+      No CAPEX record yet for this IA — autofilled fields will show as blank
+      until the IA record carries them.
     </Alert>
   )
 })
@@ -492,31 +489,64 @@ const MoneyField = memo(function MoneyField({ label, value, onChange, readOnly, 
   )
 })
 
+// Read-only text field used for the "autofilled from login/IA record"
+// fields. Rendered as a disabled-looking display so the BSE knows they
+// can't type here.
+const ReadField = memo(function ReadField({ label, value, helperText }) {
+  const empty = value == null || value === ''
+  return (
+    <TextField
+      fullWidth size="small"
+      label={label}
+      value={empty ? '' : String(value)}
+      placeholder="—"
+      InputProps={{ readOnly: true }}
+      InputLabelProps={{ shrink: true }}
+      helperText={helperText}
+      sx={{ '& .MuiInputBase-root': { bgcolor: 'action.hover' } }}
+    />
+  )
+})
+
+const ReadMoneyField = memo(function ReadMoneyField({ label, value, helperText }) {
+  const n = num(value)
+  return (
+    <TextField
+      fullWidth size="small"
+      label={label}
+      value={n != null ? n.toLocaleString('en-IN') : ''}
+      placeholder="—"
+      InputProps={{
+        readOnly: true,
+        startAdornment: <InputAdornment position="start">₹</InputAdornment>,
+      }}
+      InputLabelProps={{ shrink: true }}
+      helperText={helperText}
+      sx={{ '& .MuiInputBase-root': { bgcolor: 'action.hover' } }}
+    />
+  )
+})
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function validate(v) {
   if (!v.registrationUuid) return 'Pick the Industry Association.'
-  if (v.gstinNotApplicable === true) {
-    if (!v.gstinNotApplicableReason?.trim()) return 'Reason for GSTIN not applicable is required.'
-  } else if (v.gstinNotApplicable !== false) {
-    return 'Select GSTIN applicability.'
-  }
-  if (num(v.sanctionedAmount) == null) return 'Enter the sanctioned amount.'
-  if (num(v.disbursedTillDate) == null) return 'Enter the amount disbursed till date.'
   if (!v.invoiceDate) return 'Enter the invoice date.'
   if (!v.invoiceNumber?.trim()) return 'Enter the invoice number.'
   if (!v.detailsOfItems?.trim()) return 'Enter the details of items.'
   if (num(v.valueOfServiceItems) == null) return 'Enter the value of service / items.'
-  if (v.tdsApplicable !== true && v.tdsApplicable !== false) return 'Select TDS applicability.'
-  if (v.tdsApplicable === false && !v.tdsNotApplicableReason?.trim()) return 'Reason for TDS not applicable is required.'
   if (!v.preDisbursementCompliance?.trim()) return 'Describe pre-disbursement compliance.'
-  const sanctioned = num(v.sanctionedAmount) || 0
-  const already = num(v.disbursedTillDate) || 0
-  const value = num(v.valueOfServiceItems) || 0
-  const total = +(value * 1.18).toFixed(2)
-  const balance = sanctioned - already
-  if (balance > 0 && total > balance) {
-    return `Total (₹${total.toLocaleString('en-IN')}) exceeds remaining sanction balance (₹${balance.toLocaleString('en-IN')}).`
+  // Sanction / disbursed values are autofilled from the IA record — we
+  // only enforce the balance check when both are present.
+  const sanctioned = num(v.sanctionedAmount)
+  const already = num(v.disbursedTillDate)
+  if (sanctioned != null && already != null) {
+    const value = num(v.valueOfServiceItems) || 0
+    const total = +(value * 1.18).toFixed(2)
+    const balance = sanctioned - already
+    if (balance > 0 && total > balance) {
+      return `Total (₹${total.toLocaleString('en-IN')}) exceeds remaining sanction balance (₹${balance.toLocaleString('en-IN')}).`
+    }
   }
   return null
 }
@@ -532,38 +562,34 @@ function fmt(v) {
   return n == null ? '____' : n.toLocaleString('en-IN')
 }
 
-// Given the list of prior CAPEX notes for an IA, return the values that
-// should prefill the form. The "most recent" row is picked by invoice date
-// (falls back to array order when dates are missing / equal).
+// Given the list of prior CAPEX notes for an IA, return whatever the
+// backend is currently reporting on the newest note. No aggregation — we
+// just surface exactly what the API sends. Once backend maintains these
+// server-side as authoritative IA-level fields, this whole function goes
+// away and we read straight off the IA record.
 function summarisePriorNotes(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return {
-      count: 0, approvedCount: 0,
+      count: 0,
       gstinIa: null, gstinNotApplicable: null, gstinNotApplicableReason: null,
       sanctionedAmount: null, disbursedTillDate: null,
       tdsApplicable: null, tdsNotApplicableReason: null,
     }
   }
-  // Newest note wins for the point-in-time fields.
+  // Newest note wins.
   const sorted = [...rows].sort((a, b) => {
     const da = a?.invoiceDate || ''
     const db = b?.invoiceDate || ''
     return db.localeCompare(da)
   })
   const latest = sorted[0] || {}
-  // "Disbursed till date" = sum of recommended amounts on approved rows.
-  const approved = rows.filter((r) => r?.recommendation === true)
-  const disbursedTillDate = approved.reduce(
-    (sum, r) => sum + (num(r?.amountRecommendedForDisbursement) || 0), 0,
-  )
   return {
     count: rows.length,
-    approvedCount: approved.length,
     gstinIa: latest.gstinIa || null,
     gstinNotApplicable: typeof latest.gstinNotApplicable === 'boolean' ? latest.gstinNotApplicable : null,
     gstinNotApplicableReason: latest.gstinNotApplicableReason || null,
     sanctionedAmount: num(latest.sanctionedAmount),
-    disbursedTillDate: disbursedTillDate > 0 ? disbursedTillDate : null,
+    disbursedTillDate: num(latest.disbursedTillDate),
     tdsApplicable: typeof latest.tdsApplicable === 'boolean' ? latest.tdsApplicable : null,
     tdsNotApplicableReason: latest.tdsNotApplicableReason || null,
   }

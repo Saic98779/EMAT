@@ -68,6 +68,9 @@ export function toPayload(v = {}) {
   return {
     state: str(v.state),
     industryAssociationName: str(v.ia_name),
+    // Org-level identifiers on the IA record (backend added Aug '26).
+    email: str(v.email),
+    panNo: str(v.pan_no),
     constitutionType: str(v.constitution_type),
     constitutionOther: v.constitution_type === 'Other' ? str(v.constitution_other) : null,
     incorporationDate: toIsoDate(v.incorporation_date),
@@ -163,6 +166,8 @@ export function toFormValues(dto = {}) {
   return {
     state: dto.state ?? '',
     ia_name: dto.industryAssociationName ?? '',
+    email: dto.email ?? '',
+    pan_no: dto.panNo ?? '',
     constitution_type: dto.constitutionType ?? '',
     constitution_other: dto.constitutionOther ?? '',
     incorporation_date: (dto.incorporationDate ?? '').slice(0, 10),
@@ -266,19 +271,39 @@ export function fromDto(dto, appraisal = null) {
   const hasAppraisal = !!appraisal
   const l2Approved = appraisal?.isSidbeApproved === true
   const l2Rejected = appraisal?.isSidbeApproved === false
+  // Backend added Aug '26: true once the GT eligibility matrix has been
+  // submitted for this IA, false while the record only carries the
+  // matrix-header stub (name / PAN / email / state) and the full
+  // In-Principle profile still needs to be filled.
+  //
+  // Naming preserved as-is (backend spelling is `isEligibleMatricsAdded`),
+  // but exposed on the internal shape as `eligibilityMatrixAdded` for
+  // readability. Both are available on `.raw` if you need the raw key.
+  const eligibilityMatrixAdded = dto.isEligibleMatricsAdded === true
 
   let status, stage
   if (l1Rejected) { status = 'Rejected (L1)'; stage = 0 }
-  else if (!l1Approved) { status = 'Basic · In Review'; stage = 0 }
-  else if (l2Rejected) { status = 'Rejected (L2)'; stage = 1 }
-  else if (!hasAppraisal) { status = 'Detailed Pending'; stage = 1 }
-  else if (!l2Approved) { status = 'Final Review (L2)'; stage = 1 }
-  else { status = 'Approved'; stage = 2 }
+  else if (l1Approved) {
+    if (l2Rejected) { status = 'Rejected (L2)'; stage = 1 }
+    else if (!hasAppraisal) { status = 'Detailed Pending'; stage = 1 }
+    else if (!l2Approved) { status = 'Final Review (L2)'; stage = 1 }
+    else { status = 'Approved'; stage = 2 }
+  }
+  // Not yet L1-approved. Split into two sub-states so the GT queue can
+  // separate "screened only" from "full application submitted".
+  else if (eligibilityMatrixAdded && !dto.apexHolderName) {
+    status = 'Screened · Awaiting In-Principle'; stage = 0
+  } else {
+    status = 'Basic · In Review'; stage = 0
+  }
 
   return {
     id: dto.uuid,
     uuid: dto.uuid,
     name: dto.industryAssociationName || '—',
+    email: dto.email || '—',
+    panNo: dto.panNo || '—',
+    eligibilityMatrixAdded,
     sector: '—', // Not modelled on the backend yet.
     city: dto.district || '—',
     state: dto.state || '—',
