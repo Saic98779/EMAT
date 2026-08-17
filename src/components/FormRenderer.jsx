@@ -455,6 +455,21 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   }
   const dateMax = f.type === 'date' ? dateBound(f.maxDate) : undefined
   const dateMin = f.type === 'date' ? dateBound(f.minDate) : undefined
+  const isNumber = f.type === 'number' && !isSelect
+  // Reject negative values at the value-write level, so paste / autofill /
+  // browser spin arrows can't sneak `-1` in. Empty string is allowed
+  // (user is mid-edit); anything else is coerced to its absolute value
+  // (matches the "no negatives" rule the theme's onKeyDown enforces on
+  // typing). Non-number fields fall through unchanged.
+  const handleChange = isNumber
+    ? (e) => {
+        const raw = e.target.value
+        if (raw === '' || raw === '-') { onChange(''); return }
+        const n = Number(raw)
+        if (!Number.isFinite(n)) { onChange(''); return }
+        onChange(n < 0 ? String(Math.abs(n)) : raw)
+      }
+    : (e) => onChange(e.target.value)
 
   return (
     <Grid size={{ xs: 12, sm: f.span || 6 }}>
@@ -470,8 +485,15 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         minRows={multiline ? (f.rows || 2) : undefined}
         select={isSelect && !lockedSelect}
         value={lockedSelect ? labelOfOption(options, selVal) : selVal}
-        onChange={(e) => onChange(e.target.value)}
-        inputProps={{ maxLength: f.max, max: dateMax, min: dateMin }}
+        onChange={handleChange}
+        inputProps={{
+          maxLength: f.max,
+          max: dateMax,
+          // For number fields, always cap the minimum at 0 (so browser
+          // constraint-validation / stepper also refuse negatives).
+          min: isNumber ? 0 : dateMin,
+          ...(isNumber ? { inputMode: 'numeric' } : null),
+        }}
         InputProps={{
           readOnly: f.readOnly,
           startAdornment: f.prefix ? <InputAdornment position="start">{f.prefix}</InputAdornment> : undefined,
