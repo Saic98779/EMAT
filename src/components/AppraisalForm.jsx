@@ -21,6 +21,22 @@ import { encodeFilename, FILE_FIELD_LABELS, FILE_FIELD_SEP } from '../fileFieldL
 import { useAuth } from '../auth'
 
 // Same validation walk used across all form pages — returns the first
+// True if at least one of the "autofetched from parent IA" fields carries
+// a real value. Used as a safety net before POSTing a NEW appraisal — if
+// none of these are filled, either the seed never ran or the parent IA
+// is a matrix-only stub with no In-Principle profile. Either way, POSTing
+// would create a garbage row of all-nulls on the backend.
+function valuesLookHydrated(values) {
+  const anchors = [
+    'apex_name', 'apex_designation', 'apex_email', 'nodal_name',
+    'nodal_email', 'sidbi_branch', 'district', 'pincode', 'ia_name',
+  ]
+  return anchors.some((k) => {
+    const v = values?.[k]
+    return typeof v === 'string' ? v.trim() !== '' : v != null && v !== ''
+  })
+}
+
 // missing-required / bad-pattern field, or null if the form is submittable.
 function firstProblem(schema, values) {
   for (const sec of schema.sections) {
@@ -224,6 +240,27 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
   }
 
   const submit = async () => {
+    // Bail out if the form hasn't finished hydrating from the parent IA
+    // + prior appraisal + branches + files. Without this guard, a Save
+    // click during load fires with `values = {}`, and every mapped field
+    // lands on the backend as null — including the autofilled apex /
+    // nodal / cluster / branch fields that are supposed to round-trip
+    // from the IA record.
+    if (!seeded) {
+      onSaved?.('Form is still loading — please wait a moment before saving.', 'warning')
+      return
+    }
+    // Additional guard: refuse to POST an appraisal that has none of its
+    // autofilled-from-IA context. Almost always means the parent IA is a
+    // matrix-only stub (In-Principle profile wasn't filled) — sending a
+    // null-only appraisal would create a garbage row on the backend.
+    if (!existing?.uuid && !valuesLookHydrated(values)) {
+      onSaved?.(
+        'The parent IA is missing its In-Principle profile — complete it before submitting the appraisal.',
+        'warning',
+      )
+      return
+    }
     const problem = firstProblem(schema, values)
     if (problem) {
       setShowAllErrors(true)
@@ -286,7 +323,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
     <Button
       variant="contained"
       startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-      disabled={busy || !canSave}
+      disabled={busy || !canSave || !seeded}
       onClick={submit}
     >
       {submitLabel}
