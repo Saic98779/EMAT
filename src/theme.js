@@ -73,12 +73,27 @@ const theme = createTheme({
     },
     // Global rule for every TextField (and its OutlinedInput / FilledInput /
     // Input variants): kill native ⯅ ⯆ spinner arrows on `type="number"`
-    // and reject the minus key so users can't enter negative amounts.
-    // Individual fields no longer need to opt in.
+    // and refuse negative / scientific-notation input. Individual fields
+    // don't need to opt in. Value-level clamping still happens in
+    // FormRenderer's onChange as a belt-and-suspenders layer.
+    //
+    // NOTE: `defaultProps.onKeyDown` gets overridden by any component that
+    // passes its own — that's why we ALSO clamp in FormRenderer's
+    // onChange handler for number fields.
     MuiTextField: {
       defaultProps: {
         onKeyDown: (e) => {
           if (e.target && e.target.type === 'number' && (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+')) {
+            e.preventDefault()
+          }
+        },
+        onPaste: (e) => {
+          if (!e.target || e.target.type !== 'number') return
+          const pasted = (e.clipboardData || window.clipboardData)?.getData('text')
+          if (pasted == null) return
+          // Refuse the paste if it starts with a minus or contains
+          // scientific notation. Users can retype the value cleanly.
+          if (/^\s*-/.test(pasted) || /[eE]/.test(pasted)) {
             e.preventDefault()
           }
         },

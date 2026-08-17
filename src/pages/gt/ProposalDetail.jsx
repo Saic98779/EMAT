@@ -68,10 +68,15 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
   const [decisionOpen, setDecisionOpen] = useState(null) // { level: 1|2, action: 'approve'|'reject' } | null
 
   const ia0 = iaQ.data
-  // Hide DecisionCard once a decision has already been recorded, whether
-  // approved or rejected. `isSidbeApproved !== null` means the SDE has
-  // acted on the record.
-  const l1Decided = ia0?.raw?.isSidbeApproved != null
+  // Hide DecisionCard once a decision has ACTUALLY been recorded — either
+  // an explicit approval (`true`) or a rejection with an audit user
+  // (`false` + `sidbeApprovedByUserId != null`). Bare `false` without an
+  // audit user is a backend-default (regressed Aug '26) — still pending
+  // decision. Same guard as ApprovalQueue / industryAssociations#fromDto.
+  const raw = ia0?.raw
+  const l1Approved = raw?.isSidbeApproved === true
+  const l1Rejected = raw?.isSidbeApproved === false && raw?.sidbeApprovedByUserId != null
+  const l1Decided = l1Approved || l1Rejected
   const l2Decided = ia0?.appraisal?.isSidbeApproved != null
   // Never surface L1 approve/reject on a matrix-only record — the profile
   // isn't filled yet, so there's nothing for SDE to sign off on. The

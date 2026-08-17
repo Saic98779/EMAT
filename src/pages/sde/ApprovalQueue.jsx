@@ -42,20 +42,28 @@ export default function ApprovalQueue() {
   // pending status. Same pattern PmuQueue / HoBseApprovals use.
   const pmuQ = useBseList()
 
-  // L1 buckets keyed off isSidbeApproved:
-  //   null      → pending (SDE hasn't acted)
-  //   true      → approved
-  //   false     → rejected
-  const l1Pending = useMemo(
-    () => (iasQ.data || []).filter((i) => i.raw?.isSidbeApproved == null),
+  // L1 buckets keyed off isSidbeApproved. Backend regressed Aug '26 to
+  // default new records to `false` instead of `null`, so a bare `false`
+  // no longer implies "SDE rejected". We treat `false` as rejected ONLY
+  // when the audit user is stamped (`sidbeApprovedByUserId != null`) —
+  // matches the same guard used in `industryAssociations.js#fromDto`.
+  // Anything without a stamped decision (null OR bare false) → pending.
+  const l1Rejected = useMemo(
+    () => (iasQ.data || []).filter((i) =>
+      i.raw?.isSidbeApproved === false && i.raw?.sidbeApprovedByUserId != null),
     [iasQ.data],
   )
   const l1Approved = useMemo(
     () => (iasQ.data || []).filter((i) => i.raw?.isSidbeApproved === true),
     [iasQ.data],
   )
-  const l1Rejected = useMemo(
-    () => (iasQ.data || []).filter((i) => i.raw?.isSidbeApproved === false),
+  const l1Pending = useMemo(
+    () => (iasQ.data || []).filter((i) => {
+      const v = i.raw?.isSidbeApproved
+      if (v === true) return false
+      if (v === false && i.raw?.sidbeApprovedByUserId != null) return false
+      return true
+    }),
     [iasQ.data],
   )
   // Resolve branch UUIDs → branch names across all L1 buckets so any row can
