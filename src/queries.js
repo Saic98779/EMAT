@@ -108,6 +108,9 @@ export const keys = {
     byMappedStatus: (status) => ['bse', 'mapped', status],
     byRegistration: (regUuid) => ['bse', 'byRegistration', regUuid],
     byUserSelected: (userId) => ['bse', 'byUserSelected', String(userId)],
+    // Cached lookup for "the recommendation belonging to the logged-in BSE
+    // user" — resolved via bseName search + email/mobile disambiguation.
+    forBseLogin: (id) => ['bse', 'forBseLogin', String(id)],
   },
   users: {
     all: ['users'],
@@ -415,6 +418,38 @@ export function useBseByUserSelected(userId) {
     queryKey: keys.bse.byUserSelected(userId),
     enabled: userId != null,
     queryFn: ({ signal }) => listBseByUserSelected(userId, { signal }).then(unwrapList),
+  })
+}
+
+// Resolves the BSE recommendation belonging to the currently logged-in
+// BSE user. The backend does not model a direct BSE-user → recommendation
+// link (userId on the DTO points to the MANPOWER_AGENCY vendor, not the
+// BSE), so we hit `/bse-recommendations/search?bseName=…` and disambiguate
+// on email or mobile — either uniquely identifies the record.
+//
+// `me` is the auth user object: { userId, email, contactNo?, name? }.
+export function useMyBseRecommendation(me) {
+  const fullName = (me?.name || '').trim()
+  const email = (me?.email || '').trim().toLowerCase()
+  const mobile = (me?.contactNo || me?.mobile || '').trim()
+  return useQuery({
+    queryKey: keys.bse.forBseLogin(me?.userId ?? ''),
+    enabled: !!me?.userId && !!fullName,
+    queryFn: async ({ signal }) => {
+      const raw = await searchBseRecommendations(fullName, { signal })
+      const rows = unwrapList(raw)
+      if (!rows.length) return null
+      // Prefer email match, then mobile, then a single-name-match fallback.
+      const byEmail = email
+        ? rows.find((r) => String(r.emailId || '').trim().toLowerCase() === email)
+        : null
+      if (byEmail) return byEmail
+      const byMobile = mobile
+        ? rows.find((r) => String(r.mobileNumber || '').trim() === mobile)
+        : null
+      if (byMobile) return byMobile
+      return rows.length === 1 ? rows[0] : null
+    },
   })
 }
 
@@ -931,9 +966,10 @@ export function useBseAttendanceManualRequestsByStatus(status) {
   })
 }
 
-export function useBseAttendanceManualRequestList() {
+export function useBseAttendanceManualRequestList({ enabled = true } = {}) {
   return useQuery({
     queryKey: keys.bseAttendanceManualRequest.lists(),
+    enabled,
     queryFn: ({ signal }) => listBseAttendanceManualRequests({ signal }).then(unwrapList),
   })
 }
@@ -984,7 +1020,7 @@ export function useDeleteBseAttendanceManualRequest() {
 export function useApproveBseAttendanceManualRequest() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id }) => approveBseAttendanceManualRequest(id),
+    mutationFn: ({ id, approvedBy }) => approveBseAttendanceManualRequest(id, { approvedBy }),
     onSuccess: (_data, { recommendationId }) => {
       invalidateManualRequests(qc, recommendationId)
       // Approving a request effectively becomes attendance — invalidate
@@ -997,7 +1033,7 @@ export function useApproveBseAttendanceManualRequest() {
 export function useRejectBseAttendanceManualRequest() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id }) => rejectBseAttendanceManualRequest(id),
+    mutationFn: ({ id, approvedBy }) => rejectBseAttendanceManualRequest(id, { approvedBy }),
     onSuccess: (_data, { recommendationId }) => invalidateManualRequests(qc, recommendationId),
   })
 }

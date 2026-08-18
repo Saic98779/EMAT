@@ -66,16 +66,32 @@ export function deleteBseAttendanceManualRequest(id, { signal } = {}) {
   return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
 }
 
-// PATCH /bse-attendance-manual-request/{id}/approve
-// PATCH /bse-attendance-manual-request/{id}/reject
-// Backend stamps approvedDate + approvedBy from the JWT session — no body
-// required (spec has an empty request schema for these endpoints).
-export function approveBseAttendanceManualRequest(id, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(id)}/approve`, { method: 'PATCH', signal })
+// PATCH /bse-attendance-manual-request/{id}/approve?approvedBy=<UUID>
+// PATCH /bse-attendance-manual-request/{id}/reject?approvedBy=<UUID>
+// Backend requires `approvedBy` as a query parameter typed as UUID
+// (returns 400 without it) — it does NOT derive the approver from the
+// JWT. Users don't have UUIDs on this backend (just integer userIds),
+// so we encode the userId into a UUID-shaped string via
+// `userIdToUuid()` before sending. Once backend either derives approver
+// from JWT or exposes user UUIDs, we can swap this over.
+export function approveBseAttendanceManualRequest(id, { approvedBy, signal } = {}) {
+  const q = new URLSearchParams({ approvedBy: approvedBy || '' }).toString()
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}/approve?${q}`, { method: 'PATCH', signal })
 }
 
-export function rejectBseAttendanceManualRequest(id, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(id)}/reject`, { method: 'PATCH', signal })
+export function rejectBseAttendanceManualRequest(id, { approvedBy, signal } = {}) {
+  const q = new URLSearchParams({ approvedBy: approvedBy || '' }).toString()
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}/reject?${q}`, { method: 'PATCH', signal })
+}
+
+// Encode an integer userId into a UUID-shaped string so it satisfies the
+// backend's UUID type check while still carrying the approver's identity
+// in the last group of the UUID. E.g. userId=22 → 00000000-0000-0000-
+// 0000-000000000022.
+export function userIdToUuid(userId) {
+  const n = Math.max(0, Number(userId) || 0)
+  const hex = n.toString(16).padStart(12, '0').slice(-12)
+  return `00000000-0000-0000-0000-${hex}`
 }
 
 // ── Payload adapter ────────────────────────────────────────────────────────
