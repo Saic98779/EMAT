@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Box, Button, CircularProgress, Alert, Paper } from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
 import FormRenderer, { fieldError } from './FormRenderer'
+import SustainabilityMatrixModal from './SustainabilityMatrixModal'
 import { appraisalSchema } from '../formSchemas'
 import {
   useIA,
@@ -229,6 +231,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
 
   const busy = createM.isPending || updateM.isPending
   const existing = apprQ.data
+  const [sustainOpen, setSustainOpen] = useState(false)
 
   const collectFiles = () => {
     const out = []
@@ -330,8 +333,28 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
     </Button>
   )
 
+  // Sustainability matrix is FK'd to the appraisal, so only offer the view
+  // once an appraisal record actually exists (uuid resolved).
+  const viewSustainability = (
+    <Button
+      variant="outlined"
+      startIcon={<AssessmentOutlinedIcon />}
+      onClick={() => setSustainOpen(true)}
+      disabled={!existing?.uuid}
+    >
+      View Sustainability Matrix
+    </Button>
+  )
+
   return (
     <>
+      {/* Top-right entry point for the read-only sustainability viewer.
+          Sits above the form so it's reachable without scrolling to the
+          sticky footer — reviewers usually want this context first. */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+        {viewSustainability}
+      </Box>
+
       <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors} />
 
       {stickyFooter ? (
@@ -344,6 +367,12 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
         </Box>
       )}
 
+      <SustainabilityMatrixModal
+        open={sustainOpen}
+        onClose={() => setSustainOpen(false)}
+        appraisalUuid={existing?.uuid}
+        registrationUuid={registrationUuid}
+      />
     </>
   )
 }

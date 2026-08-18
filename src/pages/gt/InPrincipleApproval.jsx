@@ -226,8 +226,12 @@ export default function InPrincipleApproval() {
         })
       }
 
-      qc.invalidateQueries({ queryKey: keys.ias.lists() })
-      if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
+      // `useIAs` has `refetchOnMount: false`, so plain invalidation only
+      // marks the list stale — the user would still see the pre-submit
+      // rows when they navigate back. `refetchType: 'all'` forces the
+      // refetch now, even though the list query is currently inactive.
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
+      if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid), refetchType: 'all' })
       const nextPath = regUuid ? `${iaListPath}/${regUuid}` : iaListPath
       setTimeout(() => navigate(nextPath), 900)
     } catch (err) {

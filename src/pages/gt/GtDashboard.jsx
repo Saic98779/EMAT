@@ -32,7 +32,7 @@ export default function GtDashboard() {
     <Box>
       <GreetingBanner
         date="Monday, 22 June 2026"
-        greeting={`Good morning, ${roleInfo.user.name.split(' ')[0]}`}
+        greeting={`Hi, ${roleInfo.user.name.split(' ')[0]}`}
         subtitle="Capture Industry Association proposals, take them through SIDBI appraisal, and clear your field team’s requests."
         action={
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/gt/ias/new')}

@@ -232,7 +232,7 @@ export function useApproveIA() {
           iaFromDto(updated, prev?.appraisal ?? null),
         )
       }
-      qc.invalidateQueries({ queryKey: keys.ias.lists() })
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
@@ -250,7 +250,7 @@ export function useUpdateIA() {
           iaFromDto(updated, prev?.appraisal ?? null),
         )
       }
-      qc.invalidateQueries({ queryKey: keys.ias.lists() })
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
@@ -298,9 +298,9 @@ export function useCreateAppraisal() {
     onSuccess: (created, body) => {
       const regUuid = body?.registrationUuid || created?.registrationUuid
       if (created && regUuid) qc.setQueryData(keys.appraisals.byRegistration(regUuid), created)
-      qc.invalidateQueries({ queryKey: keys.appraisals.lists() })
+      qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
-      qc.invalidateQueries({ queryKey: keys.ias.lists() })
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
@@ -316,8 +316,8 @@ export function useUpdateAppraisal() {
       if (updated) qc.setQueryData(keys.appraisals.detail(uuid), appraisalFromDto(updated))
       if (updated && regUuid) qc.setQueryData(keys.appraisals.byRegistration(regUuid), updated)
       if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
-      qc.invalidateQueries({ queryKey: keys.appraisals.lists() })
-      qc.invalidateQueries({ queryKey: keys.ias.lists() })
+      qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
@@ -335,8 +335,8 @@ export function useApproveAppraisal() {
       if (updated) qc.setQueryData(keys.appraisals.detail(uuid), appraisalFromDto(updated))
       if (updated && regUuid) qc.setQueryData(keys.appraisals.byRegistration(regUuid), updated)
       if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
-      qc.invalidateQueries({ queryKey: keys.appraisals.lists() })
-      qc.invalidateQueries({ queryKey: keys.ias.lists() })
+      qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
@@ -787,7 +787,15 @@ export function useCreateSustainabilityMatrix() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (values) => createSustainabilityMatrix(values),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.sustainability.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.sustainability.all })
+      // Row action on the IAs list changes once sustainability is done
+      // (Sustainability → Continue Appraisal). Force refetch even when
+      // the list is currently inactive so the user sees the updated CTA
+      // when they navigate back.
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
+    },
   })
 }
 
