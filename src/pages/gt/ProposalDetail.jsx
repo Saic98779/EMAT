@@ -153,7 +153,13 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
                 Edit registration
               </Button>
             )}
-            {isGt && ia.stage === 1 && (
+            {/* GT only has appraisal work when the IA is either freshly
+                cleared for detailed appraisal or has been sent back for
+                edits. Once it moves to Final Review (L2) / Rejected L2 the
+                ball is in SDE's court, so hide the CTA to avoid the
+                mismatch with the status chip. */}
+            {isGt && ia.stage === 1
+              && (ia.status === 'Detailed Pending' || ia.status === 'Changes Requested') && (
               <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
                 onClick={() => navigate(`/gt/ias/${ia.id}/appraisal`)}>
                 {ia.status === 'Changes Requested' ? 'Revise detailed appraisal' : 'Continue detailed appraisal'}
@@ -224,7 +230,7 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
             <SectionCard title="Appraisal trail">
             <Stack spacing={0}>
               {ia.trail.map((t, i) => (
-                <Stack key={i} direction="row" spacing={2}>
+                <Stack key={`${t.title}::${t.date}::${i}`} direction="row" spacing={2}>
                   <Stack alignItems="center">
                     <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: 'secondary.main', mt: 0.5 }} />
                     {i < ia.trail.length - 1 && <Box sx={{ flexGrow: 1, width: 2, bgcolor: 'divider', my: 0.5 }} />}

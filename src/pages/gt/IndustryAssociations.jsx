@@ -36,13 +36,20 @@ function rowAction(ia, navigate, basePath) {
     return <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
       onClick={go(`${basePath}/${ia.id}/in-principle`)} sx={ACTION_SX}>Complete In-Principle</Button>
   if (!basePath.startsWith('/gt')) return view
-  // 'Detailed Pending' means In-Principle is approved and the IA is ready
-  // for detailed appraisal — but the client's flow inserts a Sustainability
-  // Matrix step first (no approval req). Route the row action there; the
-  // Sustainability page hands off to /appraisal on save.
+  // 'Detailed Pending' means In-Principle is approved and no appraisal
+  // record exists yet. GT's next step is Sustainability, which — as a
+  // side-effect — creates the appraisal shell (flipping status to
+  // 'Final Review (L2)'). Any presence of `ia.appraisal` therefore means
+  // sustainability has been done; the next action is to fill the
+  // detailed appraisal itself.
   if (ia.status === 'Detailed Pending')
     return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
       onClick={go(`/gt/ias/${ia.id}/sustainability`)} sx={ACTION_SX}>Sustainability</Button>
+  // Appraisal shell exists but final approval isn't in yet — GT still owns
+  // the row until they submit the detailed appraisal for L2 review.
+  if (ia.status === 'Final Review (L2)' && ia.appraisal && !ia.appraisal.isSidbeApproved)
+    return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
+      onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Continue Appraisal</Button>
   if (ia.status === 'Changes Requested')
     return <Button size="small" variant="outlined" color="warning" startIcon={<EditNoteIcon />}
       onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Revise</Button>

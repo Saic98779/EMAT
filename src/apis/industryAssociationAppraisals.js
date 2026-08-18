@@ -77,19 +77,19 @@ export function deleteAppraisal(uuid, { signal } = {}) {
 //   - Structured IA Beneficial Owner CIBIL/SMART ref no / date / ranking /
 //     file (form-only). Only *_remarks fields round-trip.
 export function toCreatePayload(values = {}, registrationUuid = null) {
-  // Backend expects Map<String,String>: sector name → 3-5 key problems text.
-  // Only include a slot when the sector name is non-empty (otherwise the
-  // problems would attach to an empty key).
+  // Backend field is `sectors` — array of { name, problems } objects.
+  // Only include a slot when the sector name is non-empty (otherwise we'd
+  // ship rows with empty names).
   const sectorPairs = [
     [values.sector_1, values.sector_1_problems],
     [values.sector_2, values.sector_2_problems],
     [values.sector_3, values.sector_3_problems],
   ]
-  const topThreeSectors = {}
+  const sectors = []
   for (const [name, problems] of sectorPairs) {
-    const key = name == null ? '' : String(name).trim()
-    if (!key) continue
-    topThreeSectors[key] = problems == null ? '' : String(problems).trim()
+    const nm = name == null ? '' : String(name).trim()
+    if (!nm) continue
+    sectors.push({ name: nm, problems: problems == null ? '' : String(problems).trim() })
   }
 
   return {
@@ -165,7 +165,7 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
     referralArrangementReady: bool(values.ready_referral_yn),
     bseReadinessReady: bool(values.ready_bse_yn),
 
-    topThreeSectors,
+    sectors,
     financingScope: str(values.financing_scope),
     // Separate scope-in-crore number; backend column pending, sent as extra
     // key so it lands once the column exists.
@@ -215,13 +215,20 @@ export function toUpdatePayload(values, registrationUuid) {
 // it, but the IA seed is preserved when the appraisal hasn't touched it.
 export function toFormValues(dto = {}) {
   if (!dto || typeof dto !== 'object') return {}
-  // topThreeSectors is now a Map<name, problems>. Legacy List<String> shape
-  // still handled for safety in case a partially-migrated record comes back.
-  const sectorEntries = Array.isArray(dto.topThreeSectors)
-    ? dto.topThreeSectors.map((n) => [n, ''])
-    : (dto.topThreeSectors && typeof dto.topThreeSectors === 'object'
-        ? Object.entries(dto.topThreeSectors)
-        : [])
+  // Backend field is `sectors` — array of { name, problems } objects.
+  // Fall back to the older `topThreeSectors` shapes (Array<string> or
+  // Map<name, problems>) so pre-migration records still hydrate cleanly.
+  const sectorEntries = Array.isArray(dto.sectors)
+    ? dto.sectors.map((s) => (
+        s && typeof s === 'object'
+          ? [s.name ?? s.sectorName ?? '', s.problems ?? s.keyProblems ?? '']
+          : [String(s ?? ''), '']
+      ))
+    : Array.isArray(dto.topThreeSectors)
+      ? dto.topThreeSectors.map((n) => [n, ''])
+      : (dto.topThreeSectors && typeof dto.topThreeSectors === 'object'
+          ? Object.entries(dto.topThreeSectors)
+          : [])
   const clusterExpert = unpackClusterExpertComments(dto)
 
   const out = {

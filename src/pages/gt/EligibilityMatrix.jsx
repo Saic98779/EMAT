@@ -13,8 +13,9 @@ import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import { PageHeader } from '../../components/shared'
 import { STATES } from '../../geo'
+import { useQueryClient } from '@tanstack/react-query'
 import { createIndustryAssociation } from '../../apis/industryAssociations'
-import { useCreateEligibilityMatrix } from '../../queries'
+import { useCreateEligibilityMatrix, keys } from '../../queries'
 import { DIMENSIONS, PARAM_KEYS, MAX_SCORE, categorise } from '../../apis/eligibilityMatrix'
 import { useAuth } from '../../auth'
 
@@ -45,6 +46,7 @@ const INITIAL_ANSWERS = PARAM_KEYS.reduce((acc, k) => ({ ...acc, [k]: null }), {
 
 export default function EligibilityMatrix() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { role } = useAuth()
   const createMatrix = useCreateEligibilityMatrix()
 
@@ -91,6 +93,13 @@ export default function EligibilityMatrix() {
 
       // Step 2: create the eligibility matrix record linked to that IA.
       await createMatrix.mutateAsync({ ...answers, registrationUuid: regUuid })
+
+      // The IAs list cache was populated before this new record existed.
+      // `useIAs` sets `refetchOnMount: false`, so plain invalidation only
+      // marks it stale — the list wouldn't actually refresh when the user
+      // navigates back. `refetchType: 'all'` forces the refetch to happen
+      // now, even though the list query is currently inactive.
+      qc.invalidateQueries({ queryKey: keys.ias.all, refetchType: 'all' })
 
       setToast({ kind: 'success', msg: 'Eligibility matrix submitted. Continuing to In-Principle Approval…' })
       // Push GT into the In-Principle form for this same IA — the header

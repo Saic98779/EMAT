@@ -24,7 +24,7 @@ export default function SdeDashboard() {
     <Box>
       <GreetingBanner
         date="Monday, 22 June 2026"
-        greeting={`Good morning, ${roleInfo.user.name.split(' ')[0]}`}
+        greeting={`Hi, ${roleInfo.user.name.split(' ')[0]}`}
         subtitle="Appraise Industry Association proposals at both levels and authorise field disbursals."
         badge="4 awaiting review"
         action={

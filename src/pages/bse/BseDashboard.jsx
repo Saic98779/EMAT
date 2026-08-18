@@ -21,7 +21,7 @@ export default function BseDashboard() {
     <Box>
       <GreetingBanner
         date="Monday, 22 June 2026"
-        greeting={`Good morning, ${roleInfo.user.name.split(' ')[0]}`}
+        greeting={`Hi, ${roleInfo.user.name.split(' ')[0]}`}
         subtitle="Log field visits, raise attendance for off-site days, and claim field expenses."
         badge="🔥 16-day streak"
         action={

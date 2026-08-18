@@ -198,8 +198,11 @@ function Uploader({ value, label, help, required, error, onChange, readOnly }) {
             // strip the `<slot>__` prefix so the chip shows just the
             // original filename the user picked.
             const shown = typeof f === 'string' ? decodeFilename(f).name : f.name
+            // Stable per-file key so deleting a chip in the middle doesn't
+            // misalign React's identity with the wrong file.
+            const k = typeof f === 'string' ? f : `${f.name}::${f.size}::${f.lastModified}`
             return (
-              <Chip key={i} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />}
+              <Chip key={k} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />}
                 label={shown}
                 onDelete={readOnly ? undefined : () => removeAt(i)} />
             )
@@ -239,15 +242,39 @@ function cellError(col, v) {
   return ''
 }
 
+// Synthetic key generator for Repeater rows. Rows have no natural id, and
+// index-as-key misaligns React state (focus, cursor, per-row validation
+// timing) when a middle row is deleted. `_rid` is added lazily inside the
+// Repeater — it is not part of the row's data shape and doesn't affect
+// the outer values object because the assign is done on the same row
+// reference that's already in `rows`.
+let __ridSeq = 0
+function ensureRid(row) {
+  if (row && typeof row === 'object' && row._rid == null) {
+    Object.defineProperty(row, '_rid', {
+      value: `rid_${++__ridSeq}`,
+      enumerable: false, configurable: true, writable: true,
+    })
+  }
+  return row?._rid
+}
+
 function Repeater({ value, label, required, onChange, columns, addLabel, readOnly }) {
   const rows = Array.isArray(value) ? value : []
   const cols = Array.isArray(columns) ? columns : []
   const update = (idx, name, v) => {
     const next = rows.map((r, i) => (i === idx ? { ...r, [name]: v } : r))
+    // Preserve _rid on the replaced row so React keeps its identity.
+    if (rows[idx]?._rid) {
+      Object.defineProperty(next[idx], '_rid', {
+        value: rows[idx]._rid, enumerable: false, configurable: true, writable: true,
+      })
+    }
     onChange(next)
   }
   const add = () => {
     const blank = Object.fromEntries(cols.map((c) => [c.name, '']))
+    ensureRid(blank)
     onChange([...rows, blank])
   }
   const remove = (idx) => onChange(rows.filter((_, i) => i !== idx))
@@ -267,7 +294,7 @@ function Repeater({ value, label, required, onChange, columns, addLabel, readOnl
           </TableHead>
           <TableBody>
             {rows.map((r, i) => (
-              <TableRow key={i} hover>
+              <TableRow key={ensureRid(r) || i} hover>
                 {cols.map((c) => {
                   const cellVal = r?.[c.name] ?? ''
                   const err = cellError(c, cellVal)

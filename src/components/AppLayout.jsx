@@ -150,7 +150,10 @@ export default function AppLayout() {
       <List sx={{ px: 1, flexGrow: 1 }}>
         {nav.map((item) => {
           const Icon = ICONS[item.icon]
-          const selected = meta?.path === item.path
+          // Use `active` (not `meta`) so pages without a matching nav item
+          // (e.g. /gt/eligibility/new) don't accidentally light up the
+          // fallback Dashboard entry. Top-bar title still uses `meta`.
+          const selected = active?.path === item.path
           return (
             <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
               <ListItemButton
