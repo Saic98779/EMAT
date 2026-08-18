@@ -22,7 +22,7 @@ const DEMO_CREDS = [
   { role: 'Cluster Expert', username: 'cluster_expert', password: 'Password@123' },
   { role: 'SIDBI HO Maker', username: 'sidbi_ho_maker', password: 'Password@123' },
   { role: 'Manpower Agency', username: 'manpower_agency11', password: 'Password@123' },
-  // { role: 'BSE', username: 'bse_user', password: 'Password@123' },
+  { role: 'BSE', username: 'bse_user', password: 'Password@123' },
   // { role: 'SIDBI RO', username: 'sidbi_ro', password: 'Password@123' },
 ]
 

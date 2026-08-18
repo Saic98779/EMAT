@@ -33,9 +33,12 @@ export function updateBseRecommendation(uuid, patch, { signal } = {}) {
   })
 }
 
-// GET /bse-recommendations/search?name=…
-export function searchBseRecommendations(name, { signal } = {}) {
-  const q = new URLSearchParams({ name: name ?? '' }).toString()
+// GET /bse-recommendations/search?bseName=…
+// Backend enforces `bseName` (not `name` / `query`) — a 400 comes back if
+// the param is missing or renamed. Case-insensitive contains-match on the
+// candidate's `bseName` column.
+export function searchBseRecommendations(bseName, { signal } = {}) {
+  const q = new URLSearchParams({ bseName: bseName ?? '' }).toString()
   return apiFetch(`${PATH}/search?${q}`, { signal })
 }
 

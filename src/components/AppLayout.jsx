@@ -21,7 +21,7 @@ import MenuIcon from '@mui/icons-material/Menu'
 import { useAuth } from '../auth'
 import Logo from './Logo'
 import sidbiLogo from '../assets/sidbi-logo.png'
-import { useIAs, useAppraisals } from '../queries'
+import { useIAs, useAppraisals, useBseAttendanceManualRequestList } from '../queries'
 import { unpackHoDecision } from '../apis/industryAssociationAppraisals'
 
 const DRAWER_WIDTH = 288
@@ -40,7 +40,7 @@ export const NAV = {
     { icon: 'groups', label: 'BSE Team', path: '/gt/team', overline: 'Team', title: 'BSE team' },
     { icon: 'personAdd', label: 'BSE Onboarding', path: '/gt/team/candidate/new', overline: 'Team', title: 'Propose BSE Candidate' },
     { icon: 'inbox', label: 'Salary Requests', path: '/gt/salary-requests', badge: 1, overline: 'Disbursement', title: 'BSE Salary Requests' },
-    { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', badge: 2, overline: 'Field ops', title: 'Attendance' },
+    { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/gt/disbursals', badge: 2, overline: 'Field ops', title: 'Disbursals' },
     { icon: 'doc', label: 'CAPEX Verification', path: '/gt/capex', overline: 'Field ops', title: 'CAPEX — Field Verification' },
     // Eligibility Matrix intentionally not in the sidebar — it's opened
@@ -260,8 +260,13 @@ export default function AppLayout() {
 function useLiveBadges(role) {
   const isSde = role === 'sde'
   const isHo = role === 'ho'
+  const isGt = role === 'gt'
   const iasQ = useIAs({ enabled: isSde || isHo })
   const apprsQ = useAppraisals({ enabled: isSde })
+  // GT approves BSE manual-attendance requests. Backend has no "pending"
+  // filter on the approval-status endpoint (Boolean-only), so we fetch
+  // the full list and count `isApproved == null` client-side.
+  const manualReqsQ = useBseAttendanceManualRequestList({ enabled: isGt })
 
   if (isSde) {
     const ias = iasQ.data || []
@@ -278,6 +283,10 @@ function useLiveBadges(role) {
     const pending = ias.filter((i) =>
       !!String(i.appraisal?.clusterExpertComments || '').trim() && !unpackHoDecision(i.appraisal).decision)
     return { '/sde/ia-approvals': pending.length }
+  }
+  if (isGt) {
+    const pending = (manualReqsQ.data || []).filter((r) => r?.isApproved == null).length
+    return { '/gt/attendance': pending }
   }
   return {}
 }
