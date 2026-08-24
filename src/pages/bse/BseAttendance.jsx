@@ -102,10 +102,10 @@ export default function BseAttendance() {
   }, [createAttendance, recommendationId, today])
 
   const markOutTime = useCallback(async () => {
-    if (!recommendationId || !todaysRow?.uuid) return
+    if (!recommendationId || !todaysRow?.id) return
     try {
       await updateAttendance.mutateAsync({
-        id: todaysRow.uuid,
+        id: todaysRow.id,
         values: {
           bseRecommendationId: recommendationId,
           attendanceDate: today,
@@ -459,7 +459,7 @@ const ManualRequestsList = memo(function ManualRequestsList({ rows, loading }) {
       </TableHead>
       <TableBody>
         {sorted.slice(0, 8).map((r) => (
-          <TableRow key={r.uuid ?? r.id}>
+          <TableRow key={r.id}>
             <TableCell>{r.attendanceDate || '—'}</TableCell>
             <TableCell>{short(r.inTime)}–{short(r.outTime)}</TableCell>
             <TableCell><StatusChip value={r.isApproved} /></TableCell>

@@ -16,13 +16,13 @@ import { useEligibilityMatrixByRegistration, useIA } from '../queries'
 import { DIMENSIONS, MAX_SCORE, PARAM_KEYS, categorise } from '../apis/eligibilityMatrix'
 
 // Read-only viewer for a GT eligibility assessment attached to an IA.
-// Fetches both the matrix (by registrationUuid) and the IA record so the
+// Fetches both the matrix (by registrationId) and the IA record so the
 // header can show the association name / email / PAN as context.
-export default function EligibilityMatrixModal({ open, onClose, registrationUuid }) {
-  const q = useEligibilityMatrixByRegistration(open ? registrationUuid : null)
+export default function EligibilityMatrixModal({ open, onClose, registrationId }) {
+  const q = useEligibilityMatrixByRegistration(open ? registrationId : null)
   // IA context — name/email/PAN for the header. Cache is shared with the
   // rest of the app (useIAs / useIA), so this is usually free on re-open.
-  const iaQ = useIA(open ? registrationUuid : null)
+  const iaQ = useIA(open ? registrationId : null)
   const ia = iaQ.data
 
   // Backend may return single object OR list — take the newest if list.

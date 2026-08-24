@@ -97,7 +97,7 @@ export default function MyResourcesAttendance() {
             <TableBody>
               {rows.map((r, i) => (
                 <AttendanceRow
-                  key={r.uuid} resource={r} index={i + 1}
+                  key={r.id} resource={r} index={i + 1}
                   month={month} year={year}
                   onOpen={() => setTarget(r)}
                 />
@@ -122,7 +122,7 @@ export default function MyResourcesAttendance() {
 // visible count share the same cache — click the drawer, edit inside, and
 // the row's count updates the moment the dialog closes.
 const AttendanceRow = memo(function AttendanceRow({ resource, index, month, year, onOpen }) {
-  const q = useBseAttendanceByRecommendation(resource.uuid)
+  const q = useBseAttendanceByRecommendation(resource.id)
   const workingDays = workingDaysInMonth(q.data || [], month, year)
 
   return (
@@ -158,7 +158,7 @@ const AttendanceRow = memo(function AttendanceRow({ resource, index, month, year
 // a green tick + times; unmarked days are muted; weekends are subtly tinted;
 // today gets a highlighted ring so the vendor can find it fast.
 function AttendanceDialog({ target, month, year, onClose }) {
-  const q = useBseAttendanceByRecommendation(target?.uuid)
+  const q = useBseAttendanceByRecommendation(target?.id)
   const rows = q.data || []
   const [dayEditor, setDayEditor] = useState(null)
 
@@ -300,7 +300,7 @@ function AttendanceDialog({ target, month, year, onClose }) {
         open={!!dayEditor}
         date={dayEditor?.date}
         existing={dayEditor?.existing}
-        recommendationId={target?.uuid}
+        recommendationId={target?.id}
         onClose={() => setDayEditor(null)}
       />
     </>
@@ -441,16 +441,16 @@ function DayEditorDialog({ open, date, existing, recommendationId, onClose }) {
       setOutTime(existing?.outTime || '18:00')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, existing?.uuid])
+  }, [open, existing?.id])
 
-  const isEdit = !!existing?.uuid || existing?.id != null
+  const isEdit = existing?.id != null
   const busy = createM.isPending || updateM.isPending || deleteM.isPending
 
   const save = useCallback(async () => {
     const values = { bseRecommendationId: recommendationId, attendanceDate: date, inTime, outTime }
     try {
       if (isEdit) {
-        await updateM.mutateAsync({ id: existing.uuid ?? existing.id, values })
+        await updateM.mutateAsync({ id: existing.id, values })
         setToast({ severity: 'success', msg: 'Attendance updated.' })
       } else {
         await createM.mutateAsync(values)
@@ -466,7 +466,7 @@ function DayEditorDialog({ open, date, existing, recommendationId, onClose }) {
     if (!existing) return
     try {
       await deleteM.mutateAsync({
-        id: existing.uuid ?? existing.id,
+        id: existing.id,
         recommendationId,
       })
       setToast({ severity: 'success', msg: 'Attendance removed.' })

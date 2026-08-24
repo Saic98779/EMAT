@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Box, Typography, Button, Snackbar, Alert, Chip, Paper, CircularProgress, Stack } from '@mui/material'
+import {
+  Box, Typography, Button, Snackbar, Alert, Chip, Paper, CircularProgress,
+  Stack, Card, CardContent, TextField, MenuItem, Autocomplete,
+} from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EastIcon from '@mui/icons-material/East'
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined'
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import EligibilityMatrixModal from '../../components/EligibilityMatrixModal'
 import { makeInPrincipleSchema } from '../../formSchemas'
@@ -15,7 +19,8 @@ import {
 import { uploadFilesBatch } from '../../apis/files'
 import { encodeFilename } from '../../fileFieldLabels'
 import {
-  useBranchesByState, useSdesByBranch, useIA, useUpdateIA, keys,
+  useBranchesByState, useSdesByBranch, useIA, useUpdateIA,
+  useEligibilityRegistrationsDropdown, keys,
 } from '../../queries'
 import { useAuth } from '../../auth'
 
@@ -52,8 +57,8 @@ function firstProblem(schema, values) {
 
 export default function InPrincipleApproval() {
   const navigate = useNavigate()
-  const { id: routeUuid } = useParams()
-  const isCompleteMode = !!routeUuid
+  const { id: routeId } = useParams()
+  const isCompleteMode = !!routeId
   const qc = useQueryClient()
   const { user, role } = useAuth()
 
@@ -76,8 +81,19 @@ export default function InPrincipleApproval() {
   const [showAllErrors, setShowAllErrors] = useState(false)
   const [matrixOpen, setMatrixOpen] = useState(false)
 
-  // Fetch the existing IA in complete mode. Only fires when we have a uuid.
-  const iaQ = useIA(routeUuid, { enabled: isCompleteMode })
+  // ── Picker (create mode only) ────────────────────────────────────────────
+  // Fetch the "IAs with an eligibility matrix on record" dropdown. GT / SDE
+  // must pick from this list before starting In-Principle — a blank
+  // registration isn't reachable anymore.
+  const dropdownQ = useEligibilityRegistrationsDropdown({ enabled: !isCompleteMode })
+  const [pickedId, setPickedId] = useState(null)
+  const dropdownOptions = useMemo(() => dropdownQ.data || [], [dropdownQ.data])
+
+  // One useIA call serves both modes. In complete mode it looks up the
+  // route id (drives the form seed below). In picker mode it looks up
+  // the picked id so we can preview the IA before committing.
+  const lookupId = isCompleteMode ? routeId : pickedId
+  const iaQ = useIA(lookupId, { enabled: !!lookupId })
 
   // Seed form once the DTO arrives. `iaToFormValues` maps backend keys to
   // the snake-cased form field names this schema expects (email, pan_no,
@@ -110,11 +126,11 @@ export default function InPrincipleApproval() {
   const sdesQ = useSdesByBranch(values.sidbi_branch)
 
   const branchOptions = useMemo(
-    () => (branchesQ.data || []).map((b) => ({ value: b.uuid, label: b.branchName })),
+    () => (branchesQ.data || []).map((b) => ({ value: b.id, label: b.branchName })),
     [branchesQ.data],
   )
   const sdeOptions = useMemo(
-    () => (sdesQ.data || []).map((s) => ({ value: s.uuid, label: s.name })),
+    () => (sdesQ.data || []).map((s) => ({ value: s.id, label: s.name })),
     [sdesQ.data],
   )
 
@@ -178,7 +194,7 @@ export default function InPrincipleApproval() {
     }
     setBusy(true)
     try {
-      let regUuid = routeUuid
+      let regId = routeId
       // `autoApproved` is *reported by the backend*, not decided here.
       // Backend inspects the caller's JWT: SIDBI_SDE → sets
       // `isSidbeApproved = true` + stamps `sidbeApprovedByUserId` on the
@@ -192,22 +208,22 @@ export default function InPrincipleApproval() {
         // (see manual smoke test 2026-08-16), so sending the full form
         // values is safe — the four header fields round-trip unchanged.
         const updated = await updateM.mutateAsync({
-          uuid: routeUuid,
+          id: routeId,
           values,
           extra: { updatedBy: user?.username },
         })
         autoApproved = updated?.isSidbeApproved === true
       } else {
         const created = await createIndustryAssociation(values)
-        regUuid = created?.uuid
+        regId = created?.id
         autoApproved = created?.isSidbeApproved === true
       }
 
       const files = collectFiles()
-      if (regUuid && files.length) {
+      if (regId && files.length) {
         const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
         try {
-          await uploadFilesBatch(regUuid, tagged)
+          await uploadFilesBatch(regId, tagged)
           setToast({ severity: 'success', msg: `${values.ia_name || 'IA'} saved — ${files.length} file${files.length === 1 ? '' : 's'} uploaded${autoApproved ? ' and auto-approved' : ''}.` })
         } catch (err) {
           setToast({
@@ -231,8 +247,8 @@ export default function InPrincipleApproval() {
       // rows when they navigate back. `refetchType: 'all'` forces the
       // refetch now, even though the list query is currently inactive.
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
-      if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid), refetchType: 'all' })
-      const nextPath = regUuid ? `${iaListPath}/${regUuid}` : iaListPath
+      if (regId) qc.invalidateQueries({ queryKey: keys.ias.detail(regId), refetchType: 'all' })
+      const nextPath = regId ? `${iaListPath}/${regId}` : iaListPath
       setTimeout(() => navigate(nextPath), 900)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to submit. Please try again.' })
@@ -250,6 +266,105 @@ export default function InPrincipleApproval() {
       <Box sx={{ maxWidth: 940, mx: 'auto' }}>
         <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(iaListPath)} sx={{ mb: 2 }}>Back</Button>
         <Alert severity="error">{iaQ.error.message || 'Failed to load IA'}</Alert>
+      </Box>
+    )
+  }
+
+  // ── Picker screen ────────────────────────────────────────────────────────
+  // Not in complete mode → we haven't picked an IA yet. Show a dropdown of
+  // IAs that already have an eligibility matrix; on continue we navigate
+  // to the complete-mode route which hydrates the form with the picked
+  // IA's fields.
+  if (!isCompleteMode) {
+    const previewIa = pickedId ? iaQ.data : null
+    const previewRaw = previewIa?.raw
+    const continueDisabled = !pickedId || iaQ.isLoading
+    return (
+      <Box sx={{ maxWidth: 720, mx: 'auto', pb: 6 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+          <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(iaListPath)}>IA Onboarding</Button>
+        </Stack>
+        <Box textAlign="center" mb={3}>
+          <Chip label="Level 1 · In-Principle Approval" sx={{ bgcolor: 'primary.light', color: 'primary.dark', mb: 1.5, fontWeight: 700 }} />
+          <Typography variant="h4">Select an Industry Association</Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 560, mx: 'auto' }}>
+            Pick an IA that already has an eligibility matrix on record. Its
+            name, PAN, email and state will be prefilled on the In-Principle
+            form — you complete the rest of the profile there.
+          </Typography>
+        </Box>
+
+        <Card>
+          <CardContent sx={{ p: 3 }}>
+            <Autocomplete
+              options={dropdownOptions}
+              loading={dropdownQ.isLoading}
+              getOptionLabel={(o) => o?.name || ''}
+              isOptionEqualToValue={(a, b) => a?.id === b?.id}
+              value={dropdownOptions.find((o) => o.id === pickedId) || null}
+              onChange={(_e, v) => setPickedId(v?.id || null)}
+              renderInput={(params) => (
+                <TextField {...params}
+                  label="Eligibility-scored IA *"
+                  placeholder={dropdownQ.isLoading ? 'Loading…' : 'Search by name…'}
+                  helperText={
+                    dropdownQ.error
+                      ? (dropdownQ.error.message || 'Failed to load the IA list')
+                      : dropdownOptions.length === 0 && !dropdownQ.isLoading
+                        ? 'No IAs have an eligibility matrix yet. Start with the Eligibility Matrix.'
+                        : 'Only IAs with an eligibility matrix are shown.'
+                  }
+                  error={!!dropdownQ.error}
+                />
+              )}
+            />
+
+            {previewRaw && (
+              <Box sx={{
+                mt: 3, p: 2, borderRadius: 1.5,
+                border: '1px solid', borderColor: 'divider',
+                bgcolor: 'action.hover',
+              }}>
+                <Typography variant="overline" color="text.secondary"
+                  sx={{ letterSpacing: '0.14em', fontWeight: 700 }}>
+                  Prefilled from Eligibility
+                </Typography>
+                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                  <PreviewRow label="Name" value={previewRaw.industryAssociationName} />
+                  <PreviewRow label="State" value={previewRaw.state} />
+                  <PreviewRow label="PAN" value={previewRaw.panNo} mono />
+                  <PreviewRow label="Email" value={previewRaw.email} mono />
+                </Stack>
+              </Box>
+            )}
+
+            {pickedId && iaQ.isLoading && (
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2 }}>
+                <CircularProgress size={14} />
+                <Typography variant="caption" color="text.secondary">Loading IA details…</Typography>
+              </Stack>
+            )}
+
+            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 3 }}>
+              <Button
+                variant="outlined"
+                startIcon={<FactCheckOutlinedIcon />}
+                onClick={() => navigate(`${isSdeActor ? '/sde' : '/gt'}/eligibility/new`)}
+                sx={{ textTransform: 'none' }}
+              >
+                Start with Eligibility Matrix
+              </Button>
+              <Button
+                variant="contained"
+                endIcon={<EastIcon />}
+                onClick={() => navigate(`${iaListPath}/${pickedId}/in-principle`)}
+                disabled={continueDisabled}
+              >
+                Continue
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
       </Box>
     )
   }
@@ -272,7 +387,7 @@ export default function InPrincipleApproval() {
           startIcon={<AssessmentOutlinedIcon />}
           onClick={() => setMatrixOpen(true)}
           sx={{ textTransform: 'none' }}
-          disabled={!routeUuid}  // no matrix to view until the IA exists
+          disabled={!routeId}  // no matrix to view until the IA exists
         >
           View Eligibility Matrix
         </Button>
@@ -302,7 +417,7 @@ export default function InPrincipleApproval() {
       <EligibilityMatrixModal
         open={matrixOpen}
         onClose={() => setMatrixOpen(false)}
-        registrationUuid={routeUuid}
+        registrationId={routeId}
       />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
@@ -328,5 +443,25 @@ export default function InPrincipleApproval() {
         </Alert>
       </Snackbar>
     </Box>
+  )
+}
+
+// Compact "LABEL — value" line used in the picker's Prefilled-from-
+// Eligibility preview. Falls back to em-dash when the value is null so
+// the row always has consistent height.
+function PreviewRow({ label, value, mono }) {
+  const hasValue = value != null && value !== ''
+  return (
+    <Stack direction="row" spacing={1} alignItems="baseline">
+      <Typography variant="caption" color="text.secondary"
+        sx={{ letterSpacing: '0.06em', fontWeight: 700, textTransform: 'uppercase', minWidth: 56 }}>
+        {label}
+      </Typography>
+      <Typography variant="body2"
+        sx={{ color: hasValue ? 'text.primary' : 'text.disabled', fontWeight: hasValue ? 600 : 400,
+              fontFamily: mono ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' : undefined }}>
+        {hasValue ? value : '—'}
+      </Typography>
+    </Stack>
   )
 }

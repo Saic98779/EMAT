@@ -132,7 +132,7 @@ export default function GtSalaryRequests() {
                 </TableRow>
               )}
               {filtered.map((r) => (
-                <QueueRow key={r.id ?? r.uuid} row={r} onOpen={() => setReview(r)} />
+                <QueueRow key={r.id} row={r} onOpen={() => setReview(r)} />
               ))}
             </TableBody>
           </Table>
@@ -233,7 +233,7 @@ function ReviewDialog({ open, row, gtUsername, onClose, onToast }) {
 
   const submit = useCallback(async () => {
     if (!row) return
-    const id = row.id ?? row.uuid
+    const id = row.id
     if (!id) {
       onToast({ severity: 'error', msg: 'Missing record id.' })
       return

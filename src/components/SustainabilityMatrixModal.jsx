@@ -14,13 +14,13 @@ import { useSustainabilityMatrixByAppraisal, useIA } from '../queries'
 import { DIMENSIONS, MAX_SCORE, PARAM_KEYS, categorise } from '../apis/sustainabilityMatrix'
 
 // Read-only viewer for the Sustainability Matrix attached to an appraisal.
-// Mirrors EligibilityMatrixModal in layout; keyed by `appraisalUuid`
+// Mirrors EligibilityMatrixModal in layout; keyed by `appraisalId`
 // (backend fk), with the IA record fetched separately for header context.
 export default function SustainabilityMatrixModal({
-  open, onClose, appraisalUuid, registrationUuid,
+  open, onClose, appraisalId, registrationId,
 }) {
-  const q = useSustainabilityMatrixByAppraisal(open ? appraisalUuid : null)
-  const iaQ = useIA(open ? registrationUuid : null)
+  const q = useSustainabilityMatrixByAppraisal(open ? appraisalId : null)
+  const iaQ = useIA(open ? registrationId : null)
   const ia = iaQ.data
 
   // Backend may return single object OR list — take the newest if list.
@@ -64,19 +64,19 @@ export default function SustainabilityMatrixModal({
       </DialogTitle>
 
       <DialogContent sx={{ p: 0, bgcolor: 'background.default' }}>
-        {!appraisalUuid && (
+        {!appraisalId && (
           <Alert severity="info" sx={{ m: 2 }} variant="outlined">
             The appraisal hasn't been created yet, so no sustainability matrix can be attached.
           </Alert>
         )}
 
-        {appraisalUuid && q.isLoading && (
+        {appraisalId && q.isLoading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress />
           </Box>
         )}
 
-        {appraisalUuid && q.error && (
+        {appraisalId && q.error && (
           <Alert severity="warning" sx={{ m: 2 }} variant="outlined">
             {q.error.status === 404
               ? "No sustainability matrix on record for this appraisal yet."
@@ -84,7 +84,7 @@ export default function SustainabilityMatrixModal({
           </Alert>
         )}
 
-        {appraisalUuid && !q.isLoading && !q.error && !record && (
+        {appraisalId && !q.isLoading && !q.error && !record && (
           <Alert severity="info" sx={{ m: 2 }} variant="outlined">
             No sustainability matrix has been submitted for this IA yet.
           </Alert>

@@ -64,8 +64,8 @@ export default function GtDashboard() {
             ) : (
               <Stack divider={<Divider />} spacing={0}>
                 {pendingBse.slice(0, 6).map((c) => (
-                  <Stack key={c.uuid} direction="row" alignItems="center" spacing={2}
-                    onClick={() => navigate(`/gt/team/${c.uuid}`)}
+                  <Stack key={c.id} direction="row" alignItems="center" spacing={2}
+                    onClick={() => navigate(`/gt/team/${c.id}`)}
                     sx={{ py: 1.5, px: 1, mx: -1, borderRadius: 2, cursor: 'pointer', transition: 'background .15s', '&:hover': { bgcolor: 'action.hover' } }}>
                     <Avatar variant="rounded" sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 40, height: 40 }}>
                       <PersonSearchOutlinedIcon fontSize="small" />

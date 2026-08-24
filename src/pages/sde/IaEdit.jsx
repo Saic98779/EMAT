@@ -81,11 +81,11 @@ export default function IaEdit() {
   const sdesQ = useSdesByBranch(values.sidbi_branch)
 
   const branchOptions = useMemo(
-    () => (branchesQ.data || []).map((b) => ({ value: b.uuid, label: b.branchName })),
+    () => (branchesQ.data || []).map((b) => ({ value: b.id, label: b.branchName })),
     [branchesQ.data],
   )
   const sdeOptions = useMemo(
-    () => (sdesQ.data || []).map((s) => ({ value: s.uuid, label: s.name })),
+    () => (sdesQ.data || []).map((s) => ({ value: s.id, label: s.name })),
     [sdesQ.data],
   )
 
@@ -121,7 +121,7 @@ export default function IaEdit() {
     }
     try {
       await updateM.mutateAsync({
-        uuid: id,
+        id,
         values,
         extra: { updatedBy: user?.username },
       })
@@ -173,7 +173,7 @@ export default function IaEdit() {
       <EligibilityMatrixModal
         open={matrixOpen}
         onClose={() => setMatrixOpen(false)}
-        registrationUuid={id}
+        registrationId={id}
       />
 
       <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>

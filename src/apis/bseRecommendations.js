@@ -7,17 +7,17 @@ export function listBseRecommendations({ signal } = {}) {
   return apiFetch(PATH, { signal })
 }
 
-export function getBseRecommendation(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
+export function getBseRecommendation(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }
 
 // POST create — feeds `BseCandidate.jsx`. Caller passes the raw form values
-// plus the `registrationUuid` of the target Industry Association (looked up
+// plus the `registrationId` of the target Industry Association (looked up
 // from the selected `ia_name` on the page).
-export function createBseRecommendation(values, registrationUuid, { signal } = {}) {
+export function createBseRecommendation(values, registrationId, { signal } = {}) {
   return apiFetch(PATH, {
     method: 'POST',
-    body: toPayload(values, registrationUuid),
+    body: toPayload(values, registrationId),
     signal,
   })
 }
@@ -25,8 +25,8 @@ export function createBseRecommendation(values, registrationUuid, { signal } = {
 // PUT update — used by the BSE candidate detail page for review actions
 // (GT / HO / PMU / Committee recommendations, onboarding, etc.). Caller
 // passes a partial patch shaped by `toUpdatePayload`.
-export function updateBseRecommendation(uuid, patch, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function updateBseRecommendation(id, patch, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: patch,
     signal,
@@ -42,11 +42,11 @@ export function searchBseRecommendations(bseName, { signal } = {}) {
   return apiFetch(`${PATH}/search?${q}`, { signal })
 }
 
-// GET /bse-recommendations/registration/{registrationUuid}
+// GET /bse-recommendations/registration/{registrationId}
 // All BSE candidates proposed against a single IA registration.
-export function listBseRecommendationsByRegistration(registrationUuid, { signal } = {}) {
+export function listBseRecommendationsByRegistration(registrationId, { signal } = {}) {
   return apiFetch(
-    `${PATH}/registration/${encodeURIComponent(registrationUuid)}`,
+    `${PATH}/registration/${encodeURIComponent(registrationId)}`,
     { signal },
   )
 }
@@ -107,15 +107,16 @@ export function listBseRecommendationsByMappedStatus(status, { signal } = {}) {
 //   mapping / offer letter) are sent as `null` on create — they're populated
 //   by the PUT flow after each stage's review.
 //
-// `industryRegistrationId` mirrors `registrationUuid` today: the frontend only
-// carries the IA's UUID, and no separate short/human id is surfaced by the
-// backend on the IA DTO. Pass the same UUID until the backend clarifies.
-export function toPayload(v = {}, registrationUuid = null) {
+// `industryRegistrationId` mirrors `registrationId` today: the frontend only
+// carries the IA's id, and no separate short/human id is surfaced by the
+// backend on the IA DTO. Pass the same id under both names until the
+// backend clarifies whether the mirror is still needed.
+export function toPayload(v = {}, registrationId = null) {
   const experienced = bool(v.experience_status)
-  const uuid = str(registrationUuid)
+  const rid = int(registrationId)
   return {
-    registrationUuid: uuid,
-    industryRegistrationId: uuid,
+    registrationId: rid,
+    industryRegistrationId: rid,
     // Backend switched from the vendor table to the user table. Field name is
     // `userId` (integer), NOT `vendorUuid`. The form's `vendor_uuid` slot now
     // stores the linked MPA user's id (string), so we parse it back to int.
@@ -255,10 +256,9 @@ function toIsoDate(v) {
 // round-trip edits later without re-fetching.
 export function fromDto(dto = {}) {
   return {
-    id: dto.uuid,
-    uuid: dto.uuid,
+    id: dto.id,
     name: dto.bseName || '—',
-    ia: dto.industryAssociationName || dto.registrationUuid || '—',
+    ia: dto.industryAssociationName || dto.registrationId || '—',
     mobile: dto.mobileNumber || '—',
     email: dto.emailId || '—',
     latitude: dto.latitude ?? null,

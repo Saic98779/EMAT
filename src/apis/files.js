@@ -1,7 +1,7 @@
 import { API_BASE, apiFetch } from '../api'
 
 // Backend `file-controller`. All files are keyed off the parent record's
-// `registrationUuid` (Industry Association registration, BSE candidate, etc.).
+// `registrationId` (Industry Association registration, BSE candidate, etc.).
 const PATH = '/files'
 
 // Kept in sync with STORAGE_KEY in auth.jsx. Duplicated here (rather than
@@ -15,19 +15,19 @@ function getStoredToken() {
   } catch { return null }
 }
 
-// GET /files/{registrationUuid} → UploadedFileResponse[]
-export function listFiles(registrationUuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(registrationUuid)}`, { signal })
+// GET /files/{registrationId} → UploadedFileResponse[]
+export function listFiles(registrationId, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(registrationId)}`, { signal })
 }
 
-// POST /files/{registrationUuid} (multipart/form-data, field name `file`)
+// POST /files/{registrationId} (multipart/form-data, field name `file`)
 // Returns the created UploadedFileResponse.
-export async function uploadFile(registrationUuid, file, { signal } = {}) {
+export async function uploadFile(registrationId, file, { signal } = {}) {
   const bearer = getStoredToken()
   const form = new FormData()
   form.append('file', file)
 
-  const res = await fetch(`${API_BASE}${PATH}/${encodeURIComponent(registrationUuid)}`, {
+  const res = await fetch(`${API_BASE}${PATH}/${encodeURIComponent(registrationId)}`, {
     method: 'POST',
     signal,
     // NB: do NOT set Content-Type — the browser must set the multipart boundary.
@@ -50,18 +50,18 @@ export async function uploadFile(registrationUuid, file, { signal } = {}) {
   return data
 }
 
-// POST /files/{registrationUuid}/batch (multipart/form-data, repeating field
+// POST /files/{registrationId}/batch (multipart/form-data, repeating field
 // name `files`). Replaces the sequential single-file loop we used to run —
 // one TCP call, one auth check, backend controls internal concurrency.
 // Returns whatever the batch endpoint returns (typically the list of
 // UploadedFileResponse entries in request order).
-export async function uploadFilesBatch(registrationUuid, files, { signal } = {}) {
+export async function uploadFilesBatch(registrationId, files, { signal } = {}) {
   if (!files || files.length === 0) return []
   const bearer = getStoredToken()
   const form = new FormData()
   for (const f of files) form.append('files', f)
 
-  const res = await fetch(`${API_BASE}${PATH}/${encodeURIComponent(registrationUuid)}/batch`, {
+  const res = await fetch(`${API_BASE}${PATH}/${encodeURIComponent(registrationId)}/batch`, {
     method: 'POST',
     signal,
     headers: {
@@ -87,28 +87,28 @@ export async function uploadFilesBatch(registrationUuid, files, { signal } = {})
       : (Array.isArray(data?.items) ? data.items : []))
 }
 
-// DELETE /files/{registrationUuid}/{filename}
-export function deleteFile(registrationUuid, filename, { signal } = {}) {
+// DELETE /files/{registrationId}/{filename}
+export function deleteFile(registrationId, filename, { signal } = {}) {
   return apiFetch(
-    `${PATH}/${encodeURIComponent(registrationUuid)}/${encodeURIComponent(filename)}`,
+    `${PATH}/${encodeURIComponent(registrationId)}/${encodeURIComponent(filename)}`,
     { method: 'DELETE', signal },
   )
 }
 
-// GET /files/{registrationUuid}/{filename} — absolute URL for direct download.
+// GET /files/{registrationId}/{filename} — absolute URL for direct download.
 // Bearer auth is required, so this is intended for use with `downloadFile()`
 // rather than a naked <a href> (which won't carry the Authorization header).
-export function fileUrl(registrationUuid, filename) {
-  return `${API_BASE}${PATH}/${encodeURIComponent(registrationUuid)}/${encodeURIComponent(filename)}`
+export function fileUrl(registrationId, filename) {
+  return `${API_BASE}${PATH}/${encodeURIComponent(registrationId)}/${encodeURIComponent(filename)}`
 }
 
 // Fetches the file as a Blob and triggers a browser download. Ignores the
 // server-provided `downloadUrl` — backend currently returns a relative path
 // that resolves against the frontend origin (404). Always use fileUrl() so
 // the request hits API_BASE (the backend host).
-export async function downloadFile(registrationUuid, filename) {
+export async function downloadFile(registrationId, filename) {
   const bearer = getStoredToken()
-  const url = fileUrl(registrationUuid, filename)
+  const url = fileUrl(registrationId, filename)
   const res = await fetch(url, {
     headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
   })

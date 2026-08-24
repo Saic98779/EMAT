@@ -4,7 +4,7 @@
 //
 // Key shape convention:
 //   [entity, kind, ...selectors]
-// e.g. ['ias', 'list'], ['ias', 'detail', uuid], ['appraisals', 'byRegistration', regUuid]
+// e.g. ['ias', 'list'], ['ias', 'detail', id], ['appraisals', 'byRegistration', regId]
 //
 // When you add a new endpoint:
 //   1. Add its key here in queryKeys.
@@ -75,6 +75,7 @@ import {
 } from './apis/disbursementCapex'
 import {
   listEligibilityMatrix, getEligibilityMatrix,
+  listEligibilityMatrixRegistrationsDropdown,
   getEligibilityMatrixByRegistration,
   createEligibilityMatrix, updateEligibilityMatrix, deleteEligibilityMatrix,
 } from './apis/eligibilityMatrix'
@@ -89,24 +90,24 @@ export const keys = {
   ias: {
     all: ['ias'],
     lists: () => ['ias', 'list'],
-    detail: (uuid) => ['ias', 'detail', uuid],
+    detail: (id) => ['ias', 'detail', id],
   },
   appraisals: {
     all: ['appraisals'],
     lists: () => ['appraisals', 'list'],
-    detail: (uuid) => ['appraisals', 'detail', uuid],
-    byRegistration: (regUuid) => ['appraisals', 'byRegistration', regUuid],
+    detail: (id) => ['appraisals', 'detail', id],
+    byRegistration: (regId) => ['appraisals', 'byRegistration', regId],
   },
   bse: {
     all: ['bse'],
     lists: () => ['bse', 'list'],
-    detail: (uuid) => ['bse', 'detail', uuid],
+    detail: (id) => ['bse', 'detail', id],
     search: (name) => ['bse', 'search', name],
     byGtStatus: (status) => ['bse', 'gt-status', status],
     byPmuStatus: (status) => ['bse', 'pmu-status', status],
     byHoStatus: (status) => ['bse', 'ho-status', status],
     byMappedStatus: (status) => ['bse', 'mapped', status],
-    byRegistration: (regUuid) => ['bse', 'byRegistration', regUuid],
+    byRegistration: (regId) => ['bse', 'byRegistration', regId],
     byUserSelected: (userId) => ['bse', 'byUserSelected', String(userId)],
     // Cached lookup for "the recommendation belonging to the logged-in BSE
     // user" — resolved via bseName search + email/mobile disambiguation.
@@ -121,12 +122,12 @@ export const keys = {
     byState: (state) => ['branches', 'byState', state],
   },
   sdes: {
-    byBranch: (branchUuid) => ['sdes', 'byBranch', branchUuid],
+    byBranch: (branchId) => ['sdes', 'byBranch', branchId],
   },
   vendors: {
     all: ['vendors'],
     lists: () => ['vendors', 'list'],
-    detail: (uuid) => ['vendors', 'detail', uuid],
+    detail: (id) => ['vendors', 'detail', id],
     byUser: (userId) => ['vendors', 'byUser', String(userId)],
     dropdown: () => ['vendors', 'dropdown'],
   },
@@ -138,34 +139,35 @@ export const keys = {
   capex: {
     all: ['capex'],
     lists: () => ['capex', 'list'],
-    detail: (uuid) => ['capex', 'detail', uuid],
-    byRegistration: (regUuid) => ['capex', 'byRegistration', regUuid],
+    detail: (id) => ['capex', 'detail', id],
+    byRegistration: (regId) => ['capex', 'byRegistration', regId],
   },
   eligibility: {
     all: ['eligibility'],
     lists: () => ['eligibility', 'list'],
-    detail: (uuid) => ['eligibility', 'detail', uuid],
-    byRegistration: (regUuid) => ['eligibility', 'byRegistration', regUuid],
+    detail: (id) => ['eligibility', 'detail', id],
+    byRegistration: (regId) => ['eligibility', 'byRegistration', regId],
+    registrationsDropdown: () => ['eligibility', 'registrationsDropdown'],
   },
   sustainability: {
     all: ['sustainability'],
-    detail: (uuid) => ['sustainability', 'detail', uuid],
-    byAppraisal: (appraisalUuid) => ['sustainability', 'byAppraisal', appraisalUuid],
+    detail: (id) => ['sustainability', 'detail', id],
+    byAppraisal: (appraisalId) => ['sustainability', 'byAppraisal', appraisalId],
   },
   files: {
-    byRegistration: (regUuid) => ['files', 'byRegistration', regUuid],
+    byRegistration: (regId) => ['files', 'byRegistration', regId],
   },
   bseAttendance: {
     all: ['bse-attendance'],
     lists: () => ['bse-attendance', 'list'],
     detail: (id) => ['bse-attendance', 'detail', String(id)],
-    byRecommendation: (recUuid) => ['bse-attendance', 'byRecommendation', recUuid],
+    byRecommendation: (recId) => ['bse-attendance', 'byRecommendation', recId],
   },
   bseAttendanceManualRequest: {
     all: ['bse-attendance-manual-request'],
     lists: () => ['bse-attendance-manual-request', 'list'],
     detail: (id) => ['bse-attendance-manual-request', 'detail', String(id)],
-    byRecommendation: (recUuid) => ['bse-attendance-manual-request', 'byRecommendation', recUuid],
+    byRecommendation: (recId) => ['bse-attendance-manual-request', 'byRecommendation', recId],
     byStatus: (status) => ['bse-attendance-manual-request', 'byStatus', status],
   },
 }
@@ -181,7 +183,7 @@ function unwrapList(data) {
 
 // ── IA registrations ──────────────────────────────────────────────────────
 // The list view derives its status from both the registration and its linked
-// appraisal — so we fetch both in parallel and join by registrationUuid.
+// appraisal — so we fetch both in parallel and join by registrationId.
 export function useIAs({ enabled = true } = {}) {
   return useQuery({
     queryKey: keys.ias.lists(),
@@ -202,20 +204,23 @@ export function useIAs({ enabled = true } = {}) {
       ])
       const regs = unwrapList(regsRaw)
       const apprs = unwrapList(apprsRaw)
-      const byReg = new Map(apprs.map((a) => [a.registrationUuid, a]).filter(([k]) => !!k))
-      return regs.map((r) => iaFromDto(r, byReg.get(r.uuid) || null))
+      // NOTE: `apprs` here is the raw list from listAppraisals — the DTO
+      // shape (registrationId + id), not the fromDto-mapped version. Same
+      // for `regs`, which is why we look up by `r.id`.
+      const byReg = new Map(apprs.map((a) => [a.registrationId, a]).filter(([k]) => !!k))
+      return regs.map((r) => iaFromDto(r, byReg.get(r.id) || null))
     },
   })
 }
 
-export function useIA(uuid, options = {}) {
+export function useIA(id, options = {}) {
   return useQuery({
-    queryKey: keys.ias.detail(uuid),
-    enabled: !!uuid && (options.enabled ?? true),
+    queryKey: keys.ias.detail(id),
+    enabled: !!id && (options.enabled ?? true),
     queryFn: async ({ signal }) => {
       const [reg, appr] = await Promise.all([
-        getIndustryAssociation(uuid, { signal }),
-        getAppraisalByRegistration(uuid, { signal }).catch(() => null),
+        getIndustryAssociation(id, { signal }),
+        getAppraisalByRegistration(id, { signal }).catch(() => null),
       ])
       return iaFromDto(reg, appr || null)
     },
@@ -225,13 +230,13 @@ export function useIA(uuid, options = {}) {
 export function useApproveIA() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, isSidbeApproved = true }) =>
-      approveIndustryAssociation(uuid, { isSidbeApproved }),
-    onSuccess: (updated, { uuid }) => {
+    mutationFn: ({ id, isSidbeApproved = true }) =>
+      approveIndustryAssociation(id, { isSidbeApproved }),
+    onSuccess: (updated, { id }) => {
       // Push the response into the detail cache immediately so the page
       // reflects the new state without another network round-trip.
       if (updated) {
-        qc.setQueryData(keys.ias.detail(uuid), (prev) =>
+        qc.setQueryData(keys.ias.detail(id), (prev) =>
           iaFromDto(updated, prev?.appraisal ?? null),
         )
       }
@@ -246,10 +251,10 @@ export function useApproveIA() {
 export function useUpdateIA() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, values, extra }) => updateIndustryAssociation(uuid, values, extra),
-    onSuccess: (updated, { uuid }) => {
+    mutationFn: ({ id, values, extra }) => updateIndustryAssociation(id, values, extra),
+    onSuccess: (updated, { id }) => {
       if (updated) {
-        qc.setQueryData(keys.ias.detail(uuid), (prev) =>
+        qc.setQueryData(keys.ias.detail(id), (prev) =>
           iaFromDto(updated, prev?.appraisal ?? null),
         )
       }
@@ -272,72 +277,72 @@ export function useAppraisals({ enabled = true } = {}) {
   })
 }
 
-export function useAppraisal(uuid) {
+export function useAppraisal(id) {
   return useQuery({
-    queryKey: keys.appraisals.detail(uuid),
-    enabled: !!uuid,
-    queryFn: ({ signal }) => getAppraisal(uuid, { signal }).then(appraisalFromDto),
+    queryKey: keys.appraisals.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getAppraisal(id, { signal }).then(appraisalFromDto),
   })
 }
 
 // Returns the raw appraisal DTO (not fromDto-mapped) — the GT Appraisal form
 // needs the full backend field set to prefill.
-export function useAppraisalByRegistration(regUuid) {
+export function useAppraisalByRegistration(regId) {
   return useQuery({
-    queryKey: keys.appraisals.byRegistration(regUuid),
-    enabled: !!regUuid,
-    queryFn: ({ signal }) => getAppraisalByRegistration(regUuid, { signal }).catch(() => null),
+    queryKey: keys.appraisals.byRegistration(regId),
+    enabled: !!regId,
+    queryFn: ({ signal }) => getAppraisalByRegistration(regId, { signal }).catch(() => null),
   })
 }
 
 // GT submits the detailed appraisal for the first time. On success we
 // invalidate the parent IA (status flips to "Final Review (L2)") + lists.
-// registrationUuid is read from the *request* body — we can't rely on the
+// registrationId is read from the *request* body — we can't rely on the
 // response echoing it back.
 export function useCreateAppraisal() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body) => createAppraisal(body),
     onSuccess: (created, body) => {
-      const regUuid = body?.registrationUuid || created?.registrationUuid
-      if (created && regUuid) qc.setQueryData(keys.appraisals.byRegistration(regUuid), created)
+      const regId = body?.registrationId || created?.registrationId
+      if (created && regId) qc.setQueryData(keys.appraisals.byRegistration(regId), created)
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
-      if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
+      if (regId) qc.invalidateQueries({ queryKey: keys.ias.detail(regId) })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
 
 // GT revises an existing appraisal (or Cluster Expert adds comments).
-// registrationUuid preferred from the request; falls back to response.
+// registrationId preferred from the request; falls back to response.
 export function useUpdateAppraisal() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, body }) => updateAppraisal(uuid, body),
-    onSuccess: (updated, { uuid, body }) => {
-      const regUuid = body?.registrationUuid || updated?.registrationUuid
-      if (updated) qc.setQueryData(keys.appraisals.detail(uuid), appraisalFromDto(updated))
-      if (updated && regUuid) qc.setQueryData(keys.appraisals.byRegistration(regUuid), updated)
-      if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
+    mutationFn: ({ id, body }) => updateAppraisal(id, body),
+    onSuccess: (updated, { id, body }) => {
+      const regId = body?.registrationId || updated?.registrationId
+      if (updated) qc.setQueryData(keys.appraisals.detail(id), appraisalFromDto(updated))
+      if (updated && regId) qc.setQueryData(keys.appraisals.byRegistration(regId), updated)
+      if (regId) qc.invalidateQueries({ queryKey: keys.ias.detail(regId) })
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
 
-// SDE grants L2 sanction. Callers should pass `registrationUuid` in the
+// SDE grants L2 sanction. Callers should pass `registrationId` in the
 // variables so we can invalidate the parent IA even if the response omits
-// it. `registrationUuid` is optional but strongly recommended.
+// it. `registrationId` is optional but strongly recommended.
 export function useApproveAppraisal() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, isSidbeApproved = true }) =>
-      approveAppraisal(uuid, { isSidbeApproved }),
-    onSuccess: (updated, { uuid, registrationUuid }) => {
-      const regUuid = registrationUuid || updated?.registrationUuid
-      if (updated) qc.setQueryData(keys.appraisals.detail(uuid), appraisalFromDto(updated))
-      if (updated && regUuid) qc.setQueryData(keys.appraisals.byRegistration(regUuid), updated)
-      if (regUuid) qc.invalidateQueries({ queryKey: keys.ias.detail(regUuid) })
+    mutationFn: ({ id, isSidbeApproved = true }) =>
+      approveAppraisal(id, { isSidbeApproved }),
+    onSuccess: (updated, { id, registrationId }) => {
+      const regId = registrationId || updated?.registrationId
+      if (updated) qc.setQueryData(keys.appraisals.detail(id), appraisalFromDto(updated))
+      if (updated && regId) qc.setQueryData(keys.appraisals.byRegistration(regId), updated)
+      if (regId) qc.invalidateQueries({ queryKey: keys.ias.detail(regId) })
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
@@ -353,11 +358,11 @@ export function useBseList({ enabled = true } = {}) {
   })
 }
 
-export function useBse(uuid) {
+export function useBse(id) {
   return useQuery({
-    queryKey: keys.bse.detail(uuid),
-    enabled: !!uuid,
-    queryFn: ({ signal }) => getBseRecommendation(uuid, { signal }),
+    queryKey: keys.bse.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getBseRecommendation(id, { signal }),
   })
 }
 
@@ -401,11 +406,11 @@ export function useBseByMappedStatus(status) {
   })
 }
 
-export function useBseByRegistration(regUuid) {
+export function useBseByRegistration(regId) {
   return useQuery({
-    queryKey: keys.bse.byRegistration(regUuid),
-    enabled: !!regUuid,
-    queryFn: ({ signal }) => listBseRecommendationsByRegistration(regUuid, { signal }).then((d) => unwrapList(d).map(bseFromDto)),
+    queryKey: keys.bse.byRegistration(regId),
+    enabled: !!regId,
+    queryFn: ({ signal }) => listBseRecommendationsByRegistration(regId, { signal }).then((d) => unwrapList(d).map(bseFromDto)),
   })
 }
 
@@ -456,10 +461,10 @@ export function useMyBseRecommendation(me) {
 export function useCreateBse() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ values, registrationUuid }) => createBseRecommendation(values, registrationUuid),
-    onSuccess: (_created, { registrationUuid }) => {
+    mutationFn: ({ values, registrationId }) => createBseRecommendation(values, registrationId),
+    onSuccess: (_created, { registrationId }) => {
       qc.invalidateQueries({ queryKey: keys.bse.lists() })
-      if (registrationUuid) qc.invalidateQueries({ queryKey: keys.bse.byRegistration(registrationUuid) })
+      if (registrationId) qc.invalidateQueries({ queryKey: keys.bse.byRegistration(registrationId) })
     },
   })
 }
@@ -467,9 +472,9 @@ export function useCreateBse() {
 export function useUpdateBse() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, patch }) => updateBseRecommendation(uuid, patch),
-    onSuccess: (updated, { uuid }) => {
-      if (updated) qc.setQueryData(keys.bse.detail(uuid), updated)
+    mutationFn: ({ id, patch }) => updateBseRecommendation(id, patch),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.bse.detail(id), updated)
       qc.invalidateQueries({ queryKey: keys.bse.all })
     },
   })
@@ -497,7 +502,7 @@ export function useUsersByRole(role) {
 }
 
 // ── Dropdown data (cascading in the In-Principle Approval form) ────────────
-// SIDBI branch list for a given state. Returns `[{ uuid, branchName }]`.
+// SIDBI branch list for a given state. Returns `[{ id, branchName }]`.
 export function useBranchesByState(state) {
   return useQuery({
     queryKey: keys.branches.byState(state),
@@ -507,8 +512,11 @@ export function useBranchesByState(state) {
 }
 
 // Bulk variant — fetches branch dropdowns for every unique state in the
-// input list and returns a single Map<branchUuid, branchName>. Useful for
-// list views that render `sidbiBranch` UUIDs from many different states.
+// input list and returns a single Map<branchId, branchName>. Useful for
+// list views that render `sidbiBranch` ids from many different states.
+//
+// Result key is `byId` (backend switched from uuid → id Aug '26). Callers
+// that previously destructured `byUuid` need to rename their reference.
 export function useBranchesByStates(states = []) {
   const unique = useMemo(
     () => Array.from(new Set((states || []).filter(Boolean))),
@@ -521,21 +529,21 @@ export function useBranchesByStates(states = []) {
       staleTime: 5 * 60_000,
     })),
     combine: (results) => {
-      const byUuid = new Map()
+      const byId = new Map()
       for (const r of results) {
-        if (Array.isArray(r.data)) for (const b of r.data) byUuid.set(b.uuid, b.branchName)
+        if (Array.isArray(r.data)) for (const b of r.data) byId.set(b.id, b.branchName)
       }
-      return { byUuid, isLoading: results.some((r) => r.isLoading) }
+      return { byId, isLoading: results.some((r) => r.isLoading) }
     },
   })
 }
 
-// SDEs posted at a given branch. Returns `[{ uuid, name }]`.
-export function useSdesByBranch(branchUuid) {
+// SDEs posted at a given branch. Returns `[{ id, name }]`.
+export function useSdesByBranch(branchId) {
   return useQuery({
-    queryKey: keys.sdes.byBranch(branchUuid),
-    enabled: !!branchUuid,
-    queryFn: ({ signal }) => listSdesByBranch(branchUuid, { signal }),
+    queryKey: keys.sdes.byBranch(branchId),
+    enabled: !!branchId,
+    queryFn: ({ signal }) => listSdesByBranch(branchId, { signal }),
   })
 }
 
@@ -562,15 +570,15 @@ export function useVendors() {
   })
 }
 
-export function useVendor(uuid) {
+export function useVendor(id) {
   return useQuery({
-    queryKey: keys.vendors.detail(uuid),
-    enabled: !!uuid,
-    queryFn: ({ signal }) => getVendor(uuid, { signal }),
+    queryKey: keys.vendors.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getVendor(id, { signal }),
   })
 }
 
-// Dropdown-only slice (`{ uuid, name }[]`) used by the BSE candidate form.
+// Dropdown-only slice (`{ id, name }[]`) used by the BSE candidate form.
 export function useVendorsDropdown() {
   return useQuery({
     queryKey: keys.vendors.dropdown(),
@@ -590,10 +598,10 @@ export function useCreateVendor() {
 export function useUpdateVendor() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, values }) => updateVendor(uuid, values),
-    onSuccess: (_data, { uuid }) => {
+    mutationFn: ({ id, values }) => updateVendor(id, values),
+    onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: keys.vendors.all })
-      qc.invalidateQueries({ queryKey: keys.vendors.detail(uuid) })
+      qc.invalidateQueries({ queryKey: keys.vendors.detail(id) })
     },
   })
 }
@@ -601,7 +609,7 @@ export function useUpdateVendor() {
 export function useDeleteVendor() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (uuid) => deleteVendor(uuid),
+    mutationFn: (id) => deleteVendor(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: keys.vendors.all }) },
   })
 }
@@ -610,11 +618,11 @@ export function useDeleteVendor() {
 // All files attached to a registration (IA / BSE / etc.). Returns the raw
 // UploadedFileResponse[] from the backend — callers decode the slug-prefixed
 // filenames via decodeFilename() from fileFieldLabels.js.
-export function useFilesByRegistration(regUuid) {
+export function useFilesByRegistration(regId) {
   return useQuery({
-    queryKey: keys.files.byRegistration(regUuid),
-    enabled: !!regUuid,
-    queryFn: ({ signal }) => listFiles(regUuid, { signal }),
+    queryKey: keys.files.byRegistration(regId),
+    enabled: !!regId,
+    queryFn: ({ signal }) => listFiles(regId, { signal }),
   })
 }
 
@@ -696,11 +704,11 @@ export function useDisbursementCapex() {
   })
 }
 
-export function useDisbursementCapexOne(uuid) {
+export function useDisbursementCapexOne(id) {
   return useQuery({
-    queryKey: keys.capex.detail(uuid),
-    enabled: !!uuid,
-    queryFn: ({ signal }) => getDisbursementCapex(uuid, { signal }),
+    queryKey: keys.capex.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getDisbursementCapex(id, { signal }),
   })
 }
 
@@ -709,11 +717,11 @@ export function useDisbursementCapexOne(uuid) {
 // because unwrapList would turn a plain object into `[]`. The component
 // coerces single-vs-list itself. Once backend fixes the endpoint to
 // always return a list, restore `.then(unwrapList)`.
-export function useDisbursementCapexByRegistration(registrationUuid) {
+export function useDisbursementCapexByRegistration(registrationId) {
   return useQuery({
-    queryKey: keys.capex.byRegistration(registrationUuid),
-    enabled: !!registrationUuid,
-    queryFn: ({ signal }) => listDisbursementCapexByRegistration(registrationUuid, { signal }),
+    queryKey: keys.capex.byRegistration(registrationId),
+    enabled: !!registrationId,
+    queryFn: ({ signal }) => listDisbursementCapexByRegistration(registrationId, { signal }),
   })
 }
 
@@ -728,9 +736,9 @@ export function useCreateDisbursementCapex() {
 export function useUpdateDisbursementCapex() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, values }) => updateDisbursementCapex(uuid, values),
-    onSuccess: (updated, { uuid }) => {
-      if (updated) qc.setQueryData(keys.capex.detail(uuid), updated)
+    mutationFn: ({ id, values }) => updateDisbursementCapex(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.capex.detail(id), updated)
       qc.invalidateQueries({ queryKey: keys.capex.all })
     },
   })
@@ -739,7 +747,7 @@ export function useUpdateDisbursementCapex() {
 export function useDeleteDisbursementCapex() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (uuid) => deleteDisbursementCapex(uuid),
+    mutationFn: (id) => deleteDisbursementCapex(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.capex.all }),
   })
 }
@@ -753,20 +761,33 @@ export function useEligibilityMatrix() {
   })
 }
 
-export function useEligibilityMatrixOne(uuid) {
+// IAs with an eligibility matrix on record — populates the "pick an IA"
+// dropdown that gates the In-Principle form. Cached generously since the
+// list only changes when a new matrix is submitted (which invalidates
+// keys.eligibility.all anyway).
+export function useEligibilityRegistrationsDropdown({ enabled = true } = {}) {
   return useQuery({
-    queryKey: keys.eligibility.detail(uuid),
-    enabled: !!uuid,
-    queryFn: ({ signal }) => getEligibilityMatrix(uuid, { signal }),
+    queryKey: keys.eligibility.registrationsDropdown(),
+    enabled,
+    staleTime: 60 * 1000,
+    queryFn: ({ signal }) => listEligibilityMatrixRegistrationsDropdown({ signal }).then(unwrapList),
+  })
+}
+
+export function useEligibilityMatrixOne(id) {
+  return useQuery({
+    queryKey: keys.eligibility.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getEligibilityMatrix(id, { signal }),
   })
 }
 
 // Backend may return single object or list — caller coerces defensively.
-export function useEligibilityMatrixByRegistration(registrationUuid) {
+export function useEligibilityMatrixByRegistration(registrationId) {
   return useQuery({
-    queryKey: keys.eligibility.byRegistration(registrationUuid),
-    enabled: !!registrationUuid,
-    queryFn: ({ signal }) => getEligibilityMatrixByRegistration(registrationUuid, { signal }),
+    queryKey: keys.eligibility.byRegistration(registrationId),
+    enabled: !!registrationId,
+    queryFn: ({ signal }) => getEligibilityMatrixByRegistration(registrationId, { signal }),
   })
 }
 
@@ -781,9 +802,9 @@ export function useCreateEligibilityMatrix() {
 export function useUpdateEligibilityMatrix() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, values }) => updateEligibilityMatrix(uuid, values),
-    onSuccess: (updated, { uuid }) => {
-      if (updated) qc.setQueryData(keys.eligibility.detail(uuid), updated)
+    mutationFn: ({ id, values }) => updateEligibilityMatrix(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.eligibility.detail(id), updated)
       qc.invalidateQueries({ queryKey: keys.eligibility.all })
     },
   })
@@ -792,7 +813,7 @@ export function useUpdateEligibilityMatrix() {
 export function useDeleteEligibilityMatrix() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (uuid) => deleteEligibilityMatrix(uuid),
+    mutationFn: (id) => deleteEligibilityMatrix(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.eligibility.all }),
   })
 }
@@ -800,21 +821,21 @@ export function useDeleteEligibilityMatrix() {
 
 // ── Sustainability Matrix (post In-Principle, pre Detailed Appraisal) ────
 
-export function useSustainabilityMatrixOne(uuid) {
+export function useSustainabilityMatrixOne(id) {
   return useQuery({
-    queryKey: keys.sustainability.detail(uuid),
-    enabled: !!uuid,
-    queryFn: ({ signal }) => getSustainabilityMatrix(uuid, { signal }),
+    queryKey: keys.sustainability.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getSustainabilityMatrix(id, { signal }),
   })
 }
 
 // Used to check whether the matrix has already been submitted for this
 // IA's appraisal — gates the flow into Detailed Appraisal.
-export function useSustainabilityMatrixByAppraisal(appraisalUuid) {
+export function useSustainabilityMatrixByAppraisal(appraisalId) {
   return useQuery({
-    queryKey: keys.sustainability.byAppraisal(appraisalUuid),
-    enabled: !!appraisalUuid,
-    queryFn: ({ signal }) => getSustainabilityMatrixByAppraisal(appraisalUuid, { signal }).catch(() => null),
+    queryKey: keys.sustainability.byAppraisal(appraisalId),
+    enabled: !!appraisalId,
+    queryFn: ({ signal }) => getSustainabilityMatrixByAppraisal(appraisalId, { signal }).catch(() => null),
   })
 }
 
@@ -837,9 +858,9 @@ export function useCreateSustainabilityMatrix() {
 export function useUpdateSustainabilityMatrix() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ uuid, values }) => updateSustainabilityMatrix(uuid, values),
-    onSuccess: (updated, { uuid }) => {
-      if (updated) qc.setQueryData(keys.sustainability.detail(uuid), updated)
+    mutationFn: ({ id, values }) => updateSustainabilityMatrix(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.sustainability.detail(id), updated)
       qc.invalidateQueries({ queryKey: keys.sustainability.all })
     },
   })
@@ -848,7 +869,7 @@ export function useUpdateSustainabilityMatrix() {
 export function useDeleteSustainabilityMatrix() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (uuid) => deleteSustainabilityMatrix(uuid),
+    mutationFn: (id) => deleteSustainabilityMatrix(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.sustainability.all }),
   })
 }
@@ -868,7 +889,7 @@ export function useBseAttendanceByRecommendation(recommendationId) {
 
 // Parallel per-BSE attendance fetch. Used by MpaRaiseDisbursement's
 // Annexure I so each selected BSE gets its own attendance count for the
-// working-days column. Returns an object of results keyed by BSE uuid,
+// working-days column. Returns an object of results keyed by BSE id,
 // plus an aggregate `isLoading` flag.
 export function useBseAttendanceForRecommendations(recommendationIds = []) {
   const ids = recommendationIds.filter(Boolean)

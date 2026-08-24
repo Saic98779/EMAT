@@ -2,7 +2,7 @@ import { apiFetch } from '../api'
 
 // Backend collection covering the Detailed Appraisal (Level 2) that GT
 // completes after SIDBI SDE grants In-Principle approval on the registration.
-// One appraisal per registration, keyed by the parent registrationUuid.
+// One appraisal per registration, keyed by the parent registrationId.
 const PATH = '/industry-association-appraisals'
 
 // GET /industry-association-appraisals — full list.
@@ -10,17 +10,17 @@ export function listAppraisals({ signal } = {}) {
   return apiFetch(PATH, { signal })
 }
 
-// GET /industry-association-appraisals/{uuid} — single appraisal.
-export function getAppraisal(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
+// GET /industry-association-appraisals/{id} — single appraisal.
+export function getAppraisal(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }
 
-// GET /industry-association-appraisals/registration/{registrationUuid}
+// GET /industry-association-appraisals/registration/{registrationId}
 // The appraisal (if any) attached to a specific IA registration. Handy from
 // the ProposalDetail page — call this to know whether a Level 2 draft exists.
-export function getAppraisalByRegistration(registrationUuid, { signal } = {}) {
+export function getAppraisalByRegistration(registrationId, { signal } = {}) {
   return apiFetch(
-    `${PATH}/registration/${encodeURIComponent(registrationUuid)}`,
+    `${PATH}/registration/${encodeURIComponent(registrationId)}`,
     { signal },
   )
 }
@@ -31,29 +31,29 @@ export function createAppraisal(body, { signal } = {}) {
   return apiFetch(PATH, { method: 'POST', body, signal })
 }
 
-// PUT /industry-association-appraisals/{uuid} — replace the appraisal (e.g.
+// PUT /industry-association-appraisals/{id} — replace the appraisal (e.g.
 // Cluster Expert adds comments, or GT revises after "changes requested").
-export function updateAppraisal(uuid, body, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function updateAppraisal(id, body, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body,
     signal,
   })
 }
 
-// PATCH /industry-association-appraisals/{uuid}/approve — SDE grants Final
+// PATCH /industry-association-appraisals/{id}/approve — SDE grants Final
 // (Level 2) approval. Same `ApprovalRequest` shape: { isSidbeApproved }.
-export function approveAppraisal(uuid, { isSidbeApproved = true } = {}, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}/approve`, {
+export function approveAppraisal(id, { isSidbeApproved = true } = {}, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}/approve`, {
     method: 'PATCH',
     body: { isSidbeApproved },
     signal,
   })
 }
 
-// DELETE /industry-association-appraisals/{uuid} — soft delete.
-export function deleteAppraisal(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+// DELETE /industry-association-appraisals/{id} — soft delete.
+export function deleteAppraisal(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     signal,
   })
@@ -76,7 +76,7 @@ export function deleteAppraisal(uuid, { signal } = {}) {
 //   - Structured IA Office Holder CIBIL/SMART sub-fields (form-only)
 //   - Structured IA Beneficial Owner CIBIL/SMART ref no / date / ranking /
 //     file (form-only). Only *_remarks fields round-trip.
-export function toCreatePayload(values = {}, registrationUuid = null) {
+export function toCreatePayload(values = {}, registrationId = null) {
   // Backend field is `sectors` — array of { name, problems } objects.
   // Only include a slot when the sector name is non-empty (otherwise we'd
   // ship rows with empty names).
@@ -93,7 +93,7 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
   }
 
   return {
-    registrationUuid: str(registrationUuid),
+    registrationId: str(registrationId),
 
     // ── Section 5 — Apex Office Holder (autofetched, modifiable) ─────────
     apexHolderName: str(values.apex_name),
@@ -201,8 +201,8 @@ export function toCreatePayload(values = {}, registrationUuid = null) {
 }
 
 // Update payload = same shape as create.
-export function toUpdatePayload(values, registrationUuid) {
-  return toCreatePayload(values, registrationUuid)
+export function toUpdatePayload(values, registrationId) {
+  return toCreatePayload(values, registrationId)
 }
 
 // Reverse mapping: backend DTO → form values shape used by appraisalSchema.
@@ -442,10 +442,9 @@ function toIsoDate(v) {
 export function fromDto(dto = {}) {
   const approved = dto.isSidbeApproved === true
   return {
-    id: dto.uuid,
-    uuid: dto.uuid,
-    registrationUuid: dto.registrationUuid || null,
-    iaName: dto.industryAssociationName || dto.registrationUuid || '—',
+    id: dto.id,
+    registrationId: dto.registrationId || null,
+    iaName: dto.industryAssociationName || dto.registrationId || '—',
     approved,
     status: approved ? 'Final approved (L2)' : 'Detailed · Awaiting L2',
     approvedBy: dto.sidbeApprovedByUsername || null,

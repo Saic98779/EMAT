@@ -96,11 +96,11 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
     const isSidbeApproved = action === 'approve'
     try {
       if (level === 1) {
-        await approveL1.mutateAsync({ uuid: ia0.uuid, isSidbeApproved })
-      } else if (level === 2 && ia0.appraisal?.uuid) {
+        await approveL1.mutateAsync({ id: ia0.id, isSidbeApproved })
+      } else if (level === 2 && ia0.appraisal?.id) {
         await approveL2.mutateAsync({
-          uuid: ia0.appraisal.uuid,
-          registrationUuid: ia0.uuid,
+          id: ia0.appraisal.id,
+          registrationId: ia0.id,
           isSidbeApproved,
         })
       }
@@ -195,7 +195,7 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
             {isSde && ia.stage === 1 && ia.appraisal ? (
               <SectionCard title="Detailed appraisal & Due Diligence" subtitle="Modify GT-submitted fields and add your Due Diligence comments. Saves via PUT to the appraisal.">
                 <AppraisalForm
-                  registrationUuid={ia.uuid}
+                  registrationId={ia.id}
                   onSaved={(msg, severity) => setToast({ severity, msg })}
                 />
               </SectionCard>
@@ -226,7 +226,7 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
                 onReject={() => setDecisionOpen({ level: canApproveL1 ? 1 : 2, action: 'reject' })}
               />
             )}
-            <DocUpload registrationUuid={ia.uuid} readOnly={isClusterExpert} />
+            <DocUpload registrationId={ia.id} readOnly={isClusterExpert} />
             <SectionCard title="Appraisal trail">
             <Stack spacing={0}>
               {ia.trail.map((t, i) => (
@@ -430,9 +430,9 @@ function Group({ title, children }) {
 function RegistrationDetailsResolved({ ia }) {
   const r = ia.raw || {}
   const branchesQ = useBranchesByState(r.state)
-  const branchName = branchesQ.data?.find((b) => b.uuid === r.sidbiBranch)?.branchName
+  const branchName = branchesQ.data?.find((b) => b.id === r.sidbiBranch)?.branchName
   const sdesQ = useSdesByBranch(r.sidbiBranch)
-  const sdeName = sdesQ.data?.find((s) => s.uuid === r.sde)?.name
+  const sdeName = sdesQ.data?.find((s) => s.id === r.sde)?.name
 
   const resolved = {
     ...ia,

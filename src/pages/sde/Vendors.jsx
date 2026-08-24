@@ -93,10 +93,10 @@ export default function Vendors() {
     const problem = firstProblem(values)
     if (problem) { setToast({ severity: 'warning', msg: problem }); return }
     try {
-      // Backend returns `vendorId: null` on every row — `uuid` is the actual
+      // Backend returns `vendorId: null` on every row — `id` is the actual
       // primary key. Existing record ⇒ PUT; new record ⇒ POST.
-      if (values.uuid) {
-        await updateM.mutateAsync({ uuid: values.uuid, values })
+      if (values.id) {
+        await updateM.mutateAsync({ id: values.id, values })
         setToast({ severity: 'success', msg: `${values.vendorName} updated.` })
       } else {
         await createM.mutateAsync(values)
@@ -109,9 +109,9 @@ export default function Vendors() {
   }, [createM, updateM])
 
   const doDelete = useCallback(async () => {
-    if (!deleteTarget?.uuid) return
+    if (!deleteTarget?.id) return
     try {
-      await deleteM.mutateAsync(deleteTarget.uuid)
+      await deleteM.mutateAsync(deleteTarget.id)
       setToast({ severity: 'success', msg: `${deleteTarget.vendorName} removed.` })
       setDeleteTarget(null)
     } catch (err) {
@@ -176,7 +176,7 @@ export default function Vendors() {
                 </TableRow>
               )}
               {filtered.map((v) => (
-                <TableRow key={v.uuid} hover onClick={() => openEdit(v)} sx={{ cursor: 'pointer' }}>
+                <TableRow key={v.id} hover onClick={() => openEdit(v)} sx={{ cursor: 'pointer' }}>
                   <TableCell>
                     <Typography fontWeight={700} fontSize="0.95rem">{v.vendorName || '—'}</Typography>
                     <Mono>{v.companyName || '—'}</Mono>
@@ -280,8 +280,8 @@ function VendorDialog({ open, initial, saving, onClose, onSave }) {
   // Districts recompute only when state changes, not on every keystroke.
   const districts = useMemo(() => (v.state ? districtsOf(v.state) : []), [v.state])
 
-  // Use `uuid` (the real backend PK) — `vendorId` comes back null on every row.
-  const isEdit = !!initial?.uuid
+  // Use `id` (the real backend PK) — `vendorId` comes back null on every row.
+  const isEdit = !!initial?.id
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>

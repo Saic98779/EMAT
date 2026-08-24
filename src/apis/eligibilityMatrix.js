@@ -6,7 +6,7 @@ import { apiFetch } from '../api'
 //
 // Workflow: GT fills state/IA name/PAN/email + 22 matrix answers →
 // frontend POSTs to `/industry-association-registrations` first with the
-// header identity fields → uses the returned `registrationUuid` to POST
+// header identity fields → uses the returned `registrationId` to POST
 // here. The score is computed on the frontend from spec weights.
 const PATH = '/eligibility-matrix'
 
@@ -14,16 +14,16 @@ export function listEligibilityMatrix({ signal } = {}) {
   return apiFetch(PATH, { signal })
 }
 
-export function getEligibilityMatrix(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
+export function getEligibilityMatrix(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }
 
-// GET /eligibility-matrix/registration/{registrationUuid}
+// GET /eligibility-matrix/registration/{registrationId}
 // Fetch the eligibility record for a specific IA. Same "single object vs
 // list" ambiguity as the CAPEX endpoint — caller should coerce defensively.
-export function getEligibilityMatrixByRegistration(registrationUuid, { signal } = {}) {
+export function getEligibilityMatrixByRegistration(registrationId, { signal } = {}) {
   return apiFetch(
-    `${PATH}/registration/${encodeURIComponent(registrationUuid)}`,
+    `${PATH}/registration/${encodeURIComponent(registrationId)}`,
     { signal },
   )
 }
@@ -32,16 +32,26 @@ export function createEligibilityMatrix(values, { signal } = {}) {
   return apiFetch(PATH, { method: 'POST', body: toPayload(values), signal })
 }
 
-export function updateEligibilityMatrix(uuid, values, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function updateEligibilityMatrix(id, values, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: toPayload(values),
     signal,
   })
 }
 
-export function deleteEligibilityMatrix(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { method: 'DELETE', signal })
+export function deleteEligibilityMatrix(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
+}
+
+// GET /eligibility-matrix/registration-dropdown
+// Backend-curated list of IAs that already have an eligibility matrix on
+// record — the natural starting point for the In-Principle form.
+// Returns `[{ id, name }]` (verified live 2026-08-24). GT/SDE pick from
+// this list; the In-Principle form then hydrates from the picked IA and
+// PUT-merges the added profile fields.
+export function listEligibilityMatrixRegistrationsDropdown({ signal } = {}) {
+  return apiFetch(`${PATH}/registration-dropdown`, { signal })
 }
 
 // ── Spec constants ────────────────────────────────────────────────────────
@@ -168,13 +178,13 @@ export function computeScore(answers = {}) {
 }
 
 // ── Payload adapter ────────────────────────────────────────────────────────
-// Frontend values → backend `EligibilityMatrixRequest`. `registrationUuid`
+// Frontend values → backend `EligibilityMatrixRequest`. `registrationId`
 // must be present (caller creates the IA first and passes the returned
-// uuid). `totalScore` is recomputed here from the answers so the client
+// id). `totalScore` is recomputed here from the answers so the client
 // never ships an inconsistent score.
 export function toPayload(v = {}) {
   const payload = {
-    registrationUuid: str(v.registrationUuid),
+    registrationId: str(v.registrationId),
   }
   for (const k of PARAM_KEYS) {
     payload[k] = v[k] === true ? true : v[k] === false ? false : null

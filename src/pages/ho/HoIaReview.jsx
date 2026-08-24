@@ -82,7 +82,7 @@ export default function HoIaReview() {
       const formValues = toFormValues(appraisal)
       formValues.recommendation_remarks = packHoDecision(ho.baseRemarks, decision, remarks)
       await updateM.mutateAsync({
-        uuid: appraisal.uuid,
+        id: appraisal.id,
         body: toUpdatePayload(formValues, id),
       })
       setToast({ severity: 'success', msg: `Decision recorded: ${decision}.` })

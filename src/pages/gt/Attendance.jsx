@@ -76,7 +76,7 @@ export default function Attendance() {
   const bseNameById = useMemo(() => {
     const m = new Map()
     for (const b of bseQ.data || []) {
-      const id = b?.uuid || b?.id
+      const id = b?.id
       const nm = b?.bseName || b?.name
       if (id && nm) m.set(id, nm)
     }
@@ -95,7 +95,7 @@ export default function Attendance() {
     const mut = confirm.action === 'approve' ? approve : reject
     try {
       await mut.mutateAsync({
-        id: confirm.row.uuid,
+        id: confirm.row.id,
         approvedBy,
         recommendationId: confirm.row.bseRecommendationId,
       })
@@ -172,7 +172,7 @@ export default function Attendance() {
         <Stack spacing={1.5}>
           {rows.map((r) => (
             <RequestCard
-              key={r.uuid}
+              key={r.id}
               row={r}
               bseName={bseNameById.get(r.bseRecommendationId)}
               onApprove={() => setConfirm({ row: r, action: 'approve' })}

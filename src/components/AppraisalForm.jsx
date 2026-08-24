@@ -112,21 +112,21 @@ function schemaFor(role) {
 // value editing, file uploads, and PUT/POST.
 //
 // Props:
-//   registrationUuid : the parent IA uuid — required.
+//   registrationId : the parent IA id — required.
 //   onSaved(msg, severity) : optional callback after save/upload finish.
 //   stickyFooter (default false) : renders the save button in a sticky Paper
 //                                  bar (page-mode); when embedded, pass
 //                                  false and the button sits inline below.
-export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter = false }) {
+export default function AppraisalForm({ registrationId, onSaved, stickyFooter = false }) {
   const { rawRole } = useAuth()
   const isClusterExpert = rawRole === 'CLUSTER_EXPERT'
   const isSde = rawRole === 'SIDBI_SDE'
   const schema = useMemo(() => schemaFor(rawRole), [rawRole])
 
-  const iaQ = useIA(registrationUuid)
-  const apprQ = useAppraisalByRegistration(registrationUuid)
+  const iaQ = useIA(registrationId)
+  const apprQ = useAppraisalByRegistration(registrationId)
   const branchesQ = useBranchesByState(iaQ.data?.state)
-  const filesQ = useFilesByRegistration(registrationUuid)
+  const filesQ = useFilesByRegistration(registrationId)
   const createM = useCreateAppraisal()
   const updateM = useUpdateAppraisal()
 
@@ -156,7 +156,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
     if (iaQ.data?.state && !branchesQ.data) return
     const ia = iaQ.data
     const r = ia?.raw || {}
-    const branchName = branchesQ.data?.find((b) => b.uuid === r.sidbiBranch)?.branchName ?? r.sidbiBranch
+    const branchName = branchesQ.data?.find((b) => b.id === r.sidbiBranch)?.branchName ?? r.sidbiBranch
     const yn = (b) => (b === true ? 'yes' : b === false ? 'no' : '')
     const YN = (b) => (b === true ? 'Yes' : b === false ? 'No' : '')
     const seed = ia ? {
@@ -217,13 +217,12 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       filesBySlot[slug].push(fname)
     }
     const merged = { ...seed, ...toFormValues(apprQ.data), ...filesBySlot }
-    // `toFormValues` may overlay `sidbi_branch` with the raw UUID stored on
+    // `toFormValues` may overlay `sidbi_branch` with the raw id stored on
     // the appraisal DTO (backend copies it from the IA at creation). If it
-    // still looks like a UUID after merge, swap in the human name from the
-    // resolved branches list — otherwise the field renders as a GUID.
-    const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (typeof merged.sidbi_branch === 'string' && uuidLike.test(merged.sidbi_branch)) {
-      const match = branchesQ.data?.find((b) => b.uuid === merged.sidbi_branch)
+    // hasn't been swapped for a name yet, resolve it against the branches
+    // list so the field doesn't render as a bare id.
+    if (merged.sidbi_branch != null && merged.sidbi_branch !== '') {
+      const match = branchesQ.data?.find((b) => String(b.id) === String(merged.sidbi_branch))
       if (match?.branchName) merged.sidbi_branch = match.branchName
     }
     setValues({ ...merged, _seeded: true })
@@ -257,7 +256,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
     // autofilled-from-IA context. Almost always means the parent IA is a
     // matrix-only stub (In-Principle profile wasn't filled) — sending a
     // null-only appraisal would create a garbage row on the backend.
-    if (!existing?.uuid && !valuesLookHydrated(values)) {
+    if (!existing?.id && !valuesLookHydrated(values)) {
       onSaved?.(
         'The parent IA is missing its In-Principle profile — complete it before submitting the appraisal.',
         'warning',
@@ -271,10 +270,10 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       return
     }
     try {
-      if (existing?.uuid) {
-        await updateM.mutateAsync({ uuid: existing.uuid, body: toUpdatePayload(values, registrationUuid) })
+      if (existing?.id) {
+        await updateM.mutateAsync({ id: existing.id, body: toUpdatePayload(values, registrationId) })
       } else if (!isClusterExpert && !isSde) {
-        await createM.mutateAsync(toCreatePayload(values, registrationUuid))
+        await createM.mutateAsync(toCreatePayload(values, registrationId))
       } else {
         onSaved?.('No appraisal exists yet — GT must submit one first.', 'warning')
         return
@@ -285,7 +284,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       if (files.length) {
         const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
         try {
-          await uploadFilesBatch(registrationUuid, tagged)
+          await uploadFilesBatch(registrationId, tagged)
         } catch (err) {
           uploadFailure = `${files.length} file${files.length === 1 ? '' : 's'} failed to upload (${err.message || 'unknown error'})`
         }
@@ -315,7 +314,7 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
     return <Alert severity="error">{iaQ.error.message || 'Failed to load IA'}</Alert>
   }
 
-  const canSave = existing?.uuid || (!isClusterExpert && !isSde)
+  const canSave = existing?.id || (!isClusterExpert && !isSde)
   const submitLabel = isClusterExpert
     ? (busy ? 'Saving…' : 'Save Comments')
     : isSde
@@ -334,13 +333,13 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
   )
 
   // Sustainability matrix is FK'd to the appraisal, so only offer the view
-  // once an appraisal record actually exists (uuid resolved).
+  // once an appraisal record actually exists (id resolved).
   const viewSustainability = (
     <Button
       variant="outlined"
       startIcon={<AssessmentOutlinedIcon />}
       onClick={() => setSustainOpen(true)}
-      disabled={!existing?.uuid}
+      disabled={!existing?.id}
     >
       View Sustainability Matrix
     </Button>
@@ -370,8 +369,8 @@ export default function AppraisalForm({ registrationUuid, onSaved, stickyFooter 
       <SustainabilityMatrixModal
         open={sustainOpen}
         onClose={() => setSustainOpen(false)}
-        appraisalUuid={existing?.uuid}
-        registrationUuid={registrationUuid}
+        appraisalId={existing?.id}
+        registrationId={registrationId}
       />
     </>
   )

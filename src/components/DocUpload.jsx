@@ -13,10 +13,10 @@ import { decodeFilename } from '../fileFieldLabels'
 // Attach supporting documents (Invoice, attendance, etc.).
 //
 // Two modes:
-// 1. Backed by the `file-controller` API when `registrationUuid` is provided.
+// 1. Backed by the `file-controller` API when `registrationId` is provided.
 //    Uploads, listing, delete, and download all go through the backend and the
 //    server-side UploadedFileResponse[] is the source of truth.
-// 2. Local-only fallback (no `registrationUuid`) — keeps the original demo
+// 2. Local-only fallback (no `registrationId`) — keeps the original demo
 //    behaviour of tracking picked file names in a parent-owned array. Used
 //    while a parent record is still being drafted and has no UUID yet.
 //
@@ -26,13 +26,13 @@ import { decodeFilename } from '../fileFieldLabels'
 function DocUpload({
   docs,
   setDocs,
-  registrationUuid = null,
+  registrationId = null,
   accent = 'primary',
   // Review-only roles (e.g. CLUSTER_EXPERT) may open/download the documents
   // but must not attach new ones or delete what others uploaded.
   readOnly = false,
 }) {
-  const apiMode = Boolean(registrationUuid)
+  const apiMode = Boolean(registrationId)
 
   // ── API-mode state ────────────────────────────────────────────────────────
   const [files, setFiles] = useState([])   // UploadedFileResponse[]
@@ -45,7 +45,7 @@ function DocUpload({
     setLoading(true)
     setError('')
     try {
-      const data = await listFiles(registrationUuid, { signal })
+      const data = await listFiles(registrationId, { signal })
       // Backend response is *usually* a bare `UploadedFileResponse[]`, but
       // Spring Page (`{content: [...]}`) or `{items: []}` / `{files: []}`
       // shapes have shown up too — accept all of them.
@@ -60,7 +60,7 @@ function DocUpload({
     } finally {
       setLoading(false)
     }
-  }, [apiMode, registrationUuid])
+  }, [apiMode, registrationId])
 
   useEffect(() => {
     if (!apiMode) return
@@ -86,7 +86,7 @@ function DocUpload({
       // One batch POST for all picked files — replaces the previous per-file
       // loop. Backend writes them transactionally, so a duplicate/oversize in
       // the batch fails the whole set (surfaced via the catch below).
-      const uploaded = await uploadFilesBatch(registrationUuid, picked)
+      const uploaded = await uploadFilesBatch(registrationId, picked)
       if (uploaded.length) setFiles((prev) => mergeByFilename(prev, uploaded))
       // Re-fetch to stay canonical (batch response might omit fields the
       // list endpoint returns).
@@ -106,7 +106,7 @@ function DocUpload({
     setBusy(true)
     setError('')
     try {
-      await deleteFile(registrationUuid, item.filename)
+      await deleteFile(registrationId, item.filename)
       setFiles((prev) => prev.filter((f) => f.filename !== item.filename))
     } catch (err) {
       setError(err.message || 'Delete failed')
@@ -117,7 +117,7 @@ function DocUpload({
 
   const download = async (item) => {
     try {
-      await downloadFile(registrationUuid, item.filename)
+      await downloadFile(registrationId, item.filename)
     } catch (err) {
       setError(err.message || 'Download failed')
     }

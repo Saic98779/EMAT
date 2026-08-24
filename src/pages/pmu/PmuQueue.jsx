@@ -90,7 +90,7 @@ export default function PmuQueue() {
                 </TableCell></TableRow>
               )}
               {filtered.map((r) => (
-                <TableRow key={r.uuid} hover onClick={() => navigate(`/gt/pmu/${r.uuid}`)} sx={{ cursor: 'pointer' }}>
+                <TableRow key={r.id} hover onClick={() => navigate(`/gt/pmu/${r.id}`)} sx={{ cursor: 'pointer' }}>
                   <TableCell>
                     <Typography fontWeight={700} fontSize="0.95rem">{r.name}</Typography>
                     <Mono>{r.mobile} · {r.email}</Mono>
@@ -101,7 +101,7 @@ export default function PmuQueue() {
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
-                      onClick={(e) => { e.stopPropagation(); navigate(`/gt/pmu/${r.uuid}`) }} sx={ACTION_SX}>
+                      onClick={(e) => { e.stopPropagation(); navigate(`/gt/pmu/${r.id}`) }} sx={ACTION_SX}>
                       Review
                     </Button>
                   </TableCell>

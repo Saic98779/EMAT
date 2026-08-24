@@ -149,8 +149,8 @@ export default function BseCandidateDetail({ backPath = '/gt/team', backLabel = 
 
         <Grid size={{ xs: 12, md: 5 }}>
           {/* Files uploaded during BSE create are keyed by the BSE record's
-              own UUID (not the parent IA's), so read them off `dto.uuid`. */}
-          <DocUpload registrationUuid={dto.uuid} readOnly />
+              own id (not the parent IA's), so read them off `dto.id`. */}
+          <DocUpload registrationId={dto.id} readOnly />
         </Grid>
       </Grid>
 

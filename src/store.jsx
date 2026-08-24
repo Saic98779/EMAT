@@ -52,8 +52,8 @@ export function DataProvider({ children }) {
       ])
       const regs = unwrapList(regRaw)
       const apprs = unwrapList(apprRaw)
-      const byReg = new Map(apprs.map((a) => [a.registrationUuid, a]).filter(([k]) => !!k))
-      setIas(regs.map((r) => iaFromDto(r, byReg.get(r.uuid) || null)))
+      const byReg = new Map(apprs.map((a) => [a.registrationId, a]).filter(([k]) => !!k))
+      setIas(regs.map((r) => iaFromDto(r, byReg.get(r.id) || null)))
     } catch (err) {
       if (err.name === 'AbortError') return
       setIasError(err.message || 'Failed to load Industry Associations')

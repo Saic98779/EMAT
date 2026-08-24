@@ -45,7 +45,7 @@ export default function Appraisal({ backPath = '/gt/ias' } = {}) {
         </Typography>
       </Box>
 
-      <AppraisalForm registrationUuid={id} onSaved={handleSaved} stickyFooter />
+      <AppraisalForm registrationId={id} onSaved={handleSaved} stickyFooter />
 
       <Snackbar
         open={!!toast.msg}

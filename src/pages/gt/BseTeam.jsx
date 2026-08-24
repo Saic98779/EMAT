@@ -155,10 +155,10 @@ export default function BseTeam() {
       ) : (
         <Grid container spacing={2.5}>
           {visible.map((m) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={m.uuid || m.id}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={m.id}>
               <Card
                 sx={{ height: '100%', cursor: 'pointer', transition: 'box-shadow .15s', ':hover': { boxShadow: 4 } }}
-                onClick={() => navigate(`/gt/team/${m.uuid}`)}
+                onClick={() => navigate(`/gt/team/${m.id}`)}
               >
                 <CardContent>
                   <Stack direction="row" spacing={2} alignItems="center" mb={2}>

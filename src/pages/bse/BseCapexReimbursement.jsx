@@ -56,24 +56,24 @@ export default function BseCapexReimbursement() {
   const create = useCreateDisbursementCapex()
 
   // Every IA the BSE can raise a note against comes from the CAPEX list
-  // itself — dedupe by `registrationUuid` and keep the display name from the
+  // itself — dedupe by `registrationId` and keep the display name from the
   // most recent row so we don't need a second `/industry-association-*` GET.
   const iaOptions = useMemo(() => {
     const rows = capexQ.data || []
     const byId = new Map()
     for (const r of rows) {
-      const uuid = r?.registrationUuid
-      if (!uuid) continue
-      byId.set(uuid, {
-        value: uuid,
-        label: r.industryAssociationName || uuid,
+      const id = r?.registrationId
+      if (!id) continue
+      byId.set(id, {
+        value: id,
+        label: r.industryAssociationName || id,
       })
     }
     return Array.from(byId.values()).sort((a, b) => a.label.localeCompare(b.label))
   }, [capexQ.data])
 
   const [v, setV] = useState({
-    registrationUuid: '',
+    registrationId: '',
     gstinIa: '',
     gstinNotApplicable: false,
     gstinNotApplicableReason: '',
@@ -93,18 +93,18 @@ export default function BseCapexReimbursement() {
   // the fetch on having a picked IA. If this endpoint errors (e.g. the
   // current backend 500 when the IA has 2+ notes), we fall back to
   // filtering the full list so the form still works.
-  const iaCapexQ = useDisbursementCapexByRegistration(v.registrationUuid)
+  const iaCapexQ = useDisbursementCapexByRegistration(v.registrationId)
   const priorNotes = useMemo(() => {
-    if (!v.registrationUuid) return []
+    if (!v.registrationId) return []
     // Prefer the dedicated endpoint's response — coerce single-object to
     // list. Fall back to the shared list on error.
     if (iaCapexQ.error) {
-      return (capexQ.data || []).filter((r) => r?.registrationUuid === v.registrationUuid)
+      return (capexQ.data || []).filter((r) => r?.registrationId === v.registrationId)
     }
     const d = iaCapexQ.data
     if (!d) return []
     return Array.isArray(d) ? d : [d]
-  }, [iaCapexQ.data, iaCapexQ.error, capexQ.data, v.registrationUuid])
+  }, [iaCapexQ.data, iaCapexQ.error, capexQ.data, v.registrationId])
   const priorSummary = useMemo(() => summarisePriorNotes(priorNotes), [priorNotes])
   const iaLoading = iaCapexQ.isLoading && !iaCapexQ.error
 
@@ -121,11 +121,11 @@ export default function BseCapexReimbursement() {
   // On IA change: reset the derived-from-IA fields to blank so the prefill
   // effect below can repopulate them cleanly. Editable typing (invoice
   // date/number, items) is preserved.
-  const onIaChange = useCallback((uuid) => {
+  const onIaChange = useCallback((id) => {
     prefilledForRef.current = null
     setV((prev) => ({
       ...prev,
-      registrationUuid: uuid,
+      registrationId: id,
       gstinIa: '',
       gstinNotApplicable: false,
       gstinNotApplicableReason: '',
@@ -140,9 +140,9 @@ export default function BseCapexReimbursement() {
   // settles (either resolved with data, or errored so the fallback list
   // filter has taken over).
   useEffect(() => {
-    if (!v.registrationUuid) return
+    if (!v.registrationId) return
     if (iaCapexQ.isLoading) return
-    if (prefilledForRef.current === v.registrationUuid) return
+    if (prefilledForRef.current === v.registrationId) return
 
     setV((prev) => ({
       ...prev,
@@ -154,8 +154,8 @@ export default function BseCapexReimbursement() {
       tdsApplicable: priorSummary.tdsApplicable ?? '',
       tdsNotApplicableReason: priorSummary.tdsNotApplicableReason ?? '',
     }))
-    prefilledForRef.current = v.registrationUuid
-  }, [v.registrationUuid, iaCapexQ.isLoading, priorSummary])
+    prefilledForRef.current = v.registrationId
+  }, [v.registrationId, iaCapexQ.isLoading, priorSummary])
 
   const value = num(v.valueOfServiceItems)
   const igst = value != null ? +(value * 0.18).toFixed(2) : null
@@ -198,7 +198,7 @@ export default function BseCapexReimbursement() {
               <TextField
                 select fullWidth size="small" required
                 label="Industry Association"
-                value={v.registrationUuid}
+                value={v.registrationId}
                 onChange={(e) => onIaChange(e.target.value)}
                 helperText={capexQ.isLoading
                   ? 'Loading IAs from prior CAPEX records…'
@@ -254,7 +254,7 @@ export default function BseCapexReimbursement() {
         </SectionCard>
 
         <SectionCard n={2} title="Grant & Disbursement Totals">
-          {v.registrationUuid && (
+          {v.registrationId && (
             <PriorNotesBanner
               loading={iaLoading}
               error={iaCapexQ.error}
@@ -530,7 +530,7 @@ const ReadMoneyField = memo(function ReadMoneyField({ label, value, helperText }
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function validate(v) {
-  if (!v.registrationUuid) return 'Pick the Industry Association.'
+  if (!v.registrationId) return 'Pick the Industry Association.'
   if (!v.invoiceDate) return 'Enter the invoice date.'
   if (!v.invoiceNumber?.trim()) return 'Enter the invoice number.'
   if (!v.detailsOfItems?.trim()) return 'Enter the details of items.'

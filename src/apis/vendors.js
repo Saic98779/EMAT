@@ -9,9 +9,9 @@ export function listVendors({ signal } = {}) {
   return apiFetch(PATH, { signal })
 }
 
-// GET /vendor/{uuid} → single vendor
-export function getVendor(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
+// GET /vendor/{id} → single vendor
+export function getVendor(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }
 
 // GET /vendor/user/{userId} → the vendor record linked to a given user id.
@@ -26,22 +26,22 @@ export function createVendor(values, { signal } = {}) {
   return apiFetch(PATH, { method: 'POST', body: toPayload(values), signal })
 }
 
-// PUT /vendor/{uuid} — edit an existing vendor. All fields sent (full
+// PUT /vendor/{id} — edit an existing vendor. All fields sent (full
 // replacement), so the caller should pass the merged record.
-export function updateVendor(uuid, values, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function updateVendor(id, values, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: toPayload(values),
     signal,
   })
 }
 
-// DELETE /vendor/{uuid}
-export function deleteVendor(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { method: 'DELETE', signal })
+// DELETE /vendor/{id}
+export function deleteVendor(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
 }
 
-// GET /vendor/dropdown → `[{ uuid, name }]` — used by the BSE candidate
+// GET /vendor/dropdown → `[{ id, name }]` — used by the BSE candidate
 // form to pick who will send the offer letter.
 export function listVendorsDropdown({ signal } = {}) {
   return apiFetch(`${PATH}/dropdown`, { signal })

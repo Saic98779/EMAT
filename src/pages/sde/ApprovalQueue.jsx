@@ -66,21 +66,21 @@ export default function ApprovalQueue() {
     }),
     [iasQ.data],
   )
-  // Resolve branch UUIDs → branch names across all L1 buckets so any row can
+  // Resolve branch ids → branch names across all L1 buckets so any row can
   // render its branch name.
-  const { byUuid: branchNameByUuid } = useBranchesByStates((iasQ.data || []).map((i) => i.state))
+  const { byId: branchNameById } = useBranchesByStates((iasQ.data || []).map((i) => i.state))
   // Appraisal DTOs don't carry the IA display name; join against the IA
-  // list (already fetched) so rows show the association name, not a UUID.
-  const iaNameByUuid = useMemo(() => {
+  // list (already fetched) so rows show the association name, not an id.
+  const iaNameById = useMemo(() => {
     const m = new Map()
-    for (const ia of iasQ.data || []) m.set(ia.uuid, ia.name)
+    for (const ia of iasQ.data || []) m.set(ia.id, ia.name)
     return m
   }, [iasQ.data])
   const l2Pending = useMemo(
     () => (apprsQ.data || [])
       .filter((a) => !a.approved)
-      .map((a) => ({ ...a, iaName: iaNameByUuid.get(a.registrationUuid) || a.iaName })),
-    [apprsQ.data, iaNameByUuid],
+      .map((a) => ({ ...a, iaName: iaNameById.get(a.registrationId) || a.iaName })),
+    [apprsQ.data, iaNameById],
   )
   const pmuPending = useMemo(
     () => (pmuQ.data || []).filter((r) => {
@@ -171,7 +171,7 @@ export default function ApprovalQueue() {
                 emptyMsg={activeL1.emptyMsg}
                 renderItem={(ia) => ({
                   primary: ia.name,
-                  secondary: [ia.city, ia.state].filter(Boolean).join(', ') + ' · ' + (branchNameByUuid.get(ia.branch) || ia.branch || '—'),
+                  secondary: [ia.city, ia.state].filter(Boolean).join(', ') + ' · ' + (branchNameById.get(ia.branch) || ia.branch || '—'),
                   meta: `Submitted ${ia.submitted}`,
                   onClick: () => navigate(`/sde/ias/${ia.id}`),
                 })}
@@ -193,7 +193,7 @@ export default function ApprovalQueue() {
                   `Submitted ${a.submitted}`,
                   a.updated && a.updated !== a.submitted ? `Updated ${a.updated}` : null,
                 ].filter(Boolean).join(' · '),
-                onClick: a.registrationUuid ? () => navigate(`/sde/ias/${a.registrationUuid}`) : null,
+                onClick: a.registrationId ? () => navigate(`/sde/ias/${a.registrationId}`) : null,
               })}
             />
           )}
@@ -209,7 +209,7 @@ export default function ApprovalQueue() {
                 primary: c.name,
                 secondary: [c.ia, c.qualification].filter(Boolean).join(' · '),
                 meta: `Experience: ${c.experience}`,
-                onClick: () => navigate(`/sde/team/${c.uuid}`),
+                onClick: () => navigate(`/sde/team/${c.id}`),
               })}
             />
           )}
@@ -286,7 +286,7 @@ function QueueList({ icon: Icon, iconAccent, loading, error, items, emptyMsg, re
         return (
           <Box
             component="li"
-            key={item.uuid || item.id}
+            key={item.id}
             onClick={view.onClick || undefined}
             sx={{
               display: 'flex', alignItems: 'center', gap: 2,

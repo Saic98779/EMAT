@@ -11,16 +11,16 @@ export function listDisbursementCapex({ signal } = {}) {
   return apiFetch(PATH, { signal })
 }
 
-// GET /disbursement-capex/{uuid}
-export function getDisbursementCapex(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
+// GET /disbursement-capex/{id}
+export function getDisbursementCapex(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }
 
-// GET /disbursement-capex/registration/{registrationUuid} → all CAPEX
+// GET /disbursement-capex/registration/{registrationId} → all CAPEX
 // notes raised against a specific IA. Handy for the IA-detail drawer.
-export function listDisbursementCapexByRegistration(registrationUuid, { signal } = {}) {
+export function listDisbursementCapexByRegistration(registrationId, { signal } = {}) {
   return apiFetch(
-    `${PATH}/registration/${encodeURIComponent(registrationUuid)}`,
+    `${PATH}/registration/${encodeURIComponent(registrationId)}`,
     { signal },
   )
 }
@@ -30,19 +30,19 @@ export function createDisbursementCapex(values, { signal } = {}) {
   return apiFetch(PATH, { method: 'POST', body: toPayload(values), signal })
 }
 
-// PUT /disbursement-capex/{uuid} — used by GT (comments) and SDE (amount +
+// PUT /disbursement-capex/{id} — used by GT (comments) and SDE (amount +
 // recommendation) reviews. Full-record replacement per backend contract.
-export function updateDisbursementCapex(uuid, values, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function updateDisbursementCapex(id, values, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: toPayload(values),
     signal,
   })
 }
 
-// DELETE /disbursement-capex/{uuid}
-export function deleteDisbursementCapex(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+// DELETE /disbursement-capex/{id}
+export function deleteDisbursementCapex(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     signal,
   })
@@ -52,7 +52,7 @@ export function deleteDisbursementCapex(uuid, { signal } = {}) {
 // Frontend values → backend `DisbursementCapexRequest`.
 //
 // Fields owned by each role:
-//   BSE  →  registrationUuid, gstinIa, gstinNotApplicable(+Reason),
+//   BSE  →  registrationId, gstinIa, gstinNotApplicable(+Reason),
 //           gstinSidbi, sanctionedAmount, disbursedTillDate,
 //           disbursementSought, invoiceDate, invoiceNumber, detailsOfItems,
 //           valueOfServiceItems, igstAmount, totalAmount, tdsApplicable(+
@@ -69,7 +69,7 @@ export function toPayload(v = {}) {
   const total = value != null ? +(value * 1.18).toFixed(2) : num(v.totalAmount)
 
   return {
-    registrationUuid: str(v.registrationUuid),
+    registrationId: str(v.registrationId),
 
     // ── IA identity + GSTIN ───────────────────────────────────────────────
     gstinIa: str(v.gstinIa),
@@ -113,8 +113,8 @@ export function toPayload(v = {}) {
 // their drafts with what BSE (and any prior reviewer) submitted.
 export function toFormValues(dto = {}) {
   return {
-    uuid: dto.uuid,
-    registrationUuid: dto.registrationUuid ?? '',
+    id: dto.id,
+    registrationId: dto.registrationId ?? '',
     industryAssociationName: dto.industryAssociationName ?? '',
     gstinIa: dto.gstinIa ?? '',
     gstinNotApplicable: dto.gstinNotApplicable ?? false,

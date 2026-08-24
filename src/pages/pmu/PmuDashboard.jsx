@@ -27,8 +27,8 @@ export default function PmuDashboard() {
   const decided = useMemo(() => reviewable.filter(pmuDecided), [reviewable])
 
   const row = (r) => (
-    <Stack key={r.uuid} direction="row" alignItems="center" spacing={2}
-      onClick={() => navigate(`/gt/pmu/${r.uuid}`)}
+    <Stack key={r.id} direction="row" alignItems="center" spacing={2}
+      onClick={() => navigate(`/gt/pmu/${r.id}`)}
       sx={{ py: 1.5, px: 1, mx: -1, borderRadius: 2, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
       <Avatar variant="rounded" sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 40, height: 40 }}>
         <FactCheckOutlinedIcon fontSize="small" />

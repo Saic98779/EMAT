@@ -76,38 +76,38 @@ export default function MpaRaiseDisbursement() {
 
   // Multi-BSE selection — backend now accepts one note carrying multiple
   // BSEs (each detail row has its own bseId). Selection state is a Set of
-  // uuids so toggling is cheap and the order stays stable. Auto-prunes any
-  // uuids that disappear from the resource list (e.g. demapped mid-session).
+  // ids so toggling is cheap and the order stays stable. Auto-prunes any
+  // ids that disappear from the resource list (e.g. demapped mid-session).
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   useEffect(() => {
     setSelectedIds((prev) => {
-      const alive = new Set([...prev].filter((id) => resources.some((r) => r.uuid === id)))
+      const alive = new Set([...prev].filter((id) => resources.some((r) => r.id === id)))
       return alive.size === prev.size ? prev : alive
     })
   }, [resources])
 
   // Annexure row overrides — user edits to PF/TDS/Deductions/etc. Keyed by
-  // BSE uuid so switching selection preserves any per-BSE edits.
+  // BSE id so switching selection preserves any per-BSE edits.
   const [rowOverrides, setRowOverrides] = useState({})
-  const setRowField = useCallback((bseUuid, field, value) => {
+  const setRowField = useCallback((bseId, field, value) => {
     setRowOverrides((prev) => ({
       ...prev,
-      [bseUuid]: { ...(prev[bseUuid] || {}), [field]: value },
+      [bseId]: { ...(prev[bseId] || {}), [field]: value },
     }))
   }, [])
 
-  const toggleResource = useCallback((bseUuid) => {
+  const toggleResource = useCallback((bseId) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      if (next.has(bseUuid)) next.delete(bseUuid)
-      else next.add(bseUuid)
+      if (next.has(bseId)) next.delete(bseId)
+      else next.add(bseId)
       return next
     })
   }, [])
   const toggleAllResources = useCallback(() => {
     setSelectedIds((prev) => {
       if (prev.size === resources.length) return new Set()
-      return new Set(resources.map((r) => r.uuid))
+      return new Set(resources.map((r) => r.id))
     })
   }, [resources])
 
@@ -143,8 +143,8 @@ export default function MpaRaiseDisbursement() {
   const annexureRows = useMemo(() => {
     const rows = []
     for (const r of resources) {
-      if (!selectedIds.has(r.uuid)) continue
-      const built = buildRow(r, rowOverrides[r.uuid], attendanceDaysById[r.uuid] || 0)
+      if (!selectedIds.has(r.id)) continue
+      const built = buildRow(r, rowOverrides[r.id], attendanceDaysById[r.id] || 0)
       rows.push(tdsApplicable ? built : { ...built, tds: 0 })
     }
     return rows
@@ -630,8 +630,8 @@ const ResourceSelection = memo(function ResourceSelection({
             </TableHead>
             <TableBody>
               {resources.map((r) => (
-                <ResourceRow key={r.uuid} resource={r}
-                  checked={selectedIds.has(r.uuid)} onToggle={onToggle} />
+                <ResourceRow key={r.id} resource={r}
+                  checked={selectedIds.has(r.id)} onToggle={onToggle} />
               ))}
             </TableBody>
           </Table>
@@ -644,7 +644,7 @@ const ResourceSelection = memo(function ResourceSelection({
 // Single BSE row. Multi-select via checkbox — click anywhere on the row to
 // toggle. Selected row gets a subtle tinted background.
 const ResourceRow = memo(function ResourceRow({ resource, checked, onToggle }) {
-  const handleClick = useCallback(() => onToggle(resource.uuid), [onToggle, resource.uuid])
+  const handleClick = useCallback(() => onToggle(resource.id), [onToggle, resource.id])
   return (
     <TableRow
       hover
@@ -1095,8 +1095,8 @@ function ReadField({ label, value, span = 6, mono }) {
 // Working Days unless the user has overridden it inline.
 function buildRow(bse, override = {}, attendanceDays = 0) {
   return {
-    bseId: bse.uuid,
-    iaId: bse.registrationUuid,
+    bseId: bse.id,
+    iaId: bse.registrationId,
     bseName: bse.bseName,
     iaName: bse.industryAssociationName,
     grossSalary: grossSalaryOf(bse),

@@ -100,8 +100,8 @@ export default function PmuReview() {
         <Grid size={{ xs: 12, md: 4 }}>
           <Stack spacing={2.5} sx={{ position: { md: 'sticky' }, top: { md: 88 } }}>
             {/* Files uploaded during BSE create are keyed by the BSE
-                record's own UUID, so read them off `dto.uuid`. */}
-            <DocUpload registrationUuid={dto.uuid} readOnly />
+                record's own id, so read them off `dto.id`. */}
+            <DocUpload registrationId={dto.id} readOnly />
           </Stack>
         </Grid>
       </Grid>

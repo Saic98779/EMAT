@@ -58,7 +58,7 @@ export default function HoBseReview() {
   const doSave = useCallback(async (label, patchSource) => {
     try {
       const patch = toUpdatePayload(patchSource)
-      await updateM.mutateAsync({ uuid, patch })
+      await updateM.mutateAsync({ id: uuid, patch })
       setToast({ severity: 'success', msg: `${label} saved.` })
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to save.' })
@@ -136,9 +136,9 @@ export default function HoBseReview() {
         <Grid size={{ xs: 12, md: 4 }}>
           <Stack spacing={2.5} sx={{ position: { md: 'sticky' }, top: { md: 88 } }}>
             {/* Files uploaded during BSE create are keyed by the BSE
-                record's own UUID, so scope the panel to `dto.uuid`. HO can
+                record's own id, so scope the panel to `dto.id`. HO can
                 also attach the Committee MoM here. */}
-            <DocUpload registrationUuid={dto.uuid} />
+            <DocUpload registrationId={dto.id} />
           </Stack>
         </Grid>
       </Grid>

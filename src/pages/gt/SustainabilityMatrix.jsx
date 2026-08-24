@@ -33,12 +33,12 @@ export default function SustainabilityMatrix({ backPath = '/gt/ias' } = {}) {
   const navigate = useNavigate()
   const { id } = useParams()
   const iaQ = useIA(id)
-  // The matrix is FK'd to `appraisalUuid`. Backend does not auto-create
+  // The matrix is FK'd to `appraisalId`. Backend does not auto-create
   // an appraisal shell at in-principle stage, so we look it up first and
-  // fall back to creating a blank appraisal (registrationUuid only,
+  // fall back to creating a blank appraisal (registrationId only,
   // everything else null) at submit time.
   const apprQ = useAppraisalByRegistration(id)
-  const existingAppraisalUuid = apprQ.data?.uuid || null
+  const existingAppraisalId = apprQ.data?.id || null
   const createAppraisal = useCreateAppraisal()
   const createMatrix = useCreateSustainabilityMatrix()
 
@@ -61,21 +61,21 @@ export default function SustainabilityMatrix({ backPath = '/gt/ias' } = {}) {
     setSubmitting(true)
     try {
       // Ensure an appraisal record exists for this IA — the sustainability
-      // matrix FK's to `appraisalUuid`, not the IA registration uuid.
-      let appraisalUuid = existingAppraisalUuid
-      if (!appraisalUuid) {
+      // matrix FK's to `appraisalId`, not the IA registration id.
+      let appraisalId = existingAppraisalId
+      if (!appraisalId) {
         const shell = await createAppraisal.mutateAsync(toAppraisalCreatePayload({}, id))
-        appraisalUuid = shell?.uuid
-        if (!appraisalUuid) throw new Error('Appraisal shell created but response was missing a uuid.')
+        appraisalId = shell?.id
+        if (!appraisalId) throw new Error('Appraisal shell created but response was missing an id.')
       }
 
-      await createMatrix.mutateAsync({ ...answers, appraisalUuid })
+      await createMatrix.mutateAsync({ ...answers, appraisalId })
       setToast({ kind: 'success', msg: 'Sustainability matrix submitted. Opening Detailed Appraisal…' })
       // Hand off to the next step in the flow. `backPath` mirrors the caller
       // context (/gt vs /sde) so this works on both sides.
       setTimeout(() => navigate(`${backPath}/${id}/appraisal`), 1200)
     } catch (err) {
-      const stage = existingAppraisalUuid ? 'matrix save' : 'appraisal shell / matrix save'
+      const stage = existingAppraisalId ? 'matrix save' : 'appraisal shell / matrix save'
       setToast({ kind: 'error', msg: err?.message || `Failed during ${stage}.` })
     } finally {
       setSubmitting(false)

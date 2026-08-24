@@ -100,7 +100,7 @@ export default function MyResources() {
                 </TableRow>
               )}
               {rows.map((r, i) => (
-                <TableRow key={r.uuid} hover>
+                <TableRow key={r.id} hover>
                   <TableCell><Mono>{i + 1}</Mono></TableCell>
                   <TableCell>{r.industryAssociationName || '—'}</TableCell>
                   <TableCell>

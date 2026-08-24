@@ -89,7 +89,7 @@ export default function HoBseApprovals() {
                 </TableCell></TableRow>
               )}
               {filtered.map((r) => (
-                <TableRow key={r.uuid} hover onClick={() => navigate(`/sde/bse/${r.uuid}/ho-review`)} sx={{ cursor: 'pointer' }}>
+                <TableRow key={r.id} hover onClick={() => navigate(`/sde/bse/${r.id}/ho-review`)} sx={{ cursor: 'pointer' }}>
                   <TableCell>
                     <Typography fontWeight={700} fontSize="0.95rem">{r.name}</Typography>
                     <Mono>{r.mobile} · {r.email}</Mono>
@@ -102,7 +102,7 @@ export default function HoBseApprovals() {
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
-                      onClick={(e) => { e.stopPropagation(); navigate(`/sde/bse/${r.uuid}/ho-review`) }} sx={ACTION_SX}>
+                      onClick={(e) => { e.stopPropagation(); navigate(`/sde/bse/${r.id}/ho-review`) }} sx={ACTION_SX}>
                       Review
                     </Button>
                   </TableCell>

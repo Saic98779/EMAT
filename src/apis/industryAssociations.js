@@ -7,8 +7,8 @@ export function listIndustryAssociations({ signal } = {}) {
   return apiFetch(PATH, { signal })
 }
 
-export function getIndustryAssociation(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
+export function getIndustryAssociation(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }
 
 // POST create — feeds `InPrincipleApproval.jsx`. Caller is expected to pass
@@ -19,8 +19,8 @@ export function createIndustryAssociation(values, { signal } = {}) {
 
 // PUT update — full-record replacement. Extends the create payload with
 // `isActive` and `updatedBy` (the two extra fields on the Update DTO).
-export function updateIndustryAssociation(uuid, values, extra = {}, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function updateIndustryAssociation(id, values, extra = {}, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: toUpdatePayload(values, extra),
     signal,
@@ -31,8 +31,8 @@ export function updateIndustryAssociation(uuid, values, extra = {}, { signal } =
 // `ApprovalRequest`: { isSidbeApproved: boolean } — same field name as on
 // the response DTO. Pass `false` to explicitly reject when the backend
 // starts honouring it.
-export function approveIndustryAssociation(uuid, { isSidbeApproved = true } = {}, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}/approve`, {
+export function approveIndustryAssociation(id, { isSidbeApproved = true } = {}, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}/approve`, {
     method: 'PATCH',
     body: { isSidbeApproved },
     signal,
@@ -40,16 +40,16 @@ export function approveIndustryAssociation(uuid, { isSidbeApproved = true } = {}
 }
 
 // DELETE (soft) — marks the record inactive but preserves the row.
-export function deleteIndustryAssociation(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function deleteIndustryAssociation(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     signal,
   })
 }
 
 // DELETE /permanent — irrecoverable removal. Guard behind an explicit confirm.
-export function permanentlyDeleteIndustryAssociation(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}/permanent`, {
+export function permanentlyDeleteIndustryAssociation(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}/permanent`, {
     method: 'DELETE',
     signal,
   })
@@ -304,8 +304,7 @@ export function fromDto(dto, appraisal = null) {
   }
 
   return {
-    id: dto.uuid,
-    uuid: dto.uuid,
+    id: dto.id,
     name: dto.industryAssociationName || '—',
     email: dto.email || '—',
     panNo: dto.panNo || '—',

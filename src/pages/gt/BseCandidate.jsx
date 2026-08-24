@@ -56,9 +56,9 @@ export default function BseCandidate() {
   }, [refreshIAs])
 
   // Only IAs whose In-Principle Approval is cleared (stage >= 1) are eligible,
-  // and only records that carry a backend `uuid` — we can't POST without one.
+  // and only records that carry a backend `id` — we can't POST without one.
   const approvedIAs = useMemo(
-    () => ias.filter((i) => (i.stage ?? 0) >= 1 && i.uuid),
+    () => ias.filter((i) => (i.stage ?? 0) >= 1 && i.id),
     [ias],
   )
 
@@ -93,35 +93,35 @@ export default function BseCandidate() {
       return
     }
 
-    // Backend expects the IA's registrationUuid, but the form only carries the
+    // Backend expects the IA's registrationId, but the form only carries the
     // display name — resolve it from the approved IA list.
     const ia = approvedIAs.find((i) => i.name === values.ia_name)
-    if (!ia?.uuid) {
+    if (!ia?.id) {
       setToast({ severity: 'error', msg: 'Selected IA is missing a registration reference. Refresh and try again.' })
       return
     }
 
     setBusy(true)
     try {
-      const created = await createBseRecommendation(values, ia.uuid)
-      const bseUuid = created?.uuid
+      const created = await createBseRecommendation(values, ia.id)
+      const bseId = created?.id
 
       // Upload every picked file (resume, salary proof, resignation letter,
-      // CV, etc.) in a single batch keyed by the new BSE record's UUID.
+      // CV, etc.) in a single batch keyed by the new BSE record's id.
       // Filenames are slug-prefixed with the field name so DocUpload can
       // decode them into "Salary proof · payslip.pdf" style chips later.
       const files = collectFiles(values)
-      if (bseUuid && files.length) {
+      if (bseId && files.length) {
         try {
           const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
-          await uploadFilesBatch(bseUuid, tagged)
+          await uploadFilesBatch(bseId, tagged)
         } catch (fileErr) {
           setToast({
             severity: 'warning',
             msg: `Candidate saved, but file upload failed (${fileErr.message || 'unknown error'}). Retry from the candidate page.`,
           })
           addBseCandidate(values)
-          const nextPath = bseUuid ? `/gt/team/${bseUuid}` : '/gt/team'
+          const nextPath = bseId ? `/gt/team/${bseId}` : '/gt/team'
           setTimeout(() => navigate(nextPath), 1500)
           return
         }
@@ -135,7 +135,7 @@ export default function BseCandidate() {
           ? `${values.bse_name || 'Candidate'} proposed — ${files.length} file${files.length === 1 ? '' : 's'} uploaded.`
           : `${values.bse_name || 'Candidate'} proposed for ${values.ia_name || 'IA'}.`,
       })
-      const nextPath = bseUuid ? `/gt/team/${bseUuid}` : '/gt/team'
+      const nextPath = bseId ? `/gt/team/${bseId}` : '/gt/team'
       setTimeout(() => navigate(nextPath), 1100)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to submit. Please try again.' })

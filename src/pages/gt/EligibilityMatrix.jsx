@@ -60,9 +60,9 @@ export default function EligibilityMatrix() {
   const [header, setHeader] = useState({ state: '', industryAssociationName: '', pan: '', emailId: '' })
   const [answers, setAnswers] = useState(INITIAL_ANSWERS)
   const [toast, setToast] = useState(null)
-  // Two-step submit state — remember any IA uuid created in step 1 so a
+  // Two-step submit state — remember any IA id created in step 1 so a
   // step-2 failure can retry without creating a duplicate IA.
-  const [createdIaUuid, setCreatedIaUuid] = useState(null)
+  const [createdIaId, setCreatedIaId] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
   const setHeaderField = useCallback((name, value) => {
@@ -83,16 +83,16 @@ export default function EligibilityMatrix() {
     setSubmitting(true)
     try {
       // Step 1: create (or reuse) the IA record for identity.
-      let regUuid = createdIaUuid
-      if (!regUuid) {
+      let regId = createdIaId
+      if (!regId) {
         const iaResp = await createIndustryAssociation(iaPayloadFromHeader(header))
-        regUuid = iaResp?.uuid
-        if (!regUuid) throw new Error('IA created but response was missing a uuid.')
-        setCreatedIaUuid(regUuid)
+        regId = iaResp?.id
+        if (!regId) throw new Error('IA created but response was missing an id.')
+        setCreatedIaId(regId)
       }
 
       // Step 2: create the eligibility matrix record linked to that IA.
-      await createMatrix.mutateAsync({ ...answers, registrationUuid: regUuid })
+      await createMatrix.mutateAsync({ ...answers, registrationId: regId })
 
       // The IAs list cache was populated before this new record existed.
       // `useIAs` sets `refetchOnMount: false`, so plain invalidation only
@@ -105,11 +105,11 @@ export default function EligibilityMatrix() {
       // Push GT into the In-Principle form for this same IA — the header
       // fields (state, name, PAN, email) are already on the backend record
       // and the matrix is linked. In-Principle will hydrate + PUT-merge.
-      setTimeout(() => navigate(`${workspaceBase}/ias/${regUuid}/in-principle`), 900)
+      setTimeout(() => navigate(`${workspaceBase}/ias/${regId}/in-principle`), 900)
     } catch (err) {
       // Step-1 failure vs step-2 failure gets a different message; the
-      // retry path is safe either way because we remember `createdIaUuid`.
-      const stage = createdIaUuid ? 'eligibility save' : 'IA creation'
+      // retry path is safe either way because we remember `createdIaId`.
+      const stage = createdIaId ? 'eligibility save' : 'IA creation'
       setToast({ kind: 'error', msg: err?.message || `Failed during ${stage}.` })
     } finally {
       setSubmitting(false)
@@ -220,7 +220,7 @@ export default function EligibilityMatrix() {
             fontWeight={500}
             sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
           >
-            {problem || (createdIaUuid ? 'IA already created — retrying eligibility save only.' : 'Ready to submit assessment.')}
+            {problem || (createdIaId ? 'IA already created — retrying eligibility save only.' : 'Ready to submit assessment.')}
           </Typography>
         </Stack>
         <Button color="inherit" onClick={() => navigate(workspaceBase)} disabled={submitting} sx={{ textTransform: 'none' }}>
@@ -235,8 +235,8 @@ export default function EligibilityMatrix() {
           sx={{ textTransform: 'none', fontWeight: 700, px: 3 }}
         >
           {submitting
-            ? (createdIaUuid ? 'Saving matrix…' : 'Creating IA…')
-            : (createdIaUuid ? 'Retry matrix save' : 'Submit Assessment')}
+            ? (createdIaId ? 'Saving matrix…' : 'Creating IA…')
+            : (createdIaId ? 'Retry matrix save' : 'Submit Assessment')}
         </Button>
       </Paper>
 

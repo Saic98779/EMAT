@@ -38,10 +38,10 @@ export default function SdeCapexReview() {
     return db.localeCompare(da)
   }), [filtered])
 
-  const toggle = (uuid) => {
+  const toggle = (id) => {
     setExpanded((prev) => {
       const next = new Set(prev)
-      next.has(uuid) ? next.delete(uuid) : next.add(uuid)
+      next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
   }
@@ -111,10 +111,10 @@ export default function SdeCapexReview() {
               )}
               {sorted.map((r) => (
                 <RowGroup
-                  key={r.uuid}
+                  key={r.id}
                   dto={r}
-                  isOpen={expanded.has(r.uuid)}
-                  onToggle={() => toggle(r.uuid)}
+                  isOpen={expanded.has(r.id)}
+                  onToggle={() => toggle(r.id)}
                   onDone={(msg) => setToast(msg)}
                 />
               ))}
@@ -208,7 +208,7 @@ function ReviewPanel({ dto, onDone }) {
     if (problem) { onDone?.({ kind: 'warning', msg: problem }); return }
     try {
       await update.mutateAsync({
-        uuid: dto.uuid,
+        id: dto.id,
         values: {
           ...initial,
           preDisbursementCompliance: compliance,

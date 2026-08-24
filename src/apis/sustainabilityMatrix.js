@@ -5,21 +5,21 @@ import { apiFetch } from '../api'
 // record. 22 boolean parameters + a frontend-computed total score.
 //
 // Placement in the flow: In-Principle Approved → Sustainability Matrix
-// (no approval req) → Detailed Appraisal. The FK is `appraisalUuid`
-// (the IA's appraisal record uuid, obtained via
-// `getAppraisalByRegistration(registrationUuid).uuid`).
+// (no approval req) → Detailed Appraisal. The FK is `appraisalId`
+// (the IA's appraisal record id, obtained via
+// `getAppraisalByRegistration(registrationId).id`).
 const PATH = '/sustainability-matrix'
 
-export function getSustainabilityMatrix(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { signal })
+export function getSustainabilityMatrix(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }
 
-// GET /sustainability-matrix/appraisal/{appraisalUuid}
+// GET /sustainability-matrix/appraisal/{appraisalId}
 // Fetch the sustainability record for a specific appraisal — used to
 // know whether the matrix has already been submitted for this IA.
-export function getSustainabilityMatrixByAppraisal(appraisalUuid, { signal } = {}) {
+export function getSustainabilityMatrixByAppraisal(appraisalId, { signal } = {}) {
   return apiFetch(
-    `${PATH}/appraisal/${encodeURIComponent(appraisalUuid)}`,
+    `${PATH}/appraisal/${encodeURIComponent(appraisalId)}`,
     { signal },
   )
 }
@@ -28,16 +28,16 @@ export function createSustainabilityMatrix(values, { signal } = {}) {
   return apiFetch(PATH, { method: 'POST', body: toPayload(values), signal })
 }
 
-export function updateSustainabilityMatrix(uuid, values, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, {
+export function updateSustainabilityMatrix(id, values, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: toPayload(values),
     signal,
   })
 }
 
-export function deleteSustainabilityMatrix(uuid, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(uuid)}`, { method: 'DELETE', signal })
+export function deleteSustainabilityMatrix(id, { signal } = {}) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
 }
 
 // ── Spec constants ────────────────────────────────────────────────────────
@@ -137,13 +137,13 @@ export function computeScore(answers = {}) {
 }
 
 // ── Payload adapter ────────────────────────────────────────────────────────
-// Frontend values → backend `SustainabilityMatrixRequest`. `appraisalUuid`
-// is required (the IA's appraisal record uuid, not the registration uuid).
+// Frontend values → backend `SustainabilityMatrixRequest`. `appraisalId`
+// is required (the IA's appraisal record id, not the registration id).
 // `totalScore` is recomputed here so the client never ships an
 // inconsistent score.
 export function toPayload(v = {}) {
   const payload = {
-    appraisalUuid: str(v.appraisalUuid),
+    appraisalId: str(v.appraisalId),
   }
   for (const k of PARAM_KEYS) {
     payload[k] = v[k] === true ? true : v[k] === false ? false : null

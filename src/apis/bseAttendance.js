@@ -7,8 +7,8 @@ const PATH = '/bse-attendance'
 
 // Record shape per Swagger:
 //   {
-//     uuid                : own PK
-//     bseRecommendationId : which BSE (their recommendation UUID)
+//     id                  : own PK (integer)
+//     bseRecommendationId : which BSE (their recommendation id, integer)
 //     attendanceDate      : ISO date (YYYY-MM-DD)
 //     inTime  / outTime   : time strings (HH:mm or HH:mm:ss)
 //   }

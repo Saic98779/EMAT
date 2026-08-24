@@ -65,8 +65,8 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const { data: ias = [], isLoading: iasLoading, isFetching, error: iasErrorObj, refetch } = useIAs()
   const iasError = iasErrorObj?.message || null
   // Fetch branch dropdowns for every state present in the list, then use the
-  // combined map to resolve each row's `sidbiBranch` UUID → branchName.
-  const { byUuid: branchNameByUuid } = useBranchesByStates(ias.map((i) => i.state))
+  // combined map to resolve each row's `sidbiBranch` id → branchName.
+  const { byId: branchNameById } = useBranchesByStates(ias.map((i) => i.state))
   const isGt = basePath.startsWith('/gt')
   const isSde = basePath.startsWith('/sde')
   // GT and SDE workspaces both host the initiation buttons — SDE-initiated
@@ -77,10 +77,10 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const [toast, setToast] = useState({ severity: '', msg: '' })
 
   const doDelete = async () => {
-    if (!confirm?.uuid) return
+    if (!confirm?.id) return
     setDeleting(true)
     try {
-      await deleteIndustryAssociation(confirm.uuid)
+      await deleteIndustryAssociation(confirm.id)
       setToast({ severity: 'success', msg: `${confirm.name} deactivated.` })
       setConfirm(null)
       qc.invalidateQueries({ queryKey: keys.ias.all })
@@ -174,12 +174,12 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                   <Mono>{[ia.city, ia.state].filter((x) => x && x !== '—').join(' · ') || '—'}</Mono>
                 </TableCell>
                 <TableCell><Typography variant="body2">{ia.sector}</Typography></TableCell>
-                <TableCell><Typography variant="body2">{branchNameByUuid.get(ia.branch) || ia.branch}</Typography></TableCell>
+                <TableCell><Typography variant="body2">{branchNameById.get(ia.branch) || ia.branch}</Typography></TableCell>
                 <TableCell><StatusChip status={ia.status} /></TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                     {rowAction(ia, navigate, basePath)}
-                    {isGt && ia.uuid && (
+                    {isGt && ia.id != null && (
                       <Tooltip title="Deactivate">
                         <IconButton
                           size="small"

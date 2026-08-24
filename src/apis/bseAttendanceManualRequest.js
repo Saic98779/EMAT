@@ -8,14 +8,14 @@ import { apiFetch } from '../api'
 //
 // Record shape per Swagger:
 //   {
-//     uuid                : own PK
-//     bseRecommendationId : which BSE
+//     id                  : own PK (integer)
+//     bseRecommendationId : which BSE (integer)
 //     attendanceDate      : ISO date (YYYY-MM-DD)
 //     inTime / outTime    : "HH:mm" / "HH:mm:ss"
 //     reason              : free text — why the manual entry
 //     isApproved          : null (pending) | true | false
 //     approvedDate        : ISO datetime when approved / rejected
-//     approvedBy          : approver's uuid
+//     approvedBy          : approver's id
 //   }
 const PATH = '/bse-attendance-manual-request'
 
