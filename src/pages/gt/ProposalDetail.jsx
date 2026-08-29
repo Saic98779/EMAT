@@ -153,18 +153,35 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
                 Edit registration
               </Button>
             )}
-            {/* GT only has appraisal work when the IA is either freshly
-                cleared for detailed appraisal or has been sent back for
-                edits. Once it moves to Final Review (L2) / Rejected L2 the
-                ball is in SDE's court, so hide the CTA to avoid the
-                mismatch with the status chip. */}
-            {isGt && ia.stage === 1
-              && (ia.status === 'Detailed Pending' || ia.status === 'Changes Requested') && (
+            {/* GT's next action is stage-aware:
+                – 'Detailed Pending' means L1 is approved but no appraisal
+                  record exists yet. The Sustainability Matrix submit is
+                  what creates the appraisal shell, so route GT there first
+                  (mirrors the list-row action in IndustryAssociations.jsx).
+                  Sending GT straight to /appraisal here would open an
+                  empty form for a record the backend has no shell for.
+                – 'Changes Requested' means the appraisal exists but SDE
+                  bounced it back — take GT into the appraisal to revise.
+                Once status moves to Final Review (L2) / Rejected L2 the
+                ball is in SDE's court, so hide the CTA. */}
+            {isGt && ia.stage === 1 && ia.status === 'Detailed Pending' && (
               <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
-                onClick={() => navigate(`/gt/ias/${ia.id}/appraisal`)}>
-                {ia.status === 'Changes Requested' ? 'Revise detailed appraisal' : 'Continue detailed appraisal'}
+                onClick={() => navigate(`/gt/ias/${ia.id}/sustainability`)}>
+                Fill Sustainability Matrix
               </Button>
             )}
+            {isGt && ia.stage === 1 && ia.status === 'Changes Requested' && (
+              <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
+                onClick={() => navigate(`/gt/ias/${ia.id}/appraisal`)}>
+                Revise detailed appraisal
+              </Button>
+            )}
+            {/* Deliberately no CTA for 'Final Review (L2)' with an un-decided
+                appraisal — GT's part is done and the record is with SDE.
+                Adding a "Continue" here reads as "work still pending", which
+                confuses users looking at a submitted appraisal. Once SDE
+                bounces it back, status flips to 'Changes Requested' and the
+                Revise button above surfaces. */}
             {isClusterExpert && ia.appraisal && !ia.appraisal.isSidbeApproved && (
               <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
                 onClick={() => navigate(`/sde/ias/${ia.id}/appraisal`)}>

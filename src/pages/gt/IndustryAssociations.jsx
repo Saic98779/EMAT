@@ -25,12 +25,21 @@ import { useAuth } from '../../auth'
 // dominates the table.
 const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 
-function rowAction(ia, navigate, basePath) {
+function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
   const go = (path) => (e) => { e.stopPropagation(); navigate(path) }
-  const view = (
-    <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
-      onClick={go(`${basePath}/${ia.id}`)} sx={ACTION_SX}>View</Button>
-  )
+  // Cluster Expert's only job on an IA is to add comments on the appraisal
+  // form. The generic View button lands on the read-only ProposalDetail —
+  // which doesn't expose the comment fields — so route them straight to
+  // the appraisal page (matches the CE Dashboard's own IA link).
+  const view = isClusterExpert && ia.appraisal
+    ? (
+      <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
+        onClick={go(`/sde/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Review & Comment</Button>
+    )
+    : (
+      <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
+        onClick={go(`${basePath}/${ia.id}`)} sx={ACTION_SX}>View</Button>
+    )
   // "Complete In-Principle" applies on both workspaces (GT and SDE both
   // initiate IAs). Route via `basePath` so we stay in the caller's
   // workspace — hardcoding /gt bounces SDE via the Protected guard.
@@ -39,19 +48,16 @@ function rowAction(ia, navigate, basePath) {
       onClick={go(`${basePath}/${ia.id}/in-principle`)} sx={ACTION_SX}>Complete In-Principle</Button>
   if (!basePath.startsWith('/gt')) return view
   // 'Detailed Pending' means In-Principle is approved and no appraisal
-  // record exists yet. GT's next step is Sustainability, which — as a
-  // side-effect — creates the appraisal shell (flipping status to
-  // 'Final Review (L2)'). Any presence of `ia.appraisal` therefore means
-  // sustainability has been done; the next action is to fill the
-  // detailed appraisal itself.
+  // record exists yet. GT's next step is Sustainability, which creates the
+  // appraisal shell (flipping status to 'Final Review (L2)').
   if (ia.status === 'Detailed Pending')
     return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
       onClick={go(`/gt/ias/${ia.id}/sustainability`)} sx={ACTION_SX}>Sustainability</Button>
-  // Appraisal shell exists but final approval isn't in yet — GT still owns
-  // the row until they submit the detailed appraisal for L2 review.
-  if (ia.status === 'Final Review (L2)' && ia.appraisal && !ia.appraisal.isSidbeApproved)
-    return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
-      onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Continue Appraisal</Button>
+  // 'Final Review (L2)' with an appraisal present and not decided by SDE:
+  // GT's part is done for now — the ball is in SDE's court. Fall through
+  // to the default View button rather than surfacing a "Continue" affordance
+  // that implies pending work. If SDE bounces it back, status flips to
+  // 'Changes Requested' and the Revise button below activates.
   if (ia.status === 'Changes Requested')
     return <Button size="small" variant="outlined" color="warning" startIcon={<EditNoteIcon />}
       onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Revise</Button>
@@ -194,7 +200,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                 <TableCell><StatusChip status={ia.status} /></TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
-                    {rowAction(ia, navigate, basePath)}
+                    {rowAction(ia, navigate, basePath, { isClusterExpert })}
                     {isGt && ia.id != null && (
                       <Tooltip title="Deactivate">
                         <IconButton
