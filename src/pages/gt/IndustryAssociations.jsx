@@ -16,7 +16,9 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
 import { deleteIndustryAssociation } from '../../apis/industryAssociations'
+import { unpackHoDecision } from '../../apis/industryAssociationAppraisals'
 import { useIAs, useBranchesByStates, keys } from '../../queries'
+import { useAuth } from '../../auth'
 
 // Contextual primary action per IA status (GT). Kept as small outlined
 // buttons so long labels don't wrap onto two lines and no single colour
@@ -62,8 +64,19 @@ function rowAction(ia, navigate, basePath) {
 export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { data: ias = [], isLoading: iasLoading, isFetching, error: iasErrorObj, refetch } = useIAs()
+  const { rawRole } = useAuth()
+  const { data: iasAll = [], isLoading: iasLoading, isFetching, error: iasErrorObj, refetch } = useIAs()
   const iasError = iasErrorObj?.message || null
+  // Cluster Expert shares the SDE workspace but is only a reviewer on the
+  // appraisal — they don't participate in Eligibility / In-Principle /
+  // Sustainability. Trim the list to rows that have an appraisal record and
+  // haven't yet been decided by HO, so CE isn't distracted by IAs they
+  // can't act on. Everyone else sees the full list.
+  const isClusterExpert = rawRole === 'CLUSTER_EXPERT'
+  const isHoMaker = rawRole === 'SIDBI_HO_MAKER'
+  const ias = isClusterExpert
+    ? iasAll.filter((i) => i.appraisal && !unpackHoDecision(i.appraisal).decision)
+    : iasAll
   // Fetch branch dropdowns for every state present in the list, then use the
   // combined map to resolve each row's `sidbiBranch` id → branchName.
   const { byId: branchNameById } = useBranchesByStates(ias.map((i) => i.state))
@@ -71,7 +84,10 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const isSde = basePath.startsWith('/sde')
   // GT and SDE workspaces both host the initiation buttons — SDE-initiated
   // records are auto-approved on the server (see InPrincipleApproval).
-  const canInitiate = isGt || isSde
+  // Cluster Expert + HO Maker share the SDE workspace but neither initiates
+  // any of these flows (routes are also guarded in App.jsx); hide the
+  // buttons so the affordance matches the routing.
+  const canInitiate = (isGt || isSde) && !isClusterExpert && !isHoMaker
   const [confirm, setConfirm] = useState(null) // IA pending soft-delete
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState({ severity: '', msg: '' })

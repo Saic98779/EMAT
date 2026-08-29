@@ -77,7 +77,11 @@ export function deleteAppraisal(id, { signal } = {}) {
 //   - Structured IA Beneficial Owner CIBIL/SMART ref no / date / ranking /
 //     file (form-only). Only *_remarks fields round-trip.
 export function toCreatePayload(values = {}, registrationId = null) {
-  // Backend field is `sectors` — array of { name, problems } objects.
+  // Backend field is `sectors` — array of { sector, sectorKeyProblems }.
+  // We used to send { name, problems } but the backend DTO expects the
+  // fully-spelled names and silently dropped ours to null (values didn't
+  // persist, sectors always came back as []). Confirmed by round-tripping
+  // both shapes against `/industry-association-appraisals/{id}` PUT.
   // Only include a slot when the sector name is non-empty (otherwise we'd
   // ship rows with empty names).
   const sectorPairs = [
@@ -89,7 +93,10 @@ export function toCreatePayload(values = {}, registrationId = null) {
   for (const [name, problems] of sectorPairs) {
     const nm = name == null ? '' : String(name).trim()
     if (!nm) continue
-    sectors.push({ name: nm, problems: problems == null ? '' : String(problems).trim() })
+    sectors.push({
+      sector: nm,
+      sectorKeyProblems: problems == null ? '' : String(problems).trim(),
+    })
   }
 
   return {
@@ -215,13 +222,16 @@ export function toUpdatePayload(values, registrationId) {
 // it, but the IA seed is preserved when the appraisal hasn't touched it.
 export function toFormValues(dto = {}) {
   if (!dto || typeof dto !== 'object') return {}
-  // Backend field is `sectors` — array of { name, problems } objects.
-  // Fall back to the older `topThreeSectors` shapes (Array<string> or
-  // Map<name, problems>) so pre-migration records still hydrate cleanly.
+  // Backend field is `sectors` — array of { sector, sectorKeyProblems }.
+  // Also tolerate older shapes ({name, problems} or {sectorName, keyProblems})
+  // in case anyone still has legacy rows in their DB.
   const sectorEntries = Array.isArray(dto.sectors)
     ? dto.sectors.map((s) => (
         s && typeof s === 'object'
-          ? [s.name ?? s.sectorName ?? '', s.problems ?? s.keyProblems ?? '']
+          ? [
+              s.sector ?? s.name ?? s.sectorName ?? '',
+              s.sectorKeyProblems ?? s.problems ?? s.keyProblems ?? '',
+            ]
           : [String(s ?? ''), '']
       ))
     : Array.isArray(dto.topThreeSectors)

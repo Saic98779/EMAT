@@ -7,6 +7,7 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import MyLocationIcon from '@mui/icons-material/MyLocation'
 import { alpha } from '@mui/material/styles'
 import { decodeFilename } from '../fileFieldLabels'
 import FunctionsIcon from '@mui/icons-material/Functions'
@@ -340,9 +341,78 @@ function Repeater({ value, label, required, onChange, columns, addLabel, readOnl
   )
 }
 
+// Helper button that pulls the browser's current GPS reading and writes it
+// into two sibling number fields (typically `latitude` / `longitude`). The
+// text inputs remain the primary path — GT can key in coordinates looked
+// up on a map when they're not physically at the site. `f.targets` names
+// the sibling fields, e.g. `{ lat: 'latitude', lng: 'longitude' }`.
+function CoordinatesCapture({ f, changeFor }) {
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState(null)
+  const targets = f.targets || { lat: 'latitude', lng: 'longitude' }
+
+  const capture = () => {
+    if (!navigator.geolocation) {
+      setStatus({ kind: 'error', msg: 'Geolocation not supported in this browser.' })
+      return
+    }
+    setBusy(true)
+    setStatus(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6))
+        const lng = Number(pos.coords.longitude.toFixed(6))
+        const accuracy = Math.round(pos.coords.accuracy)
+        changeFor(targets.lat)(lat)
+        changeFor(targets.lng)(lng)
+        setStatus({ kind: 'ok', msg: `Captured — accuracy ±${accuracy} m` })
+        setBusy(false)
+      },
+      (err) => {
+        const msg = err.code === 1
+          ? 'Permission denied. Allow location access to auto-fill.'
+          : err.code === 3
+            ? 'Timed out getting location. Try again outdoors.'
+            : (err.message || 'Could not read location.')
+        setStatus({ kind: 'error', msg })
+        setBusy(false)
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  }
+
+  return (
+    <Grid size={{ xs: 12, sm: f.span || 12 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={capture}
+          disabled={busy}
+          startIcon={<MyLocationIcon fontSize="small" />}
+          sx={{ textTransform: 'none', fontWeight: 600 }}
+        >
+          {busy ? 'Getting location…' : (f.label || 'Get current coordinates')}
+        </Button>
+        {status && (
+          <Typography variant="caption" color={status.kind === 'ok' ? 'success.main' : 'error.main'}>
+            {status.msg}
+          </Typography>
+        )}
+        {!status && f.help && (
+          <Typography variant="caption" color="text.secondary">{f.help}</Typography>
+        )}
+      </Stack>
+    </Grid>
+  )
+}
+
 // Individual field. Wrapped in memo — receives primitives + stable callbacks
 // so a keystroke on field A won't cause field B to re-render.
-const Field = memo(function Field({ f, value, error, computed, options, verified, onChange, onVerify }) {
+const Field = memo(function Field({ f, value, error, computed, options, verified, onChange, onVerify, changeFor }) {
+  if (f.type === 'coordinates_capture') {
+    return <CoordinatesCapture f={f} changeFor={changeFor} />
+  }
   if (f.type === 'subheading') {
     return (
       <Grid size={12}>
@@ -513,6 +583,12 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         select={isSelect && !lockedSelect}
         value={lockedSelect ? labelOfOption(options, selVal) : selVal}
         onChange={handleChange}
+        // Number inputs increment on mouse wheel by default (browser
+        // behavior). That's a footgun on long forms — a user scrolling
+        // the page over a focused amount field silently changes the
+        // value. Blur on wheel so the wheel event never mutates a
+        // number field.
+        onWheel={isNumber ? (e) => e.target.blur() : undefined}
         inputProps={{
           maxLength: f.max,
           max: dateMax,
@@ -553,7 +629,7 @@ const isFilled = (v) => {
 const isVisible = (f, values) => !f.showIf || f.showIf(values)
 
 function sectionDone(sec, values) {
-  const inputs = sec.fields.filter((f) => !['subheading', 'computed'].includes(f.type) && isVisible(f, values))
+  const inputs = sec.fields.filter((f) => !['subheading', 'computed', 'coordinates_capture'].includes(f.type) && isVisible(f, values))
   if (inputs.length === 0) return false
   const anyFilled = inputs.some((f) => isFilled(values[f.name]))
   const allValid = inputs.every((f) => (!f.required || isFilled(values[f.name])) && !fieldError(f, values[f.name], values))
@@ -665,6 +741,7 @@ const SectionCard = memo(function SectionCard({
                 verified={f.otp ? !!values[`${f.name}_verified`] : undefined}
                 onChange={changeFor(f.name)}
                 onVerify={f.otp ? verifyFor(f.name) : undefined}
+                changeFor={changeFor}
               />
             )
           })}

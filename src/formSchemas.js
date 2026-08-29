@@ -5,6 +5,13 @@ import { STATES, districtsOf } from './geo'
 import { clustersOf } from './clusters'
 
 const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
+// Human names / designations — letters, spaces, dots, hyphens, apostrophes.
+// Must start with a letter. Rejects digits and stray punctuation. Length
+// between 2 and 80 to catch stray single-char input without being restrictive.
+const NAME_PATTERN = {
+  re: /^[A-Za-z][A-Za-z\s.'-]{1,79}$/,
+  msg: 'Letters, spaces, dots, hyphens or apostrophes only (no numbers)',
+}
 // Accepts optional http/https, an optional `www.` (or any subdomain) prefix,
 // a domain with at least one dot, optional port, and an optional path /
 // query / fragment. Intentionally forgiving — allows hyphens, underscores
@@ -119,8 +126,8 @@ export const makeInPrincipleSchema = ({
     ] },
     { n: 3, title: 'Apex Office Holder Details of IA', fields: [
       { name: '_apex_contact', label: 'Contact', type: 'subheading', span: 12 },
-      { name: 'apex_name', label: 'Name', type: 'text', span: 6, required: true },
-      { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true },
+      { name: 'apex_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
+      { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
       { name: 'apex_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'apex_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
       { name: '_apex_kyc', label: 'KYC & ID proof', type: 'subheading', span: 12 },
@@ -144,8 +151,8 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_id_file', label: 'Upload ID proof document', type: 'file', span: 6, required: true },
     ] },
     { n: 4, title: 'Details of Nodal Contact of IA', fields: [
-      { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true },
-      { name: 'nodal_designation', label: 'Designation', type: 'text', span: 6, required: true },
+      { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
+      { name: 'nodal_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
       { name: 'nodal_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'nodal_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
     ] },
@@ -265,6 +272,32 @@ export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = []) => 
       { name: 'ia_name', label: 'Name of Association (BSE Proposed For)', type: 'select',
         options: approvedIAs.length ? approvedIAs : ['No In-Principle approved IA available'],
         span: 12, required: true },
+      // Anchor coordinates used later for BSE attendance geofencing. GT
+      // enters lat/lng of the BSE's working office (may not be the IA
+      // itself — some BSEs work from satellite offices or posted MSMEs).
+      // The "Get current coordinates" helper below fills both fields via
+      // the browser's Geolocation API when GT is physically at the site.
+      { name: 'latitude', label: 'Office Latitude', type: 'number', span: 6, required: true,
+        help: 'Decimal degrees, e.g. 17.4239',
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n)) return 'Enter a valid number'
+          if (n < -90 || n > 90) return 'Latitude must be between −90 and 90'
+          return ''
+        } },
+      { name: 'longitude', label: 'Office Longitude', type: 'number', span: 6, required: true,
+        help: 'Decimal degrees, e.g. 78.4738',
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n)) return 'Enter a valid number'
+          if (n < -180 || n > 180) return 'Longitude must be between −180 and 180'
+          return ''
+        } },
+      { name: 'coords_capture', label: 'Get current coordinates', type: 'coordinates_capture',
+        span: 12, targets: { lat: 'latitude', lng: 'longitude' },
+        help: 'Optional — auto-fill the two fields above using this device\'s location.' },
     ] },
     { n: 2, title: 'Candidate Details', fields: [
       { name: 'bse_name', label: 'Name of Proposed BSE', type: 'text', span: 12, required: true },
@@ -558,7 +591,18 @@ export const appraisalSchema = {
       { name: '_dd_holder_cibil', label: 'IA Office Holder — CIBIL', type: 'subheading', span: 12 },
       { name: 'holder_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
       { name: 'holder_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
-      { name: 'holder_cibil_score', label: 'CIBIL Score', type: 'text', span: 3 },
+      // CIBIL individual scores are numeric in the range 300–900. Anything
+      // outside that band is either a typo or a corporate CMR (which has
+      // its own field). Reject letters and out-of-range numbers.
+      { name: 'holder_cibil_score', label: 'CIBIL Score', type: 'number', span: 3,
+        placeholder: '300–900',
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n)) return 'Enter a valid number'
+          if (n < 300 || n > 900) return 'CIBIL Score must be between 300 and 900'
+          return ''
+        } },
       { name: 'holder_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
       { name: 'holder_cibil_file', label: 'CIBIL Report (upload)', type: 'file', span: 12 },
 
@@ -585,7 +629,11 @@ export const appraisalSchema = {
     ] },
     { n: 9, title: 'Cluster / District Details', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
       { name: 'cluster_mapped', label: 'Mapped with an identified cluster?', type: 'yesno', span: 3 },
-      { name: 'cluster_which', label: 'If yes, which cluster', type: 'text', span: 5 },
+      // Only surfaces (and only counts as required) when cluster_mapped === 'yes'.
+      // Without the showIf, `requireAllInputs` above would keep the field
+      // visible and blocking save even after the user answered "No".
+      { name: 'cluster_which', label: 'If yes, which cluster', type: 'text', span: 5,
+        showIf: (v) => v.cluster_mapped === 'yes' },
       { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 4 },
       { name: 'msme_count', label: 'MSMEs (without traders) in district', type: 'number', span: 4 },
     ] },

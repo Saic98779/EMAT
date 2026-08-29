@@ -150,6 +150,12 @@ export function toPayload(v = {}) {
 // out so the backend keeps its current value.
 export function toUpdatePayload(v = {}, extra = {}) {
   const payload = toPayload(v)
+  // Backend PUT /industry-association-registrations/{id} throws a 500 the
+  // moment `secretariatStaff` is present in the body — empty array, null,
+  // AND a populated array all crash the handler. POST works fine, only PUT
+  // is broken. Omitting the key lets the backend keep whatever it already
+  // has for that record. Restore this once the backend is patched.
+  delete payload.secretariatStaff
   if (extra.isActive != null) payload.isActive = !!extra.isActive
   if (extra.updatedBy != null) payload.updatedBy = str(extra.updatedBy)
   return payload

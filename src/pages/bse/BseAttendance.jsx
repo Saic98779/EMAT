@@ -20,10 +20,20 @@ import {
   useUpdateBseAttendance,
   useBseAttendanceManualRequestsByRecommendation,
   useCreateBseAttendanceManualRequest,
+  useMyBseRecommendation,
 } from '../../queries'
 import {
   workingDaysInMonth, attendanceIndexByDay,
 } from '../../apis/bseAttendance'
+import {
+  getCurrentPosition, haversineMeters, formatDistance, GeolocationError,
+} from '../../utils/geofence'
+
+// Attendance geofence — BSE must be within this many metres of the office
+// coords captured on the BSE recommendation. Anchor comes from
+// `myBseQ.data.latitude / .longitude`. If either coord is missing on the
+// record (legacy data), the check is skipped so the user isn't locked out.
+const GEOFENCE_RADIUS_M = 300
 
 // BSE workspace — daily attendance.
 //
@@ -59,10 +69,15 @@ export default function BseAttendance() {
   // needed for POST / PUT is derived from those returned rows.
   const attendanceQ = useBseAttendanceList()
   const rows = useMemo(() => attendanceQ.data || [], [attendanceQ.data])
-  // Pick the recommendationId that appears most often in the returned
-  // rows — that's the BSE's own recommendation. Falls back to the first
-  // row's id if all rows are equally represented (single-BSE case).
-  const recommendationId = useMemo(() => pickRecommendationId(rows), [rows])
+  // Resolve the BSE's own recommendation id. Prefer the id inferred from
+  // returned attendance rows (cheap, no extra request); fall back to a
+  // lookup of the logged-in user's BSE record so a brand-new BSE with an
+  // empty attendance history can still mark their first day.
+  const myBseQ = useMyBseRecommendation(user)
+  const recommendationId = useMemo(
+    () => pickRecommendationId(rows) || myBseQ.data?.id || null,
+    [rows, myBseQ.data],
+  )
   const manualQ = useBseAttendanceManualRequestsByRecommendation(recommendationId)
   const createAttendance = useCreateBseAttendance()
   const updateAttendance = useUpdateBseAttendance()
@@ -85,6 +100,20 @@ export default function BseAttendance() {
   )
   const isCheckedIn = !!todaysRow?.inTime && !todaysRow?.outTime
   const isCheckedOut = !!todaysRow?.inTime && !!todaysRow?.outTime
+
+  // Anchor for the attendance geofence — captured on the BSE recommendation
+  // when GT proposed this candidate. When null (legacy record with no
+  // coords) the geofence check is skipped further down.
+  const anchor = useMemo(() => {
+    const lat = Number(myBseQ.data?.latitude)
+    const lng = Number(myBseQ.data?.longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+    return { latitude: lat, longitude: lng }
+  }, [myBseQ.data])
+  // Non-blocking gate: if true, the confirm handler will refuse to submit
+  // and the ConfirmDialog will surface the reason.
+  const [geoError, setGeoError] = useState(null)
+  const [geoChecking, setGeoChecking] = useState(false)
 
   const markInTime = useCallback(async () => {
     if (!recommendationId) return
@@ -239,19 +268,72 @@ export default function BseAttendance() {
 
       <ConfirmDialog
         open={!!confirm}
-        onClose={() => setConfirm(null)}
+        onClose={() => { setConfirm(null); setGeoError(null) }}
         onConfirm={async () => {
+          // Geofence gate. Runs only when the BSE recommendation carries
+          // anchor coords — legacy records without coords bypass the check.
+          if (anchor) {
+            setGeoChecking(true)
+            setGeoError(null)
+            try {
+              const here = await getCurrentPosition()
+              const distance = haversineMeters(
+                here.latitude, here.longitude,
+                anchor.latitude, anchor.longitude,
+              )
+              // Temporary diagnostic — helps distinguish real out-of-fence
+              // from desktop WiFi-geolocation drift. Remove once we're
+              // confident the check is behaving correctly on mobile.
+              // eslint-disable-next-line no-console
+              console.log('[geofence]', {
+                anchor,
+                here: {
+                  latitude: here.latitude,
+                  longitude: here.longitude,
+                  accuracy_m: Math.round(here.accuracy),
+                },
+                distance_m: Math.round(distance),
+                radius_m: GEOFENCE_RADIUS_M,
+              })
+              if (distance > GEOFENCE_RADIUS_M) {
+                setGeoError(
+                  `You are ${formatDistance(distance)} from your assigned office `
+                  + `(allowed ${formatDistance(GEOFENCE_RADIUS_M)}, GPS accuracy ±${Math.round(here.accuracy)} m). `
+                  + `Move closer and try again, or file a manual request if you're working from the field today.`,
+                )
+                setGeoChecking(false)
+                return
+              }
+            } catch (err) {
+              const msg = err instanceof GeolocationError
+                ? err.message
+                : 'Could not verify your location. Please try again.'
+              setGeoError(msg)
+              setGeoChecking(false)
+              return
+            }
+            setGeoChecking(false)
+          }
           if (confirm?.kind === 'in') await markInTime()
           else if (confirm?.kind === 'out') await markOutTime()
           setConfirm(null)
+          setGeoError(null)
         }}
-        busy={createAttendance.isPending || updateAttendance.isPending}
-        severity={confirm?.kind === 'out' ? 'warning' : 'success'}
+        busy={createAttendance.isPending || updateAttendance.isPending || geoChecking}
+        severity={geoError ? 'error' : confirm?.kind === 'out' ? 'warning' : 'success'}
         title={confirm?.kind === 'out' ? 'Mark Out Time?' : 'Mark In Time?'}
-        description={confirm?.kind === 'out'
-          ? `Ending your day at ${currentHHMM()}. This will close today's attendance — you can't re-open it once marked.`
-          : `Starting your day at ${currentHHMM()}. This records today as attended.`}
-        confirmLabel={confirm?.kind === 'out' ? 'Mark Out' : 'Mark In'}
+        description={geoError
+          ? geoError
+          : geoChecking
+            ? 'Checking your location…'
+            : anchor
+              ? (confirm?.kind === 'out'
+                ? `Ending your day at ${currentHHMM()}. We'll verify you're within ${formatDistance(GEOFENCE_RADIUS_M)} of your assigned office before marking.`
+                : `Starting your day at ${currentHHMM()}. We'll verify you're within ${formatDistance(GEOFENCE_RADIUS_M)} of your assigned office before marking.`)
+              : (confirm?.kind === 'out'
+                ? `Ending your day at ${currentHHMM()}. This will close today's attendance — you can't re-open it once marked.`
+                : `Starting your day at ${currentHHMM()}. This records today as attended.`)}
+        confirmLabel={geoError ? 'Try again' : (confirm?.kind === 'out' ? 'Mark Out' : 'Mark In')}
       />
 
       <Snackbar open={!!toast.msg} autoHideDuration={3000}

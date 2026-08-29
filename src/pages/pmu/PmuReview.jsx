@@ -33,10 +33,14 @@ function statusColor(status) {
 }
 
 export default function PmuReview() {
-  const { uuid } = useParams()
+  // The route still declares `:uuid` for backwards-compat with old links,
+  // but the value is now the numeric BSE recommendation id (see the
+  // "Replace UUID references with ID" refactor). Alias it locally so the
+  // rest of the file reads naturally.
+  const { uuid: id } = useParams()
   const navigate = useNavigate()
 
-  const bseQ = useBse(uuid)
+  const bseQ = useBse(id)
   const updateM = useUpdateBse()
   const dto = bseQ.data
   const view = useMemo(() => (dto ? fromDto(dto) : null), [dto])
@@ -50,13 +54,13 @@ export default function PmuReview() {
         pmuRecommendationDate: d.date || todayIso(),
         pmuRemarks: d.remarks,
       })
-      await updateM.mutateAsync({ uuid, patch })
+      await updateM.mutateAsync({ id, patch })
       setToast({ severity: 'success', msg: 'PMU recommendation saved.' })
       setTimeout(() => navigate('/gt/pmu/queue'), 900)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Failed to save.' })
     }
-  }, [updateM, uuid, navigate])
+  }, [updateM, id, navigate])
 
   if (bseQ.isLoading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>

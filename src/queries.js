@@ -90,13 +90,17 @@ export const keys = {
   ias: {
     all: ['ias'],
     lists: () => ['ias', 'list'],
-    detail: (id) => ['ias', 'detail', id],
+    // Normalise to string — the id arrives as a number from DTOs (setQueryData
+    // in useApproveIA / useUpdateIA) and as a string from useParams (useIA on
+    // detail pages). Without coercion the two write / read at different
+    // cache slots and the post-approve UI stays stale.
+    detail: (id) => ['ias', 'detail', String(id)],
   },
   appraisals: {
     all: ['appraisals'],
     lists: () => ['appraisals', 'list'],
-    detail: (id) => ['appraisals', 'detail', id],
-    byRegistration: (regId) => ['appraisals', 'byRegistration', regId],
+    detail: (id) => ['appraisals', 'detail', String(id)],
+    byRegistration: (regId) => ['appraisals', 'byRegistration', String(regId)],
   },
   bse: {
     all: ['bse'],
@@ -240,6 +244,9 @@ export function useApproveIA() {
           iaFromDto(updated, prev?.appraisal ?? null),
         )
       }
+      // Also invalidate the detail so any subscriber that happens to hold
+      // a different key shape still re-fetches.
+      qc.invalidateQueries({ queryKey: keys.ias.detail(id) })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
