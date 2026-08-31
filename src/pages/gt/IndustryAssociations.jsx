@@ -53,11 +53,15 @@ function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
   if (ia.status === 'Detailed Pending')
     return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
       onClick={go(`/gt/ias/${ia.id}/sustainability`)} sx={ACTION_SX}>Sustainability</Button>
-  // 'Final Review (L2)' with an appraisal present and not decided by SDE:
-  // GT's part is done for now — the ball is in SDE's court. Fall through
-  // to the default View button rather than surfacing a "Continue" affordance
-  // that implies pending work. If SDE bounces it back, status flips to
-  // 'Changes Requested' and the Revise button below activates.
+  // 'Final Review (L2)' with an appraisal present and not decided by SDE
+  // covers TWO substates: (a) shell freshly created by sustainability, GT
+  // still needs to fill the detailed appraisal; (b) GT already filled, SDE
+  // reviewing. There's no backend flag distinguishing them today, so we
+  // surface one CTA labelled aspirationally ("Complete…") which works in
+  // both cases — GT clicks in and sees whether more work is needed.
+  if (ia.status === 'Final Review (L2)' && ia.appraisal && !ia.appraisal.isSidbeApproved)
+    return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
+      onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Complete Detailed Appraisal</Button>
   if (ia.status === 'Changes Requested')
     return <Button size="small" variant="outlined" color="warning" startIcon={<EditNoteIcon />}
       onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Revise</Button>

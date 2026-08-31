@@ -176,12 +176,19 @@ export default function ProposalDetail({ backPath = '/gt/ias' }) {
                 Revise detailed appraisal
               </Button>
             )}
-            {/* Deliberately no CTA for 'Final Review (L2)' with an un-decided
-                appraisal — GT's part is done and the record is with SDE.
-                Adding a "Continue" here reads as "work still pending", which
-                confuses users looking at a submitted appraisal. Once SDE
-                bounces it back, status flips to 'Changes Requested' and the
-                Revise button above surfaces. */}
+            {/* 'Final Review (L2)' with an un-decided appraisal covers both
+                the freshly-created-shell state (post-sustainability, before
+                GT fills detailed fields) and the "GT done, SDE reviewing"
+                state. No backend flag separates them, so we surface one CTA
+                that works for both — GT can open, complete pending fields
+                or just view what's there. */}
+            {isGt && ia.stage === 1 && ia.status === 'Final Review (L2)'
+              && ia.appraisal && !ia.appraisal.isSidbeApproved && (
+              <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
+                onClick={() => navigate(`/gt/ias/${ia.id}/appraisal`)}>
+                Complete Detailed Appraisal
+              </Button>
+            )}
             {isClusterExpert && ia.appraisal && !ia.appraisal.isSidbeApproved && (
               <Button variant="contained" endIcon={<EastIcon />} sx={{ ml: 'auto' }}
                 onClick={() => navigate(`/sde/ias/${ia.id}/appraisal`)}>
