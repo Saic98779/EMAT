@@ -121,8 +121,11 @@ export function toCreatePayload(values = {}, registrationId = null) {
     cibilRemarks: str(values.cibil_remarks),
 
     ngoDarpanNumber: str(values.ngo_darpan_no),
+    ngoDarpanFile: firstFileName(values.ngo_darpan_file),
     nabardBlacklisted: bool(values.nabard_blacklisted),
+    nabardBlacklistFile: firstFileName(values.nabard_blacklist_file),
 
+    smartReportAvailable: bool(values.smart_verified),
     smartReportReferenceNo: str(values.smart_ref_no),
     smartReportDate: toIsoDate(values.smart_date),
     smartReportRemarks: str(values.smart_remarks),
@@ -130,10 +133,31 @@ export function toCreatePayload(values = {}, registrationId = null) {
     webSearchVerified: bool(values.web_search_verified),
     webSearchDocument: firstFileName(values.web_search_document),
 
-    // Beneficial owner — DTO only has *_remarks columns. Send the user's
-    // remarks text; structured sub-fields (ref no / date / ranking / file)
-    // stay form-only until backend adds columns.
+    // ── IA Office Holder — CIBIL ─────────────────────────────────────────
+    // Backend stores CIBIL Score as a String (validated 300–900 on the
+    // frontend). Coerce to string here so a numeric input still lands.
+    holderCibilReferenceNo: str(values.holder_cibil_ref_no),
+    holderCibilDate: toIsoDate(values.holder_cibil_date),
+    holderCibilScore: str(values.holder_cibil_score),
+    holderCibilRemarks: str(values.holder_cibil_remarks),
+    holderCibilFile: firstFileName(values.holder_cibil_file),
+
+    // ── IA Office Holder — SMART ─────────────────────────────────────────
+    holderSmartAvailable: bool(values.holder_smart_verified),
+    holderSmartDate: toIsoDate(values.holder_smart_date),
+    holderSmartRemarks: str(values.holder_smart_remarks),
+
+    // ── IA Beneficial Owner — CIBIL + SMART ──────────────────────────────
+    // Structured sub-fields now round-trip (backend added the columns).
+    // Remarks were the only field that persisted previously.
+    beneficialOwnerCibilReferenceNo: str(values.owner_cibil_ref_no),
+    beneficialOwnerCibilDate: toIsoDate(values.owner_cibil_date),
+    beneficialOwnerCibilRanking: str(values.owner_cibil_ranking),
+    beneficialOwnerCibilFile: firstFileName(values.owner_cibil_file),
     beneficialOwnerCibilRemarks: str(values.owner_cibil_remarks),
+
+    beneficialOwnerSmartAvailable: bool(values.owner_smart_verified),
+    beneficialOwnerSmartDate: toIsoDate(values.owner_smart_date),
     beneficialOwnerSmartRemarks: str(values.owner_smart_remarks),
 
     // ── Section 8 — SIDBI Branch (autofetched, modifiable) ───────────────
@@ -180,7 +204,13 @@ export function toCreatePayload(values = {}, registrationId = null) {
     projectLocation: str(values.project_location),
 
     // ── Grant + Envisaged (autofetched from IA, modifiable) ──────────────
-    grantProposed: num(values.grant_proposed),
+    // Backend split the old aggregated `grantProposed` column into two:
+    // `grantProposedSalary` (BSE salary allocation) and `grantProposedCapex`
+    // (IA sustainability + training budget). Send both from the two new
+    // form fields. Old `grantProposed` key is no longer a backend column,
+    // so it's not sent — Jackson would drop it anyway.
+    grantProposedSalary: num(values.grant_proposed_salary),
+    grantProposedCapex: num(values.grant_proposed_capex),
     grantDetails: str(values.grant_details),
     envisagedOutput: str(values.envisaged_output),
     envisagedOutcome: str(values.envisaged_outcome),
@@ -251,16 +281,33 @@ export function toFormValues(dto = {}) {
     ngo_darpan_no: dto.ngoDarpanNumber ?? '',
     nabard_blacklisted: dto.nabardBlacklisted == null ? '' : (dto.nabardBlacklisted ? 'yes' : 'no'),
 
+    smart_verified: dto.smartReportAvailable == null ? '' : (dto.smartReportAvailable ? 'yes' : 'no'),
     smart_ref_no: dto.smartReportReferenceNo ?? '',
     smart_date: (dto.smartReportDate ?? '').slice(0, 10),
     smart_remarks: dto.smartReportRemarks ?? '',
 
     web_search_verified: dto.webSearchVerified == null ? '' : (dto.webSearchVerified ? 'yes' : 'no'),
-    // web_search_document is a File input; the DTO holds a filename string
-    // only. We leave the picker empty on load; existing file stays refereced
-    // by the DTO field.
+    // File inputs (ngo_darpan_file, nabard_blacklist_file, holder_cibil_file,
+    // owner_cibil_file, web_search_document) hold a filename string on the
+    // DTO. We leave the picker empty on load — the existing filename stays
+    // on the DTO and displays via the file field's `help` slot.
 
+    // ── IA Office Holder — CIBIL + SMART ─────────────────────────────────
+    holder_cibil_ref_no: dto.holderCibilReferenceNo ?? '',
+    holder_cibil_date: (dto.holderCibilDate ?? '').slice(0, 10),
+    holder_cibil_score: dto.holderCibilScore ?? '',
+    holder_cibil_remarks: dto.holderCibilRemarks ?? '',
+    holder_smart_verified: dto.holderSmartAvailable == null ? '' : (dto.holderSmartAvailable ? 'yes' : 'no'),
+    holder_smart_date: (dto.holderSmartDate ?? '').slice(0, 10),
+    holder_smart_remarks: dto.holderSmartRemarks ?? '',
+
+    // ── IA Beneficial Owner — CIBIL + SMART ──────────────────────────────
+    owner_cibil_ref_no: dto.beneficialOwnerCibilReferenceNo ?? '',
+    owner_cibil_date: (dto.beneficialOwnerCibilDate ?? '').slice(0, 10),
+    owner_cibil_ranking: dto.beneficialOwnerCibilRanking ?? '',
     owner_cibil_remarks: dto.beneficialOwnerCibilRemarks ?? '',
+    owner_smart_verified: dto.beneficialOwnerSmartAvailable == null ? '' : (dto.beneficialOwnerSmartAvailable ? 'yes' : 'no'),
+    owner_smart_date: (dto.beneficialOwnerSmartDate ?? '').slice(0, 10),
     owner_smart_remarks: dto.beneficialOwnerSmartRemarks ?? '',
 
     // ── Section 10 extras ─────────────────────────────────────────────
@@ -339,9 +386,13 @@ export function toFormValues(dto = {}) {
   putBool('secretariat_staff', dto.secretariatStaffAvailable)
   putBool('website', dto.websiteAvailable)
   putBool('paid_services', dto.paidServicesAvailable)
+  putStr('paid_services_details', dto.paidServicesDetails)
 
-  // Grant + Envisaged
-  putNum('grant_proposed', dto.grantProposed)
+  // Grant + Envisaged. Backend now stores salary/capex separately; hydrate
+  // both fields. The legacy aggregated `grantProposed` is no longer sent
+  // by the backend, so fall back to the sum for backward-viewing only.
+  putNum('grant_proposed_salary', dto.grantProposedSalary)
+  putNum('grant_proposed_capex', dto.grantProposedCapex)
   putStr('grant_details', dto.grantDetails)
   putStr('envisaged_output', dto.envisagedOutput)
   putStr('envisaged_outcome', dto.envisagedOutcome)

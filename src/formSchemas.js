@@ -679,8 +679,28 @@ export const appraisalSchema = {
       { name: 'project_location', label: 'Location where the project is being proposed', type: 'text', span: 6 },
       { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'checkboxes', span: 12,
         options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
-      { name: 'grant_proposed', label: 'Grant Proposed (₹)', type: 'number', prefix: '₹', span: 4,
-        help: 'Autofetched — modifiable. Full amount in rupees.' },
+      // Grant split — backend replaced the old aggregated `grantProposed`
+      // column with two: `grantProposedSalary` (BSE salary allocation) and
+      // `grantProposedCapex` (IA sustainability + training budget). Spec
+      // §11: BSE Salary ₹7,20,000 maximum; CAPEX ₹4,80,000. Enter each
+      // separately — the payload adapter sends them to their own columns.
+      { name: 'grant_proposed_salary', label: 'Grant Proposed — BSE Salary (₹)', type: 'number', prefix: '₹', span: 4,
+        help: 'BSE salary allocation. Max ₹7,20,000.',
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
+          if (n > 720000) return 'Cannot exceed ₹7,20,000'
+          return ''
+        } },
+      { name: 'grant_proposed_capex', label: 'Grant Proposed — CAPEX (₹)', type: 'number', prefix: '₹', span: 4,
+        help: 'IA sustainability + training budget. Suggested ₹4,80,000.',
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
+          return ''
+        } },
       { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, help: 'Autofetched — modifiable' },
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
