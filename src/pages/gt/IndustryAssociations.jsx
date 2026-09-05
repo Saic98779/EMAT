@@ -141,17 +141,33 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
             </Button>
             {canInitiate && (
               <>
-                <Button
-                  variant="outlined"
-                  startIcon={<FactCheckOutlinedIcon />}
-                  onClick={() => navigate(isSde ? '/sde/eligibility/new' : '/gt/eligibility/new')}
-                >
-                  Eligibility Matrix
-                </Button>
-                <Button variant="contained" startIcon={<AddIcon />}
-                  onClick={() => navigate(isSde ? '/sde/ias/new' : '/gt/ias/new')}>
-                  In-Principle Approval
-                </Button>
+                {!isSde && (
+                  // GT lands in the new workspace shell — Eligibility is the
+                  // first tab and the entry point for a fresh IA. SDE keeps
+                  // the legacy standalone screen until its own workspace port.
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => navigate('/gt/ias/new/workspace/eligibility')}
+                  >
+                    Start a new IA
+                  </Button>
+                )}
+                {isSde && (
+                  <>
+                    <Button
+                      variant="outlined"
+                      startIcon={<FactCheckOutlinedIcon />}
+                      onClick={() => navigate('/sde/eligibility/new')}
+                    >
+                      Eligibility Matrix
+                    </Button>
+                    <Button variant="contained" startIcon={<AddIcon />}
+                      onClick={() => navigate('/sde/ias/new')}>
+                      In-Principle Approval
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </Stack>

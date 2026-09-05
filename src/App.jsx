@@ -31,6 +31,12 @@ import BseCapexReimbursement from './pages/bse/BseCapexReimbursement'
 import GtCapexReview from './pages/gt/GtCapexReview'
 import EligibilityMatrix from './pages/gt/EligibilityMatrix'
 import SustainabilityMatrix from './pages/gt/SustainabilityMatrix'
+import IaWorkspaceLayout from './components/workspace/IaWorkspaceLayout'
+import EligibilityTab from './pages/gt/workspace/EligibilityTab'
+import {
+  OverviewTab, RegistrationTab, SustainabilityTab, AppraisalTab,
+  DocumentsTab, ActivityTab,
+} from './pages/gt/workspace/tabs'
 import SdeCapexReview from './pages/sde/SdeCapexReview'
 
 import IaDashboard from './pages/ia/IaDashboard'
@@ -124,6 +130,24 @@ export default function App() {
         <Route path="/gt/disbursals" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Disbursals /></DenyRawRoles>} />
         <Route path="/gt/capex" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtCapexReview /></DenyRawRoles>} />
         <Route path="/gt/eligibility/new" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><EligibilityMatrix /></DenyRawRoles>} />
+        {/* IA Workspace — the new anchor pattern. Every stage of an IA
+            (Eligibility, L1, Sustainability, Appraisal…) lives as a tab
+            inside this shell so users navigate context, not disconnected
+            pages. `id === 'new'` runs the shell in draft mode for the
+            initial Eligibility Matrix creation. */}
+        <Route
+          path="/gt/ias/:id/workspace"
+          element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><IaWorkspaceLayout /></DenyRawRoles>}
+        >
+          <Route index element={<Navigate to="eligibility" replace />} />
+          <Route path="overview" element={<OverviewTab />} />
+          <Route path="eligibility" element={<EligibilityTab />} />
+          <Route path="l1" element={<RegistrationTab />} />
+          <Route path="sustainability" element={<SustainabilityTab />} />
+          <Route path="appraisal" element={<AppraisalTab />} />
+          <Route path="documents" element={<DocumentsTab />} />
+          <Route path="activity" element={<ActivityTab />} />
+        </Route>
         <Route path="/gt/pmu/queue" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuQueue /></DenyRawRoles>} />
         <Route path="/gt/pmu/:uuid" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuReview /></DenyRawRoles>} />
       </Route>
