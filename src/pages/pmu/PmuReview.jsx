@@ -48,6 +48,14 @@ export default function PmuReview() {
   const [toast, setToast] = useState({ severity: '', msg: '' })
 
   const savePmu = useCallback(async (d) => {
+    // Guard: bail out before the mutation if the route param never
+    // resolved. Prior to this, a missing id would still fire the PUT
+    // and the backend would reject `/bse-recommendations/undefined`
+    // with a generic 400. Fail fast, tell the user what to do.
+    if (!id) {
+      setToast({ severity: 'error', msg: 'This candidate\'s id is missing — reopen from the PMU queue.' })
+      return
+    }
     try {
       const patch = toUpdatePayload({
         pmuRecommendation: d.recommendation,

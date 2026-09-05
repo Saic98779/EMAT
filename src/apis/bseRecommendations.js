@@ -25,7 +25,17 @@ export function createBseRecommendation(values, registrationId, { signal } = {})
 // PUT update — used by the BSE candidate detail page for review actions
 // (GT / HO / PMU / Committee recommendations, onboarding, etc.). Caller
 // passes a partial patch shaped by `toUpdatePayload`.
+//
+// Guard: reject a missing / falsy id BEFORE the fetch fires. Prior to
+// this, a caller passing `undefined` produced PUT `/bse-recommendations/undefined`
+// which the backend returned as a 400 with no useful message. Fail fast
+// so the bug surfaces here instead of confusing the reviewer.
 export function updateBseRecommendation(id, patch, { signal } = {}) {
+  if (id == null || id === '' || id === 'undefined' || id === 'null') {
+    return Promise.reject(new Error(
+      'BSE recommendation id is missing — refresh the page and open this candidate from the queue again.',
+    ))
+  }
   return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: patch,

@@ -56,6 +56,13 @@ export default function HoBseReview() {
   // Save handlers are `useCallback` so child components never see a fresh
   // prop identity between keystrokes.
   const doSave = useCallback(async (label, patchSource) => {
+    // Guard: bail out before the mutation if the route param never
+    // resolved. Same rationale as PmuReview — prevents PUT to
+    // `/bse-recommendations/undefined` from ever leaving the browser.
+    if (!uuid) {
+      setToast({ severity: 'error', msg: 'This candidate\'s id is missing — reopen from the BSE approvals list.' })
+      return
+    }
     try {
       const patch = toUpdatePayload(patchSource)
       await updateM.mutateAsync({ id: uuid, patch })
