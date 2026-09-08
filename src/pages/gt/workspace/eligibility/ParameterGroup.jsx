@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useRef } from 'react'
 import { Box, Collapse, IconButton, Stack, Tooltip, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
@@ -91,17 +91,22 @@ function ParameterGroup({ title, params, answers, expanded, onToggle, onAnswer }
 
 export default memo(ParameterGroup)
 
-function ParameterRow({ param, value, onAnswer }) {
+const ParameterRow = memo(function ParameterRow({ param, value, onAnswer }) {
   const theme = useTheme()
 
-  const toggle = useCallback(
-    (next) => () => {
-      // Second click on the current answer clears it — matches design's
-      // "cleared" behaviour so users can undo without touching the other.
-      onAnswer(param.key, value === next ? null : next)
-    },
-    [param.key, value, onAnswer],
-  )
+  // Hold the latest value in a ref so the click handlers stay referentially
+  // stable across value changes — otherwise every answer toggle would
+  // invalidate ToggleChip's memoisation and force 44 re-renders per click.
+  const valueRef = useRef(value)
+  valueRef.current = value
+
+  const handleYes = useCallback(() => {
+    onAnswer(param.key, valueRef.current === true ? null : true)
+  }, [param.key, onAnswer])
+
+  const handleNo = useCallback(() => {
+    onAnswer(param.key, valueRef.current === false ? null : false)
+  }, [param.key, onAnswer])
 
   return (
     <Stack
@@ -138,21 +143,21 @@ function ParameterRow({ param, value, onAnswer }) {
         <ToggleChip
           selected={value === true}
           tone="yes"
-          onClick={toggle(true)}
+          onClick={handleYes}
           label="Yes"
         />
         <ToggleChip
           selected={value === false}
           tone="no"
-          onClick={toggle(false)}
+          onClick={handleNo}
           label="No"
         />
       </Stack>
     </Stack>
   )
-}
+})
 
-function ToggleChip({ selected, tone, onClick, label }) {
+const ToggleChip = memo(function ToggleChip({ selected, tone, onClick, label }) {
   const theme = useTheme()
   const activeBg = tone === 'yes' ? theme.palette.success.main : theme.palette.error.main
   return (
@@ -177,4 +182,4 @@ function ToggleChip({ selected, tone, onClick, label }) {
       {label}
     </Box>
   )
-}
+})

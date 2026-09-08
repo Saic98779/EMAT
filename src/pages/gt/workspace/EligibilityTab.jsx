@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Box, Grid, Snackbar, Stack, Typography,
+  Alert, Box, Snackbar, Stack, Typography,
 } from '@mui/material'
-import { categorise, DIMENSIONS, PARAM_KEYS } from '../../../apis/eligibilityMatrix'
+import { categorise, DIMENSIONS, PARAM_KEYS, TIERS } from '../../../apis/eligibilityMatrix'
 import { createIndustryAssociation } from '../../../apis/industryAssociations'
-import { useCreateEligibilityMatrix, keys } from '../../../queries'
+import { STAGE } from '../../../apis/registrationStages'
+import { stageIdForStage } from '../../../apis/stageActions'
+import { useAllStages, useCreateEligibilityMatrix, keys } from '../../../queries'
 import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
 import IdentityFields from './eligibility/IdentityFields'
 import ParameterGroup from './eligibility/ParameterGroup'
 import LiveScorePanel from './eligibility/LiveScorePanel'
+import MatrixSubmitBar from './eligibility/MatrixSubmitBar'
 import ResultView from './eligibility/ResultView'
 import { FIELDS, LABELS, validateAll } from './eligibility/validation'
 
@@ -32,7 +35,7 @@ import { FIELDS, LABELS, validateAll } from './eligibility/validation'
 // parameter is answered — the surrounding form never reaches the
 // backend in a half-filled state.
 
-const INITIAL_HEADER = { industryAssociationName: '', state: '', pan: '', emailId: '' }
+const INITIAL_HEADER = { ia_name: '', state: '', pan_no: '', email: '' }
 const INITIAL_ANSWERS = PARAM_KEYS.reduce((acc, k) => ({ ...acc, [k]: null }), {})
 
 export default function EligibilityTab() {
@@ -40,6 +43,11 @@ export default function EligibilityTab() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const createMatrix = useCreateEligibilityMatrix()
+  // Master stage list — used to translate the ELIGIBILITY_MATRIX stage
+  // enum into the numeric `stageId` the backend expects on the POST.
+  // Without this the backend saves `stageId: null` and stage-history
+  // stays empty, which breaks the workflow timeline downstream.
+  const stagesQ = useAllStages()
 
   // Result mode is entered as soon as the workspace tells us this IA has
   // a saved eligibility record. New IAs land in creation mode.
@@ -79,9 +87,16 @@ export default function EligibilityTab() {
     setAnswers((prev) => (prev[paramKey] === next ? prev : { ...prev, [paramKey]: next }))
   }, [])
 
-  const onToggleGroup = useCallback((title) => () => {
-    setExpanded((prev) => ({ ...prev, [title]: !prev[title] }))
-  }, [])
+  // Pre-bake one toggle handler per dimension so ParameterGroup receives
+  // referentially stable `onToggle` props and skips re-render on unrelated
+  // state changes (identity-field typing, live score updates, etc.).
+  const toggleHandlers = useMemo(
+    () => DIMENSIONS.reduce((acc, d) => {
+      acc[d.title] = () => setExpanded((prev) => ({ ...prev, [d.title]: !prev[d.title] }))
+      return acc
+    }, {}),
+    [],
+  )
 
   // ── Derived state ────────────────────────────────────────────────────
   const { score, tier } = useMemo(() => categorise(answers), [answers])
@@ -103,16 +118,30 @@ export default function EligibilityTab() {
   const [createdIaId, setCreatedIaId] = useState(null)
   const [toast, setToast] = useState(null)
 
+  // Keep every value the submit closure needs in a ref so `submit` itself
+  // stays referentially stable across keystrokes. Otherwise `header` in the
+  // deps would rebuild `submit` on every character and force LiveScorePanel
+  // + MatrixSubmitBar to re-render on each input event.
+  const submitStateRef = useRef({
+    header, allAnswered, createdIaId, iaId: ws.iaId, createMatrix, answers, qc, navigate,
+    allStages: stagesQ.data,
+  })
+  submitStateRef.current = {
+    header, allAnswered, createdIaId, iaId: ws.iaId, createMatrix, answers, qc, navigate,
+    allStages: stagesQ.data,
+  }
+
   const submit = useCallback(async () => {
+    const s = submitStateRef.current
     // Force full validation + touched so any pending errors surface.
-    const errors = validateAll(header)
+    const errors = validateAll(s.header)
     setHeaderErrors(errors)
     setTouched(FIELDS.reduce((acc, f) => ({ ...acc, [f]: true }), {}))
     if (Object.keys(errors).length) {
       setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
       return
     }
-    if (!allAnswered) {
+    if (!s.allAnswered) {
       setToast({ severity: 'warning', msg: 'Answer every parameter before submitting.' })
       return
     }
@@ -123,43 +152,47 @@ export default function EligibilityTab() {
       // eligibility record linked to the returned registrationId. If
       // step 2 fails, remember the created IA id so retry doesn't
       // duplicate the parent record.
-      let regId = createdIaId || ws.iaId
+      // Two stage ids — separate audit rows for the two backend writes:
+      //   • `iaStageId` — base ELIGIBILITY_MATRIX row (IA registration).
+      //   • `matrixStageId` — the *_SUBMITTED sub-stage (matrix filed).
+      // If the backend only exposes one row for the stage, the fallback
+      // in `stageIdForStage` returns the same id for both, which is fine.
+      const iaStageId = stageIdForStage(s.allStages, STAGE.ELIGIBILITY_MATRIX)
+      const matrixStageId = stageIdForStage(s.allStages, STAGE.ELIGIBILITY_MATRIX, 'ELIGIBILITY_MATRIX_SUBMITTED')
+
+      let regId = s.createdIaId || s.iaId
       if (!regId) {
         const resp = await createIndustryAssociation({
-          state: header.state.trim(),
-          industryAssociationName: header.industryAssociationName.trim(),
-          pan: header.pan.trim(),
-          emailId: header.emailId.trim(),
+          state: s.header.state.trim(),
+          ia_name: s.header.ia_name.trim(),
+          pan_no: s.header.pan_no.trim(),
+          email: s.header.email.trim(),
+          stageId: iaStageId,
         })
         regId = resp?.id || resp?.uuid
         if (!regId) throw new Error('IA created but the response was missing an id.')
         setCreatedIaId(regId)
       }
 
-      await createMatrix.mutateAsync({ ...answers, registrationId: regId })
-      qc.invalidateQueries({ queryKey: keys.ias.all, refetchType: 'all' })
+      await s.createMatrix.mutateAsync({
+        ...s.answers,
+        registrationId: regId,
+        stageId: matrixStageId,
+      })
+      s.qc.invalidateQueries({ queryKey: keys.ias.all, refetchType: 'all' })
+      s.qc.invalidateQueries({ queryKey: keys.ias.stageHistory(regId) })
 
       setToast({
         severity: 'success',
         msg: 'Eligibility matrix submitted. Opening the Registration form…',
       })
-      setTimeout(() => navigate(`/gt/ias/${regId}/workspace/l1`), 900)
+      setTimeout(() => s.navigate(`/gt/ias/${regId}/workspace/l1`), 900)
     } catch (err) {
-      const stage = createdIaId ? 'eligibility save' : 'IA creation'
+      const stage = submitStateRef.current.createdIaId ? 'eligibility save' : 'IA creation'
       setToast({ severity: 'error', msg: err?.message || `Failed during ${stage}.` })
     } finally {
       setSubmitting(false)
     }
-  }, [header, allAnswered, createdIaId, ws.iaId, createMatrix, qc, navigate, answers])
-
-  const onSaveDraft = useCallback(() => {
-    // Save-draft support depends on a backend column we don't have yet.
-    // Kept as a real button so the interaction stays discoverable; when
-    // the endpoint ships we swap this handler with the real one.
-    setToast({
-      severity: 'info',
-      msg: 'Save-draft support will land alongside the backend endpoint. Values stay in this session for now.',
-    })
   }, [])
 
   const onContinueFromResult = useCallback(() => {
@@ -174,7 +207,11 @@ export default function EligibilityTab() {
         <ResultView
           score={ws.eligibility.totalScore ?? score}
           tier={tier}
+          tiers={TIERS}
+          dimensions={DIMENSIONS}
           answers={ws.eligibility}
+          continueLabel="Continue to Registration (L1)"
+          continueBody="The next step is your In-Principle Approval form."
           submittedBy={ws.ia?.createdBy}
           submittedAt={ws.ia?.submitted}
           onContinue={onContinueFromResult}
@@ -186,52 +223,71 @@ export default function EligibilityTab() {
 
   return (
     <>
-      <Grid container spacing={{ xs: 4, md: 6 }} alignItems="flex-start">
-        <Grid item xs={12} md={8}>
-          <Stack spacing={5}>
-            <Section title="Association details">
-              <IdentityFields
-                values={header}
-                errors={headerErrors}
-                touched={touched}
-                onChange={setHeaderField}
-                onBlur={setBlur}
-                disabled={submitting}
+      {/* CSS grid: questions on the left, sticky score panel on the right.
+          `alignItems: start` keeps the right column from stretching to
+          match the questions column height — the panel sits at its own
+          intrinsic size and the workspace's white background fills the
+          rest, so there's no visible dead-space rectangle. */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 320px' },
+          columnGap: { xs: 3, md: 5 },
+          rowGap: 4,
+          alignItems: 'start',
+        }}
+      >
+        <Stack spacing={5} sx={{ minWidth: 0 }}>
+          <Section title="Association details">
+            <IdentityFields
+              values={header}
+              errors={headerErrors}
+              touched={touched}
+              onChange={setHeaderField}
+              onBlur={setBlur}
+              disabled={submitting}
+            />
+          </Section>
+
+          <Section
+            title="Eligibility parameters"
+            subtitle={`${answered} of ${PARAM_KEYS.length} answered`}
+          >
+            {DIMENSIONS.map((dim) => (
+              <ParameterGroup
+                key={dim.title}
+                title={dim.title}
+                params={dim.params}
+                answers={answers}
+                expanded={!!expanded[dim.title]}
+                onToggle={toggleHandlers[dim.title]}
+                onAnswer={onAnswer}
               />
-            </Section>
+            ))}
+          </Section>
+        </Stack>
 
-            <Section
-              title="Eligibility parameters"
-              subtitle={`${answered} of ${PARAM_KEYS.length} answered`}
-            >
-              {DIMENSIONS.map((dim) => (
-                <ParameterGroup
-                  key={dim.title}
-                  title={dim.title}
-                  params={dim.params}
-                  answers={answers}
-                  expanded={!!expanded[dim.title]}
-                  onToggle={onToggleGroup(dim.title)}
-                  onAnswer={onAnswer}
-                />
-              ))}
-            </Section>
-          </Stack>
-        </Grid>
+        <LiveScorePanel
+          score={score}
+          tier={tier}
+          tiers={TIERS}
+          answered={answered}
+          total={PARAM_KEYS.length}
+          canSubmit={canSubmit}
+          submitting={submitting}
+          onSubmit={submit}
+        />
+      </Box>
 
-        <Grid item xs={12} md={4}>
-          <LiveScorePanel
-            score={score}
-            tier={tier}
-            answered={answered}
-            total={PARAM_KEYS.length}
-            canSubmit={canSubmit}
-            submitting={submitting}
-            onSubmit={submit}
-            onSaveDraft={onSaveDraft}
-          />
-        </Grid>
-      </Grid>
+      {/* Sticky footer echoes the Submit action so it's reachable no
+          matter which section the user is scrolled to on mobile. */}
+      <MatrixSubmitBar
+        answered={answered}
+        total={PARAM_KEYS.length}
+        canSubmit={canSubmit}
+        submitting={submitting}
+        onSubmit={submit}
+      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </>
@@ -275,10 +331,10 @@ function seedHeaderFromIa(ia) {
   if (!ia?.raw) return null
   const r = ia.raw
   return {
-    industryAssociationName: r.industryAssociationName || '',
+    ia_name: r.industryAssociationName || '',
     state: r.state || '',
-    pan: r.pan || '',
-    emailId: r.emailId || r.apexHolderEmail || '',
+    pan_no: r.panNo || r.pan || '',
+    email: r.email || r.apexHolderEmail || '',
   }
 }
 

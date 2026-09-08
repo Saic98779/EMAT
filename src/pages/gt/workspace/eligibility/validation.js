@@ -1,6 +1,11 @@
 // Validation rules for the Eligibility Matrix identity header. Kept as
 // a pure module so both the field-level onBlur checks and the submit
 // gate can share the same logic without duplicating regexes.
+//
+// Field names deliberately match the snake_case keys that the shared
+// IA payload adapter (`apis/industryAssociations.js#toPayload`) reads —
+// so the form state can be handed to the create/update helper without
+// a rename step.
 
 // Strict formats matching CBDT (PAN) + RFC 5322-lite (email). All inputs
 // are trimmed first; whitespace anywhere in a value is invalid.
@@ -8,13 +13,13 @@ const PAN_RE = /^[A-Z]{5}\d{4}[A-Z]$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const HAS_WHITESPACE_RE = /\s/
 
-export const FIELDS = ['industryAssociationName', 'state', 'pan', 'emailId']
+export const FIELDS = ['ia_name', 'state', 'pan_no', 'email']
 
 export const LABELS = {
-  industryAssociationName: 'IA name',
+  ia_name: 'IA name',
   state: 'State',
-  pan: 'PAN',
-  emailId: 'Primary contact email',
+  pan_no: 'PAN',
+  email: 'Primary contact email',
 }
 
 // Field-level validator — returns an error string, or empty string for OK.
@@ -23,7 +28,7 @@ export function validateField(name, raw) {
   const value = raw == null ? '' : String(raw).trim()
 
   switch (name) {
-    case 'industryAssociationName':
+    case 'ia_name':
       if (!value) return 'Required'
       if (value.length < 3) return 'At least 3 characters'
       if (value.length > 120) return 'Under 120 characters'
@@ -33,7 +38,7 @@ export function validateField(name, raw) {
       if (!value) return 'Pick a state'
       return ''
 
-    case 'pan': {
+    case 'pan_no': {
       if (!value) return 'Required'
       if (HAS_WHITESPACE_RE.test(value)) return 'No spaces allowed'
       if (value.length !== 10) return '10 characters required'
@@ -41,7 +46,7 @@ export function validateField(name, raw) {
       return ''
     }
 
-    case 'emailId':
+    case 'email':
       if (!value) return 'Required'
       if (HAS_WHITESPACE_RE.test(value)) return 'No spaces allowed'
       if (!EMAIL_RE.test(value)) return 'Not a valid email'
@@ -67,11 +72,11 @@ export function validateAll(values = {}) {
 export function normaliseInput(name, raw) {
   const s = raw == null ? '' : String(raw)
   switch (name) {
-    case 'pan':
+    case 'pan_no':
       return s.replace(HAS_WHITESPACE_RE, '').toUpperCase()
-    case 'emailId':
+    case 'email':
       return s.replace(HAS_WHITESPACE_RE, '')
-    case 'industryAssociationName':
+    case 'ia_name':
     case 'state':
     default:
       // Strip leading whitespace on type; trailing kept until blur so the

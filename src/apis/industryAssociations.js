@@ -27,14 +27,33 @@ export function updateIndustryAssociation(id, values, extra = {}, { signal } = {
   })
 }
 
-// PATCH approve — SDE flips the record to L1-approved. Backend expects an
-// `ApprovalRequest`: { isSidbeApproved: boolean } — same field name as on
-// the response DTO. Pass `false` to explicitly reject when the backend
-// starts honouring it.
-export function approveIndustryAssociation(id, { isSidbeApproved = true } = {}, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(id)}/approve`, {
-    method: 'PATCH',
-    body: { isSidbeApproved },
+// Reviewer decision — SDE (or any reviewer) records their outcome on the
+// IA at a specific sub-stage.
+//
+// Backend note (verified 2026-09-08): the dedicated PATCH `/approve`
+// endpoint sets the sidbeApproved flag but *ignores* `stageId` — it does
+// not advance `currentStage` and writes no stage-history row. The main
+// PUT `/{id}` endpoint, when sent `{ isSidbeApproved, stageId,
+// stageComments }` (and nothing else), does everything atomically:
+//   • records isSidbeApproved
+//   • advances currentStage to the sub-stage identified by stageId
+//   • appends a stage-history row with the comments (comments required
+//     for reject / revert per backend contract; frontend gates that)
+//   • preserves every other field on the record (merge, not replace)
+// So we PUT here — that keeps a single, reliable code path for every
+// reviewer action across the workflow.
+export function approveIndustryAssociation(
+  id,
+  { isSidbeApproved = true, stageId = null, stageComments = null } = {},
+  { signal } = {},
+) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: {
+      isSidbeApproved,
+      ...(stageId != null ? { stageId } : null),
+      ...(stageComments != null ? { stageComments } : null),
+    },
     signal,
   })
 }
@@ -142,6 +161,13 @@ export function toPayload(v = {}) {
     envisagedOutcome: str(v.envisaged_outcome),
     envisagedImpact: str(v.envisaged_impact),
     sde: str(v.select_sde),
+    // Workflow stamp — tells the backend which sub-stage this write puts
+    // the IA into so it can append a stage-history row. Resolved by the
+    // caller from `useAllStages()` + `stageIdForStage(...)`. Both fields
+    // are optional; omitted keys leave the backend's default behaviour
+    // (no history row) untouched.
+    ...(v.stageId != null ? { stageId: v.stageId } : null),
+    ...(v.stageComments ? { stageComments: String(v.stageComments) } : null),
   }
 }
 
@@ -265,49 +291,34 @@ function toIsoDate(v) {
 // advance to "Final Review (L2)" or "Approved" — pass `null`/undefined for a
 // registration-only view.
 //
-// Status vocabulary (used by StatusChip colour + row-action mapping):
-//   "Basic · In Review"  → registration submitted, SDE hasn't approved L1
-//   "Detailed Pending"   → L1 approved, detailed appraisal not yet submitted
-//   "Final Review (L2)"  → detailed appraisal submitted, SDE hasn't sanctioned
-//   "Approved"           → L2 sanctioned
-//   "Changes Requested"  → reserved (backend flag not exposed yet)
+// Status vocabulary — the labels shown in StatusChip on the IA list and
+// used by the row-action switch. As of Sep '26 the source of truth is
+// the backend's `currentStage` string; the old flag-based derivation is
+// kept as a fallback for records that predate the new column.
+//
+//   "Basic · In Review"                → GT is still filling the record
+//   "Screened · Awaiting In-Principle" → eligibility matrix done, L1 form pending
+//   "In-Principle · Awaiting SDE"      → GT submitted L1, SDE hasn't decided
+//   "Rejected (L1)" | "Rejected (L2)"  → terminal rejects
+//   "Changes Requested"                → sent back for revisions (any level)
+//   "Detailed Pending"                 → L1 approved, appraisal not started
+//   "Sustainability · Submitted"       → GT submitted sustainability matrix
+//   "Action Plan · With CE"            → GT submitted action plan, CE reviewing
+//   "Final Review (L2)"                → appraisal submitted, SDE reviewing
+//   "L2 · With CE"                     → SDE approved L2, CE commenting
+//   "L2 · With HO Maker"               → CE done, HO Maker reviewing
+//   "Panel · Submitted"                → after HO, panel review
+//   "Documentation"                    → workflow complete, documenting IA
+//   "Approved"                         → HO Maker gave final sign-off
 export function fromDto(dto, appraisal = null) {
-  const l1Approved = dto.isSidbeApproved === true
-  // Only treat `false` as rejected when the SDE actually recorded a
-  // rejection (audit user is stamped). Backend regressed Aug '26 to
-  // default new GT records to `isSidbeApproved: false` (not `null`),
-  // which without this guard would misclassify every fresh submission
-  // as "Rejected (L1)". Once backend restores null-default (or strips
-  // the field from POST), this guard becomes a no-op.
-  const l1Rejected = dto.isSidbeApproved === false && dto.sidbeApprovedByUserId != null
-  const hasAppraisal = !!appraisal
-  const l2Approved = appraisal?.isSidbeApproved === true
-  const l2Rejected = appraisal?.isSidbeApproved === false
-  // Backend added Aug '26: true once the GT eligibility matrix has been
-  // submitted for this IA, false while the record only carries the
-  // matrix-header stub (name / PAN / email / state) and the full
-  // In-Principle profile still needs to be filled.
-  //
-  // Naming preserved as-is (backend spelling is `isEligibleMatricsAdded`),
-  // but exposed on the internal shape as `eligibilityMatrixAdded` for
-  // readability. Both are available on `.raw` if you need the raw key.
   const eligibilityMatrixAdded = dto.isEligibleMatricsAdded === true
 
-  let status, stage
-  if (l1Rejected) { status = 'Rejected (L1)'; stage = 0 }
-  else if (l1Approved) {
-    if (l2Rejected) { status = 'Rejected (L2)'; stage = 1 }
-    else if (!hasAppraisal) { status = 'Detailed Pending'; stage = 1 }
-    else if (!l2Approved) { status = 'Final Review (L2)'; stage = 1 }
-    else { status = 'Approved'; stage = 2 }
-  }
-  // Not yet L1-approved. Split into two sub-states so the GT queue can
-  // separate "screened only" from "full application submitted".
-  else if (eligibilityMatrixAdded && !dto.apexHolderName) {
-    status = 'Screened · Awaiting In-Principle'; stage = 0
-  } else {
-    status = 'Basic · In Review'; stage = 0
-  }
+  const derived = statusFromCurrentStage(dto.currentStage)
+    || statusFromLegacyFlags({ dto, appraisal, eligibilityMatrixAdded })
+  const { status, stage } = derived
+  const l1Approved = dto.currentStage
+    ? isL1ApprovedSubStage(dto.currentStage)
+    : dto.isSidbeApproved === true
 
   return {
     id: dto.id,
@@ -321,6 +332,11 @@ export function fromDto(dto, appraisal = null) {
     branch: dto.sidbiBranch || '—',
     status,
     stage,
+    // Backend sometimes emits `"STAGE.SUB_STAGE"` and sometimes just
+    // `"SUB_STAGE"` — collapse to the bare key so downstream code doing
+    // straight `===` checks (row action, workflow derivation) works
+    // regardless of which shape came back.
+    currentStage: stripStagePrefix(dto.currentStage) || null,
     est: yearOf(dto.incorporationDate),
     address: [dto.district, dto.pincode].filter(Boolean).join(' · ') || '—',
     apex: {
@@ -341,6 +357,103 @@ export function fromDto(dto, appraisal = null) {
     raw: dto,
     appraisal,
   }
+}
+
+// Map from the backend `currentStage` string to the internal status label
+// + numeric stage. Keys can be either a top-level stage enum (for stages
+// with no sub-stages, like ELIGIBILITY_MATRIX and DOCUMENTATION_OF_IA) or
+// a sub-stage enum. Anything not listed here falls through to the legacy
+// flag-based derivation.
+const CURRENT_STAGE_TO_STATUS = {
+  ELIGIBILITY_MATRIX:                              { status: 'Screened · Awaiting In-Principle', stage: 0 },
+
+  IN_PRINCIPLE_APPROVAL_OF_IA_SUBMITTED:           { status: 'In-Principle · Awaiting SDE',      stage: 0 },
+  IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL:        { status: 'Detailed Pending',                 stage: 1 },
+  IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REJECTED:        { status: 'Rejected (L1)',                    stage: 0 },
+  IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REVERTED:        { status: 'Changes Requested',                stage: 0 },
+
+  SUSTAINABILITY_MATRIX_SUBMITTED:                 { status: 'Sustainability · Submitted',       stage: 1 },
+
+  ACTION_PLAN_SUBMITTED:                           { status: 'Action Plan · With CE',            stage: 1 },
+  CLUSTER_EXPERT_APPROVED:                         { status: 'Detailed Pending',                 stage: 1 },
+  CLUSTER_EXPERT_REVERTED:                         { status: 'Changes Requested',                stage: 1 },
+
+  DETAILED_APPRAISAL_SUBMITTED:                    { status: 'Final Review (L2)',                stage: 1 },
+  DETAILED_APPRAISAL_APPROVAL_BY_SDE:              { status: 'L2 · With CE',                     stage: 1 },
+  DETAILED_APPRAISAL_REJECTED_BY_SDE:              { status: 'Rejected (L2)',                    stage: 1 },
+  DETAILED_APPRAISAL_REVERTED_BY_SDE:              { status: 'Changes Requested',                stage: 1 },
+  DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED:        { status: 'L2 · With HO Maker',               stage: 1 },
+  DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER:         { status: 'Approved',                         stage: 2 },
+  DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER:         { status: 'Rejected (HO)',                    stage: 1 },
+  DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER:         { status: 'Changes Requested',                stage: 1 },
+  DETAILED_APPRAISAL_SUBMITTED_BY_PANEL:           { status: 'Panel · Submitted',                stage: 1 },
+
+  DOCUMENTATION_OF_IA:                             { status: 'Documentation',                    stage: 2 },
+}
+
+// Sub-stages that indicate L1 has been granted — used by the trail
+// builder to decide whether to render the "L1 Approved" trail entry.
+const L1_APPROVED_SUBSTAGES = new Set([
+  'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
+  'SUSTAINABILITY_MATRIX_SUBMITTED',
+  'ACTION_PLAN_SUBMITTED',
+  'CLUSTER_EXPERT_APPROVED',
+  'CLUSTER_EXPERT_REVERTED',
+  'DETAILED_APPRAISAL_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
+  'DETAILED_APPRAISAL_REJECTED_BY_SDE',
+  'DETAILED_APPRAISAL_REVERTED_BY_SDE',
+  'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_SUBMITTED_BY_PANEL',
+  'DOCUMENTATION_OF_IA',
+])
+
+// Backend inconsistency: some endpoints emit the current stage as the
+// bare sub-stage enum ("IN_PRINCIPLE_APPROVAL_OF_IA_SUBMITTED"), others
+// as the dotted "STAGE.SUB_STAGE" form. Strip the leading `STAGE.` so
+// both callers see the same lookup key.
+function stripStagePrefix(raw) {
+  if (!raw || typeof raw !== 'string') return raw
+  const dot = raw.indexOf('.')
+  return dot >= 0 ? raw.slice(dot + 1) : raw
+}
+
+function isL1ApprovedSubStage(currentStage) {
+  return L1_APPROVED_SUBSTAGES.has(stripStagePrefix(currentStage))
+}
+
+function statusFromCurrentStage(currentStage) {
+  if (!currentStage) return null
+  return CURRENT_STAGE_TO_STATUS[stripStagePrefix(currentStage)] || null
+}
+
+// Fallback for records created before the backend added `currentStage` —
+// derives the same status vocabulary from the legacy flag columns so old
+// rows keep rendering the correct chip.
+function statusFromLegacyFlags({ dto, appraisal, eligibilityMatrixAdded }) {
+  const l1Approved = dto.isSidbeApproved === true
+  // Only treat `false` as rejected when the SDE actually recorded a
+  // rejection (audit user is stamped). Backend regressed Aug '26 to
+  // default new GT records to `isSidbeApproved: false` (not `null`).
+  const l1Rejected = dto.isSidbeApproved === false && dto.sidbeApprovedByUserId != null
+  const hasAppraisal = !!appraisal
+  const l2Approved = appraisal?.isSidbeApproved === true
+  const l2Rejected = appraisal?.isSidbeApproved === false
+
+  if (l1Rejected) return { status: 'Rejected (L1)', stage: 0 }
+  if (l1Approved) {
+    if (l2Rejected) return { status: 'Rejected (L2)', stage: 1 }
+    if (!hasAppraisal) return { status: 'Detailed Pending', stage: 1 }
+    if (!l2Approved) return { status: 'Final Review (L2)', stage: 1 }
+    return { status: 'Approved', stage: 2 }
+  }
+  if (eligibilityMatrixAdded && !dto.apexHolderName) {
+    return { status: 'Screened · Awaiting In-Principle', stage: 0 }
+  }
+  return { status: 'Basic · In Review', stage: 0 }
 }
 
 function buildTrail(dto, approved) {

@@ -25,49 +25,100 @@ import { useAuth } from '../../auth'
 // dominates the table.
 const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 
+// Backend sometimes hands back an opaque id (numeric primary key, UUID,
+// or a dev sentinel like "hyd-branch-uuid") in fields that should display
+// a human name — until the name-resolving query hydrates. Show '—' in
+// that intermediate state instead of leaking the raw id into the UI.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function isLikelyId(v) {
+  if (v == null) return true
+  const s = String(v).trim()
+  if (!s) return true
+  if (/^\d+$/.test(s)) return true                              // numeric primary key
+  if (UUID_RE.test(s)) return true                              // UUID
+  if (/-uuid$/i.test(s)) return true                            // dev sentinel: hyd-branch-uuid
+  if (/^[a-z0-9]{16,}$/i.test(s) && !/\s/.test(s)) return true  // long opaque token
+  return false
+}
+
+// Contextual primary action per IA row. Each button routes into the IA
+// workspace on the appropriate tab so users land where their work is.
+// Both GT and SDE workspaces use the same tab slugs — the `basePath`
+// keeps navigation inside the caller's role.
 function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
   const go = (path) => (e) => { e.stopPropagation(); navigate(path) }
-  // Cluster Expert's only job on an IA is to add comments on the appraisal
-  // form. The generic View button lands on the read-only ProposalDetail —
-  // which doesn't expose the comment fields — so route them straight to
-  // the appraisal page (matches the CE Dashboard's own IA link).
-  const view = isClusterExpert && ia.appraisal
-    ? (
+  // Workspace base for THIS IA's detail — `/gt/ias/123/workspace` etc.
+  const ws = (tab) => `${basePath}/${ia.id}/workspace/${tab}`
+  const workspaceBase = basePath.startsWith('/gt') ? '/gt' : '/sde'
+
+  // Cluster Expert only ever comments on the appraisal — send them
+  // straight to that tab instead of the generic overview.
+  if (isClusterExpert && ia.appraisal) {
+    return (
       <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
-        onClick={go(`/sde/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Review & Comment</Button>
+        onClick={go(`${workspaceBase}/ias/${ia.id}/workspace/appraisal`)} sx={ACTION_SX}>
+        Review & Comment
+      </Button>
     )
-    : (
-      <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
-        onClick={go(`${basePath}/${ia.id}`)} sx={ACTION_SX}>View</Button>
+  }
+
+  const view = (
+    <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
+      onClick={go(ws('overview'))} sx={ACTION_SX}>View</Button>
+  )
+
+  // Stage-driven CTAs. Prefer the enum from `ia.currentStage` when we
+  // have it; fall back to the status string so pre-workflow records still
+  // render a sensible button.
+  const cs = ia.currentStage || ''
+  const st = ia.status || ''
+
+  // GT still needs to complete the L1 form.
+  if (cs === 'ELIGIBILITY_MATRIX' || st === 'Screened · Awaiting In-Principle')
+    return (
+      <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
+        onClick={go(ws('l1'))} sx={ACTION_SX}>Complete In-Principle</Button>
     )
-  // "Complete In-Principle" applies on both workspaces (GT and SDE both
-  // initiate IAs). Route via `basePath` so we stay in the caller's
-  // workspace — hardcoding /gt bounces SDE via the Protected guard.
-  if (ia.status === 'Screened · Awaiting In-Principle')
-    return <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
-      onClick={go(`${basePath}/${ia.id}/in-principle`)} sx={ACTION_SX}>Complete In-Principle</Button>
+
   if (!basePath.startsWith('/gt')) return view
-  // 'Detailed Pending' means In-Principle is approved and no appraisal
-  // record exists yet. GT's next step is Sustainability, which creates the
-  // appraisal shell (flipping status to 'Final Review (L2)').
-  if (ia.status === 'Detailed Pending')
-    return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
-      onClick={go(`/gt/ias/${ia.id}/sustainability`)} sx={ACTION_SX}>Sustainability</Button>
-  // 'Final Review (L2)' with an appraisal present and not decided by SDE
-  // covers TWO substates: (a) shell freshly created by sustainability, GT
-  // still needs to fill the detailed appraisal; (b) GT already filled, SDE
-  // reviewing. There's no backend flag distinguishing them today, so we
-  // surface one CTA labelled aspirationally ("Complete…") which works in
-  // both cases — GT clicks in and sees whether more work is needed.
-  if (ia.status === 'Final Review (L2)' && ia.appraisal && !ia.appraisal.isSidbeApproved)
-    return <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
-      onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Complete Detailed Appraisal</Button>
-  if (ia.status === 'Changes Requested')
-    return <Button size="small" variant="outlined" color="warning" startIcon={<EditNoteIcon />}
-      onClick={go(`/gt/ias/${ia.id}/appraisal`)} sx={ACTION_SX}>Revise</Button>
-  if (ia.status === 'Approved')
-    return <Button size="small" variant="outlined" color="primary" startIcon={<PaymentsOutlinedIcon />}
-      onClick={go(`/gt/ias/${ia.id}/capex`)} sx={ACTION_SX}>Disburse</Button>
+
+  // Reviewer sent it back — GT needs to revise.
+  if (cs.endsWith('_REVERTED') || cs.endsWith('_REJECTED') || st === 'Changes Requested') {
+    // Route to the tab that owns the reverted stage so GT lands in the
+    // right form. Fallback: L1.
+    const tab = cs.startsWith('DETAILED_APPRAISAL') ? 'appraisal'
+      : cs.startsWith('ACTION_PLAN') ? 'appraisal'
+      : cs.startsWith('SUSTAINABILITY') ? 'sustainability'
+      : 'l1'
+    return (
+      <Button size="small" variant="outlined" color="warning" startIcon={<EditNoteIcon />}
+        onClick={go(ws(tab))} sx={ACTION_SX}>Revise</Button>
+    )
+  }
+
+  // L1 done → GT's next step is Sustainability.
+  if (cs === 'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL' || st === 'Detailed Pending')
+    return (
+      <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
+        onClick={go(ws('sustainability'))} sx={ACTION_SX}>Sustainability</Button>
+    )
+
+  // Detailed appraisal work is open — GT should keep filling it.
+  if (cs === 'SUSTAINABILITY_MATRIX_SUBMITTED' || cs === 'ACTION_PLAN_SUBMITTED'
+      || (st === 'Final Review (L2)' && ia.appraisal && !ia.appraisal.isSidbeApproved)) {
+    return (
+      <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
+        onClick={go(ws('appraisal'))} sx={ACTION_SX}>Complete Detailed Appraisal</Button>
+    )
+  }
+
+  // Fully approved — hand-off to disbursement (still legacy route for now).
+  if (st === 'Approved')
+    return (
+      <Button size="small" variant="outlined" color="primary" startIcon={<PaymentsOutlinedIcon />}
+        onClick={go(`/gt/ias/${ia.id}/capex`)} sx={ACTION_SX}>Disburse</Button>
+    )
+
   return view
 }
 
@@ -216,7 +267,11 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                   <Mono>{[ia.city, ia.state].filter((x) => x && x !== '—').join(' · ') || '—'}</Mono>
                 </TableCell>
                 <TableCell><Typography variant="body2">{ia.sector}</Typography></TableCell>
-                <TableCell><Typography variant="body2">{branchNameById.get(ia.branch) || ia.branch}</Typography></TableCell>
+                <TableCell>
+                  <Typography variant="body2">
+                    {branchNameById.get(ia.branch) || (ia.branch && !isLikelyId(ia.branch) ? ia.branch : '—')}
+                  </Typography>
+                </TableCell>
                 <TableCell><StatusChip status={ia.status} /></TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">

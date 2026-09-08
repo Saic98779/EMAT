@@ -2,29 +2,37 @@ import { memo, useState } from 'react'
 import { Box, Button, Collapse, LinearProgress, Stack, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { alpha, useTheme } from '@mui/material/styles'
-import { DIMENSIONS, TIERS } from '../../../../apis/eligibilityMatrix'
 
 // ResultView
 // ────────────────────────────────────────────────────────────────────────
-// Read-only view rendered on the Eligibility tab once the matrix has
-// been submitted. Everything hero-first: giant score → tier chip →
-// per-dimension breakdown → collapsed answer list → continue CTA.
+// Read-only view rendered on any scoring-matrix tab (Eligibility,
+// Sustainability) once the matrix has been submitted. Everything
+// hero-first: giant score → tier chip → per-dimension breakdown →
+// collapsed answer list → continue CTA.
 //
-// Props
+// Props (all data-driven — no imports from a specific matrix module)
 //   score               0..100
-//   tier                { label, color } from TIERS
+//   tier                { label, color } from `tiers`
+//   tiers               [{ min, label, color }]  — sorted descending by min
+//   dimensions          [{ title, params: [{ key, label, ... }] }]
 //   answers             Map of paramKey → true | false | null
+//   continueLabel       Label for the "Continue to …" CTA button
+//   continueBody        Sub-text below the CTA title
 //   submittedBy         String — actor display name
 //   submittedAt         String — human-readable timestamp
-//   onContinue          () => void — advances to Registration L1 tab
-function ResultView({ score, tier, answers = {}, submittedBy, submittedAt, onContinue }) {
+//   onContinue          () => void — advances to the next stage tab
+function ResultView({
+  score, tier, tiers = [], dimensions = [], answers = {},
+  continueLabel = 'Continue', continueBody = '',
+  submittedBy, submittedAt, onContinue,
+}) {
   const theme = useTheme()
   const [answersOpen, setAnswersOpen] = useState(false)
 
-  const activeTier = tier || TIERS[TIERS.length - 1]
+  const activeTier = tier || tiers[tiers.length - 1] || { label: '—', color: 'info' }
   const tierPalette = theme.palette[activeTier.color] || theme.palette.info
 
-  const perDimension = DIMENSIONS.map((d) => {
+  const perDimension = dimensions.map((d) => {
     const total = d.params.length
     const yes = d.params.filter((p) => answers[p.key] === true).length
     return {
@@ -107,7 +115,7 @@ function ResultView({ score, tier, answers = {}, submittedBy, submittedAt, onCon
       </Box>
 
       {/* Collapsible answer list */}
-      <Box sx={{ mt: 4, maxWidth: 820 }}>
+      <Box sx={{ mt: 4 }}>
         <Box
           component="button"
           type="button"
@@ -139,7 +147,7 @@ function ResultView({ score, tier, answers = {}, submittedBy, submittedAt, onCon
         </Box>
         <Collapse in={answersOpen} unmountOnExit>
           <Stack>
-            {DIMENSIONS.flatMap((d) => d.params.map((p) => ({ ...p, dim: d.title }))).map((p) => (
+            {dimensions.flatMap((d) => d.params.map((p) => ({ ...p, dim: d.title }))).map((p) => (
               <AnswerRow key={p.key} param={p} value={answers[p.key]} />
             ))}
           </Stack>
@@ -158,17 +166,18 @@ function ResultView({ score, tier, answers = {}, submittedBy, submittedAt, onCon
           alignItems: 'center',
           gap: 2.5,
           flexWrap: 'wrap',
-          maxWidth: 820,
         }}
       >
         <Box sx={{ flex: '1 1 320px', minWidth: 260 }}>
-          <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Continue to Registration (L1)</Typography>
-          <Typography sx={{ fontSize: 13, color: theme.palette.text.secondary, mt: 0.5 }}>
-            The next step is your In-Principle Approval form.
-          </Typography>
+          <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{continueLabel}</Typography>
+          {continueBody && (
+            <Typography sx={{ fontSize: 13, color: theme.palette.text.secondary, mt: 0.5 }}>
+              {continueBody}
+            </Typography>
+          )}
         </Box>
         <Button variant="contained" disableElevation onClick={onContinue}>
-          Open L1 form
+          Open
         </Button>
       </Box>
     </Box>

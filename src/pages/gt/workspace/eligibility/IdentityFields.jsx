@@ -1,122 +1,92 @@
-import { memo, useCallback } from 'react'
-import { MenuItem, Stack, TextField, Typography } from '@mui/material'
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
-import { alpha, useTheme } from '@mui/material/styles'
+import { memo, useMemo, useRef } from 'react'
+import { Box, MenuItem, TextField } from '@mui/material'
 import { STATES } from '../../../../geo'
+import { stackedLabelSx } from '../../../../components/workspace/formStyles'
 import { LABELS, normaliseInput, validateField } from './validation'
+
+const FIELD_NAMES = ['ia_name', 'state', 'pan_no', 'email']
 
 // IdentityFields
 // ────────────────────────────────────────────────────────────────────────
 // The four seed fields at the top of the Eligibility Matrix tab:
-// IA Name · State · PAN · Primary contact email. These same values
-// pre-fill the L1 Registration form later — the caption below reminds
-// the user of that so they don't wonder why we're asking twice.
+// IA Name · State · PAN · Primary contact email.
 //
-// Fully controlled: parent owns `values` + `errors` maps, and provides
-// `onChange(name, nextValue)` and `onBlur(name)` handlers. Live typing
-// runs through `normaliseInput` to strip disallowed whitespace inline;
-// blur triggers full field validation via `validateField`.
+// Layout uses an auto-fit CSS grid (min 240px per column) so the row
+// wraps naturally — IA name / State / PAN sit in row 1 on a normal
+// screen, the email drops to row 2 alone.
+//
+// Fully controlled: parent owns `values` + `errors` maps and provides
+// `onChange(name, nextValue)` and `onBlur(name, error)` handlers. Live
+// typing runs through `normaliseInput` to strip disallowed whitespace
+// inline; blur triggers full field validation via `validateField`.
 function IdentityFields({ values, errors, touched, onChange, onBlur, disabled = false }) {
-  const theme = useTheme()
+  // Ref-mirror `values` so per-field blur handlers can read the latest value
+  // without re-materialising on every keystroke — otherwise each TextField
+  // gets fresh onChange/onBlur props each render and reconciles its input.
+  const valuesRef = useRef(values)
+  valuesRef.current = values
 
-  const handleChange = useCallback(
-    (name) => (e) => {
-      const next = normaliseInput(name, e.target.value)
-      onChange(name, next)
-    },
-    [onChange],
+  const handlers = useMemo(
+    () => FIELD_NAMES.reduce((acc, name) => {
+      acc[name] = {
+        onChange: (e) => onChange(name, normaliseInput(name, e.target.value)),
+        onBlur: () => onBlur(name, validateField(name, valuesRef.current[name])),
+      }
+      return acc
+    }, {}),
+    [onChange, onBlur],
   )
 
-  const handleBlur = useCallback(
-    (name) => () => {
-      onBlur(name, validateField(name, values[name]))
-    },
-    [onBlur, values],
-  )
+  const commonProps = (name) => ({
+    value: values[name] || '',
+    onChange: handlers[name].onChange,
+    onBlur: handlers[name].onBlur,
+    error: !!(touched[name] && errors[name]),
+    helperText: touched[name] && errors[name] ? errors[name] : undefined,
+    disabled,
+    size: 'small',
+    fullWidth: true,
+  })
 
   return (
-    <Stack spacing={2}>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        useFlexGap
-        sx={{ '& > *': { flex: 1 } }}
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fit, minmax(240px, 1fr))' },
+        columnGap: 3,
+        rowGap: 2.25,
+        ...stackedLabelSx,
+      }}
+    >
+      <TextField
+        {...commonProps('ia_name')}
+        label={LABELS.ia_name}
+        inputProps={{ maxLength: 120 }}
+      />
+      <TextField
+        {...commonProps('state')}
+        label={LABELS.state}
+        select
       >
-        <TextField
-          label={LABELS.industryAssociationName}
-          value={values.industryAssociationName || ''}
-          onChange={handleChange('industryAssociationName')}
-          onBlur={handleBlur('industryAssociationName')}
-          error={!!(touched.industryAssociationName && errors.industryAssociationName)}
-          helperText={(touched.industryAssociationName && errors.industryAssociationName) || ' '}
-          disabled={disabled}
-          size="small"
-          fullWidth
-          inputProps={{ maxLength: 120 }}
-        />
-        <TextField
-          label={LABELS.state}
-          value={values.state || ''}
-          onChange={handleChange('state')}
-          onBlur={handleBlur('state')}
-          error={!!(touched.state && errors.state)}
-          helperText={(touched.state && errors.state) || ' '}
-          disabled={disabled}
-          select
-          size="small"
-          fullWidth
-        >
-          {STATES.map((s) => (
-            <MenuItem key={s} value={s}>{s}</MenuItem>
-          ))}
-        </TextField>
-      </Stack>
-
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        useFlexGap
-        sx={{ '& > *': { flex: 1 } }}
-      >
-        <TextField
-          label={LABELS.pan}
-          value={values.pan || ''}
-          onChange={handleChange('pan')}
-          onBlur={handleBlur('pan')}
-          error={!!(touched.pan && errors.pan)}
-          helperText={(touched.pan && errors.pan) || 'Format: AAAAA9999A'}
-          disabled={disabled}
-          size="small"
-          fullWidth
-          inputProps={{
-            maxLength: 10,
-            style: { fontFamily: 'ui-monospace, "Roboto Mono", monospace', letterSpacing: '0.03em' },
-          }}
-        />
-        <TextField
-          label={LABELS.emailId}
-          value={values.emailId || ''}
-          onChange={handleChange('emailId')}
-          onBlur={handleBlur('emailId')}
-          error={!!(touched.emailId && errors.emailId)}
-          helperText={(touched.emailId && errors.emailId) || ' '}
-          disabled={disabled}
-          size="small"
-          fullWidth
-          type="email"
-          inputProps={{ maxLength: 254 }}
-        />
-      </Stack>
-
-      <Stack direction="row" alignItems="center" spacing={0.75}
-        sx={{ color: alpha(theme.palette.text.primary, 0.55), fontSize: 12.5 }}
-      >
-        <InfoOutlinedIcon sx={{ fontSize: 15 }} />
-        <Typography variant="caption" sx={{ fontSize: 12.5 }}>
-          These fields will pre-fill your Registration form later.
-        </Typography>
-      </Stack>
-    </Stack>
+        {STATES.map((s) => (
+          <MenuItem key={s} value={s}>{s}</MenuItem>
+        ))}
+      </TextField>
+      <TextField
+        {...commonProps('pan_no')}
+        label={LABELS.pan_no}
+        inputProps={{
+          maxLength: 10,
+          style: { fontFamily: 'ui-monospace, "Roboto Mono", monospace', letterSpacing: '0.03em' },
+        }}
+      />
+      <TextField
+        {...commonProps('email')}
+        label={LABELS.email}
+        type="email"
+        inputProps={{ maxLength: 254 }}
+      />
+    </Box>
   )
 }
 
