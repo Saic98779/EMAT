@@ -190,6 +190,11 @@ export function toPayload(v = {}) {
     payload[k] = v[k] === true ? true : v[k] === false ? false : null
   }
   payload.totalScore = computeScore(v)
+  // stageId tells the backend which sub-stage this submission advances the
+  // IA into so it can append a stage-history row. Resolved at call time
+  // from the master `/stages` list (see `stageActions.stageIdForStage`).
+  if (v.stageId != null) payload.stageId = v.stageId
+  if (v.stageComments) payload.stageComments = String(v.stageComments)
   return payload
 }
 

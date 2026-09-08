@@ -243,7 +243,19 @@ export default function AppLayout() {
         </Drawer>
       </Box>
 
-      <Box component="main" sx={{ flexGrow: 1, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, minWidth: 0 }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          minWidth: 0,
+          // App content sits on a clean white surface — cards + form
+          // containers supply their own borders / elevation as needed.
+          // Overrides the root Box's `background.default` gray for this
+          // main column only (sidebar keeps its own chrome).
+          bgcolor: '#fff',
+        }}
+      >
         <Toolbar />
         <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1280, mx: 'auto' }}>
           <Outlet />

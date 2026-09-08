@@ -28,12 +28,17 @@ export const iconMap = {
 
 // Maps a domain status string to a MUI palette color.
 export function statusColor(status) {
-  const s = status.toLowerCase()
-  if (s.includes('approved') || s.includes('disbursed') || s.includes('sanction') || s.includes('completed')) return 'success'
+  const s = String(status || '').toLowerCase()
+  // Terminal outcomes — highest priority.
   if (s.includes('reject')) return 'error'
-  if (s.includes('change') || s.includes('revise')) return 'secondary'
-  if (s.includes('final') || s.includes('sidbi') || s.includes('l2') || s.includes('scheduled') || s.includes('submitted') || s.includes('screened') || s.includes('awaiting')) return 'info'
-  if (s.includes('pending') || s.includes('review') || s.includes('action') || s.includes('l1') || s.includes('disburse')) return 'warning'
+  if (s === 'approved' || s.includes('disbursed') || s.includes('sanction') || s.includes('completed')) return 'success'
+  // Reviewer-attention states (SDE / CE / HO / Panel currently holds it).
+  if (s.includes('change') || s.includes('revise') || s.includes('revert')) return 'secondary'
+  if (s.includes('final') || s.includes('l2') || s.includes('with ce') || s.includes('with ho') || s.includes('with sde')) return 'info'
+  // GT-hand-off / submission states.
+  if (s.includes('submitted') || s.includes('screened') || s.includes('awaiting') || s.includes('sidbi')) return 'info'
+  // GT still working on it.
+  if (s.includes('pending') || s.includes('review') || s.includes('action plan') || s.includes('l1') || s.includes('documentation')) return 'warning'
   return 'default'
 }
 

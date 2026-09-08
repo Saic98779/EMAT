@@ -1,7 +1,7 @@
 import { memo, useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import {
   Box, Card, Grid, Stack, Typography, TextField, MenuItem, InputAdornment,
-  ToggleButtonGroup, ToggleButton, Avatar, Divider, RadioGroup, FormControlLabel,
+  ToggleButtonGroup, ToggleButton, Avatar, RadioGroup, FormControlLabel,
   Radio, FormGroup, Checkbox, Button, Chip, LinearProgress,
   Table, TableHead, TableBody, TableRow, TableCell, IconButton,
 } from '@mui/material'
@@ -70,6 +70,25 @@ export function fieldError(f, value, values, { showRequired = false } = {}) {
   const p = f.pattern || (f.type === 'email' && PATTERNS.email) || (f.type === 'tel' && PATTERNS.phone)
   if (p && !p.re.test(String(trimmed))) return p.msg
   return ''
+}
+
+// Inline whitespace guard applied on every keystroke of a text-ish input.
+// Two behaviours by field type:
+//   • Identifier-like (email, tel, pattern-locked text like PAN/PIN/UUID):
+//     strip ALL whitespace — these shouldn't contain spaces at all.
+//   • Free text / textarea: strip leading whitespace, collapse consecutive
+//     internal whitespace to a single space. Trailing whitespace is left
+//     alone while the caret is inside the field (so the user can hit space
+//     between words) and cleaned up on blur (see handleBlur).
+// Numbers / dates / selects skip this path entirely.
+export function normaliseWhitespace(f, raw) {
+  if (typeof raw !== 'string') return raw
+  const type = f?.type || 'text'
+  // Fields where whitespace is never legal.
+  const noWs = type === 'email' || type === 'tel' || f?.pattern
+  if (noWs) return raw.replace(/\s+/g, '')
+  // Free text / textarea — no leading, and collapse runs of whitespace.
+  return raw.replace(/^\s+/, '').replace(/\s{2,}/g, ' ')
 }
 
 const optsOf = (f, values) => (f.optionsFrom ? f.optionsFrom(values) : f.options) || []
@@ -414,12 +433,23 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     return <CoordinatesCapture f={f} changeFor={changeFor} />
   }
   if (f.type === 'subheading') {
+    // Modernised section subhead — no yellow overline. Sits like a
+    // divider-with-title above the following field cluster.
     return (
       <Grid size={12}>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.5 }}>
-          <Typography variant="overline" color="secondary.dark" sx={{ whiteSpace: 'nowrap' }}>{f.label}</Typography>
-          <Divider sx={{ flexGrow: 1 }} />
-        </Stack>
+        <Box sx={{ mt: 1.5, pt: 1.75, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Typography
+            sx={{
+              fontSize: 11.5,
+              fontWeight: 700,
+              color: 'text.secondary',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+            }}
+          >
+            {f.label}
+          </Typography>
+        </Box>
       </Grid>
     )
   }
@@ -504,8 +534,8 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     )
   }
   if (f.type === 'computed') {
-    // `plain: true` on a field opts out of the yellow "auto-calculated" tint
-    // — use it for mirrored/passthrough values that shouldn't scream.
+    // `plain: true` opts out of the auto-calculated affordance entirely
+    // — use it for mirrored / passthrough values that shouldn't stand out.
     const plain = f.plain === true
     return (
       <Grid size={{ xs: 12, sm: f.span || 4 }}>
@@ -514,13 +544,18 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
             ? undefined
             : (
               <InputAdornment position="start">
-                {f.prefix ? <Typography color="secondary.dark" fontWeight={700}>{f.prefix}</Typography> : <FunctionsIcon fontSize="small" color="secondary" />}
+                {f.prefix
+                  ? <Typography sx={{ color: 'text.secondary', fontWeight: 600 }}>{f.prefix}</Typography>
+                  : <FunctionsIcon fontSize="small" sx={{ color: 'text.disabled' }} />}
               </InputAdornment>
             ) }}
           helperText={plain ? f.help : 'Auto-calculated'}
           sx={plain
             ? undefined
-            : { '& .MuiInputBase-input': { fontWeight: 700, color: 'secondary.dark' }, '& .MuiInputBase-root': { bgcolor: 'secondary.light' } }} />
+            : {
+                '& .MuiInputBase-input': { fontWeight: 600, color: 'text.primary' },
+                '& .MuiInputBase-root': { bgcolor: 'action.hover' },
+              }} />
       </Grid>
     )
   }
@@ -557,7 +592,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   // browser spin arrows can't sneak `-1` in. Empty string is allowed
   // (user is mid-edit); anything else is coerced to its absolute value
   // (matches the "no negatives" rule the theme's onKeyDown enforces on
-  // typing). Non-number fields fall through unchanged.
+  // typing). Non-number fields fall through the whitespace normaliser.
   const handleChange = isNumber
     ? (e) => {
         const raw = e.target.value
@@ -566,7 +601,15 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         if (!Number.isFinite(n)) { onChange(''); return }
         onChange(n < 0 ? String(Math.abs(n)) : raw)
       }
-    : (e) => onChange(e.target.value)
+    : (e) => onChange(normaliseWhitespace(f, e.target.value))
+  // Trim residual trailing whitespace on blur so a saved value never
+  // has a lingering space at the end (leading and internal doubles are
+  // already blocked while typing by `normaliseWhitespace`).
+  const handleBlur = isNumber ? undefined : () => {
+    const cur = value ?? ''
+    const trimmed = typeof cur === 'string' ? cur.replace(/\s+$/, '') : cur
+    if (trimmed !== cur) onChange(trimmed)
+  }
 
   return (
     <Grid size={{ xs: 12, sm: f.span || 6 }}>
@@ -583,6 +626,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         select={isSelect && !lockedSelect}
         value={lockedSelect ? labelOfOption(options, selVal) : selVal}
         onChange={handleChange}
+        onBlur={handleBlur}
         // Number inputs increment on mouse wheel by default (browser
         // behavior). That's a footgun on long forms — a user scrolling
         // the page over a focused amount field silently changes the
@@ -679,8 +723,17 @@ const ProgressCard = memo(function ProgressCard({ doneCount, total, pct, accent 
 
 // One section = one memoized unit. Only re-renders when a value it actually
 // reads has changed, so typing in section A leaves sections B..H untouched.
+//
+// `chrome`
+//   'full'     — big gradient header with icon + step counter + done chip,
+//                fields wrapped in a Card. Legacy default; used by pages that
+//                render every section stacked.
+//   'minimal'  — no card, no header, no chip. Parent owns those. Useful for
+//                the new workspace tabs which supply their own section
+//                title + subtitle + step context above the fields.
 const SectionCard = memo(function SectionCard({
   sec, values, done, accent, total, changeFor, verifyFor, optionsCacheRef, showAllErrors,
+  chrome = 'full',
 }) {
   const Icon = sectionIcon(sec.title)
 
@@ -690,21 +743,27 @@ const SectionCard = memo(function SectionCard({
     return f.sum.reduce((a, n) => a + (parseFloat(values[n]) || 0), 0)
   }
 
+  const isMinimal = chrome === 'minimal'
+  const Wrapper = isMinimal ? Box : Card
+  const wrapperSx = isMinimal ? {} : { overflow: 'hidden' }
+
   return (
-    <Card sx={{ overflow: 'hidden' }}>
-      <Stack direction="row" alignItems="center" spacing={1.5}
-        sx={{ px: 2.5, py: 1.5, background: (t) => `linear-gradient(90deg, ${alpha(t.palette[accent].main, 0.1)}, ${alpha(t.palette[accent].main, 0.02)})`, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Avatar sx={{ bgcolor: `${accent}.main`, color: '#fff', width: 34, height: 34 }}><Icon sx={{ fontSize: 19 }} /></Avatar>
-        <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>Step {sec.n} of {total}</Typography>
-          <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>{sec.title}</Typography>
-        </Box>
-        {done
-          ? <Chip size="small" color="success" icon={<CheckCircleIcon />} label="Done" sx={{ fontWeight: 700 }} />
-          : <Chip size="small" variant="outlined" label="Pending" sx={{ color: 'text.secondary' }} />}
-      </Stack>
-      <Box sx={{ p: { xs: 2, md: 2.5 } }}>
-        {sec.desc && <Typography variant="body2" color="text.secondary" mb={2}>{sec.desc}</Typography>}
+    <Wrapper sx={wrapperSx}>
+      {!isMinimal && (
+        <Stack direction="row" alignItems="center" spacing={1.5}
+          sx={{ px: 2.5, py: 1.5, background: (t) => `linear-gradient(90deg, ${alpha(t.palette[accent].main, 0.1)}, ${alpha(t.palette[accent].main, 0.02)})`, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Avatar sx={{ bgcolor: `${accent}.main`, color: '#fff', width: 34, height: 34 }}><Icon sx={{ fontSize: 19 }} /></Avatar>
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>Step {sec.n} of {total}</Typography>
+            <Typography variant="subtitle1" fontWeight={700} lineHeight={1.2}>{sec.title}</Typography>
+          </Box>
+          {done
+            ? <Chip size="small" color="success" icon={<CheckCircleIcon />} label="Done" sx={{ fontWeight: 700 }} />
+            : <Chip size="small" variant="outlined" label="Pending" sx={{ color: 'text.secondary' }} />}
+        </Stack>
+      )}
+      <Box sx={{ p: isMinimal ? 0 : { xs: 2, md: 2.5 } }}>
+        {sec.desc && !isMinimal && <Typography variant="body2" color="text.secondary" mb={2}>{sec.desc}</Typography>}
         {/*
           alignItems="flex-start" keeps siblings top-aligned even when one
           field (uploader, error message, etc.) grows tall — otherwise MUI's
@@ -747,13 +806,14 @@ const SectionCard = memo(function SectionCard({
           })}
         </Grid>
       </Box>
-    </Card>
+    </Wrapper>
   )
 }, function sectionPropsEqual(prev, next) {
   if (prev.sec !== next.sec) return false
   if (prev.done !== next.done) return false
   if (prev.accent !== next.accent) return false
   if (prev.total !== next.total) return false
+  if (prev.chrome !== next.chrome) return false
   if (prev.changeFor !== next.changeFor) return false
   if (prev.verifyFor !== next.verifyFor) return false
   if (prev.optionsCacheRef !== next.optionsCacheRef) return false
@@ -766,7 +826,16 @@ const SectionCard = memo(function SectionCard({
   return true
 })
 
-export default function FormRenderer({ schema, accent = 'primary', values, setValue, showAllErrors = false }) {
+// `chrome`
+//   'full'    — legacy layout: progress card at top + each section wrapped
+//               in a gradient-header Card. Used by standalone form pages.
+//   'minimal' — no progress card, no section headers, no per-section Card.
+//               Used by the new workspace tabs which supply their own
+//               section header + stepper + submit UX around the fields.
+export default function FormRenderer({
+  schema, accent = 'primary', values, setValue,
+  showAllErrors = false, chrome = 'full',
+}) {
   // Cache one callback per field name so identities survive re-renders. Ref is
   // used (not useMemo) because we want the closure to always read the latest
   // setValue without invalidating each entry.
@@ -800,9 +869,11 @@ export default function FormRenderer({ schema, accent = 'primary', values, setVa
   const doneCount = useMemo(() => dones.reduce((n, d) => n + (d ? 1 : 0), 0), [dones])
   const pct = Math.round((doneCount / total) * 100)
 
+  const isMinimal = chrome === 'minimal'
+
   return (
     <Stack spacing={2}>
-      <ProgressCard doneCount={doneCount} total={total} pct={pct} accent={accent} />
+      {!isMinimal && <ProgressCard doneCount={doneCount} total={total} pct={pct} accent={accent} />}
       {schema.sections.map((sec, i) => (
         <SectionCard
           key={sec.n}
@@ -811,6 +882,7 @@ export default function FormRenderer({ schema, accent = 'primary', values, setVa
           done={dones[i]}
           accent={accent}
           total={total}
+          chrome={chrome}
           changeFor={changeFor}
           verifyFor={verifyFor}
           optionsCacheRef={optionsCacheRef}

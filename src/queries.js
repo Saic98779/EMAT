@@ -21,6 +21,11 @@ import {
   fromDto as iaFromDto,
 } from './apis/industryAssociations'
 import {
+  listAllStages,
+  getStageHistory,
+  listRegistrationsByStage,
+} from './apis/registrationStages'
+import {
   listAppraisals,
   getAppraisal,
   getAppraisalByRegistration,
@@ -95,6 +100,11 @@ export const keys = {
     // detail pages). Without coercion the two write / read at different
     // cache slots and the post-approve UI stays stale.
     detail: (id) => ['ias', 'detail', String(id)],
+    stageHistory: (id) => ['ias', 'stageHistory', String(id)],
+    byStage: (stageId) => ['ias', 'byStage', String(stageId)],
+  },
+  registrationStages: {
+    all: ['registrationStages', 'all'],
   },
   appraisals: {
     all: ['appraisals'],
@@ -231,41 +241,79 @@ export function useIA(id, options = {}) {
   })
 }
 
+// PATCH approve — reviewer stamps a decision at a specific sub-stage.
+// Accepts the same `{ isSidbeApproved, stageId, stageComments }` shape as
+// the underlying API helper.
+//
+// `stageId`      — id of the sub-stage this decision applies to (from
+//                  `useAllStages()`). Optional for the legacy L1-approval
+//                  path where backend still infers the sub-stage.
+// `stageComments`— reviewer's remarks. Required for reject / revert flows
+//                  per backend contract; frontend gates that separately.
 export function useApproveIA() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, isSidbeApproved = true }) =>
-      approveIndustryAssociation(id, { isSidbeApproved }),
-    onSuccess: (updated, { id }) => {
-      // Push the response into the detail cache immediately so the page
-      // reflects the new state without another network round-trip.
-      if (updated) {
-        qc.setQueryData(keys.ias.detail(id), (prev) =>
-          iaFromDto(updated, prev?.appraisal ?? null),
-        )
-      }
-      // Also invalidate the detail so any subscriber that happens to hold
-      // a different key shape still re-fetches.
-      qc.invalidateQueries({ queryKey: keys.ias.detail(id) })
+    mutationFn: ({ id, isSidbeApproved = true, stageId, stageComments }) =>
+      approveIndustryAssociation(id, { isSidbeApproved, stageId, stageComments }),
+    onSuccess: (_updated, { id }) => {
+      // Backend note: the PATCH /approve response body is stale — it
+      // reflects the record state *before* the write, not after. Feeding
+      // that stale DTO into the detail cache would make the page flash
+      // pre-write data. Just invalidate and let the next GET show the
+      // truth. Same pattern applies to every write hook below.
+      qc.invalidateQueries({ queryKey: keys.ias.stageHistory(id) })
+      qc.invalidateQueries({ queryKey: keys.ias.detail(id), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
 
-// SDE edit — PUT the full IA registration. Used pre-L1-approval to correct
-// any field GT captured. On success we swap the detail cache with the
-// returned DTO so the review page shows the edits without a re-fetch.
+// ── Stage / sub-stage workflow ──────────────────────────────────────────
+
+// Master list of every stage/sub-stage the backend knows about. Small
+// static payload — cached for a long time so the workflow renderer
+// doesn't refetch it on every workspace open.
+export function useAllStages() {
+  return useQuery({
+    queryKey: keys.registrationStages.all,
+    queryFn: ({ signal }) => listAllStages({ signal }),
+    staleTime: 60 * 60 * 1000, // 1h — this list changes with backend deploys, not user actions
+    gcTime: 24 * 60 * 60 * 1000,
+  })
+}
+
+// Per-IA audit trail — every sub-stage transition in ascending time order.
+// Drives the workflow tracker's sub-stage completion state and the
+// stage-history timeline.
+export function useStageHistory(registrationId) {
+  return useQuery({
+    queryKey: keys.ias.stageHistory(registrationId),
+    enabled: registrationId != null && registrationId !== 'new',
+    queryFn: ({ signal }) => getStageHistory(registrationId, { signal }),
+  })
+}
+
+// Every IA currently sitting at a given sub-stage — feeds reviewer queues.
+export function useRegistrationsByStage(stageId) {
+  return useQuery({
+    queryKey: keys.ias.byStage(stageId),
+    enabled: stageId != null,
+    queryFn: ({ signal }) => listRegistrationsByStage(stageId, { signal }),
+  })
+}
+
+// SDE edit / L1 submit — PUT the full IA registration. Backend's PUT
+// response body is stale (returns pre-write state), so we never seed the
+// cache from `updated`. Just invalidate detail + list + stage-history and
+// let the next GET show the freshly-persisted record.
 export function useUpdateIA() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, values, extra }) => updateIndustryAssociation(id, values, extra),
-    onSuccess: (updated, { id }) => {
-      if (updated) {
-        qc.setQueryData(keys.ias.detail(id), (prev) =>
-          iaFromDto(updated, prev?.appraisal ?? null),
-        )
-      }
+    onSuccess: (_updated, { id }) => {
+      qc.invalidateQueries({ queryKey: keys.ias.detail(id), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.ias.stageHistory(id) })
     },
   })
 }
@@ -305,32 +353,36 @@ export function useAppraisalByRegistration(regId) {
 // GT submits the detailed appraisal for the first time. On success we
 // invalidate the parent IA (status flips to "Final Review (L2)") + lists.
 // registrationId is read from the *request* body — we can't rely on the
-// response echoing it back.
+// response echoing it back. Backend's write responses are stale, so we
+// invalidate everywhere and let the next GET show truth.
 export function useCreateAppraisal() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body) => createAppraisal(body),
-    onSuccess: (created, body) => {
-      const regId = body?.registrationId || created?.registrationId
-      if (created && regId) qc.setQueryData(keys.appraisals.byRegistration(regId), created)
-      qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
-      if (regId) qc.invalidateQueries({ queryKey: keys.ias.detail(regId) })
+    onSuccess: (_created, body) => {
+      const regId = body?.registrationId
+      qc.invalidateQueries({ queryKey: keys.appraisals.all, refetchType: 'all' })
+      if (regId) {
+        qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(regId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.detail(regId), refetchType: 'all' })
+      }
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
   })
 }
 
 // GT revises an existing appraisal (or Cluster Expert adds comments).
-// registrationId preferred from the request; falls back to response.
 export function useUpdateAppraisal() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, body }) => updateAppraisal(id, body),
-    onSuccess: (updated, { id, body }) => {
-      const regId = body?.registrationId || updated?.registrationId
-      if (updated) qc.setQueryData(keys.appraisals.detail(id), appraisalFromDto(updated))
-      if (updated && regId) qc.setQueryData(keys.appraisals.byRegistration(regId), updated)
-      if (regId) qc.invalidateQueries({ queryKey: keys.ias.detail(regId) })
+    onSuccess: (_updated, { id, body }) => {
+      const regId = body?.registrationId
+      qc.invalidateQueries({ queryKey: keys.appraisals.detail(id), refetchType: 'all' })
+      if (regId) {
+        qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(regId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.detail(regId), refetchType: 'all' })
+      }
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
@@ -338,18 +390,18 @@ export function useUpdateAppraisal() {
 }
 
 // SDE grants L2 sanction. Callers should pass `registrationId` in the
-// variables so we can invalidate the parent IA even if the response omits
-// it. `registrationId` is optional but strongly recommended.
+// variables so we can invalidate the parent IA even if the response omits it.
 export function useApproveAppraisal() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, isSidbeApproved = true }) =>
       approveAppraisal(id, { isSidbeApproved }),
-    onSuccess: (updated, { id, registrationId }) => {
-      const regId = registrationId || updated?.registrationId
-      if (updated) qc.setQueryData(keys.appraisals.detail(id), appraisalFromDto(updated))
-      if (updated && regId) qc.setQueryData(keys.appraisals.byRegistration(regId), updated)
-      if (regId) qc.invalidateQueries({ queryKey: keys.ias.detail(regId) })
+    onSuccess: (_updated, { id, registrationId }) => {
+      qc.invalidateQueries({ queryKey: keys.appraisals.detail(id), refetchType: 'all' })
+      if (registrationId) {
+        qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(registrationId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.detail(registrationId), refetchType: 'all' })
+      }
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
@@ -810,9 +862,10 @@ export function useUpdateEligibilityMatrix() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, values }) => updateEligibilityMatrix(id, values),
-    onSuccess: (updated, { id }) => {
-      if (updated) qc.setQueryData(keys.eligibility.detail(id), updated)
-      qc.invalidateQueries({ queryKey: keys.eligibility.all })
+    onSuccess: (_updated, { id }) => {
+      // Backend write responses are stale — invalidate and refetch.
+      qc.invalidateQueries({ queryKey: keys.eligibility.detail(id), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.eligibility.all, refetchType: 'all' })
     },
   })
 }
@@ -866,9 +919,10 @@ export function useUpdateSustainabilityMatrix() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, values }) => updateSustainabilityMatrix(id, values),
-    onSuccess: (updated, { id }) => {
-      if (updated) qc.setQueryData(keys.sustainability.detail(id), updated)
-      qc.invalidateQueries({ queryKey: keys.sustainability.all })
+    onSuccess: (_updated, { id }) => {
+      // Backend write responses are stale — invalidate and refetch.
+      qc.invalidateQueries({ queryKey: keys.sustainability.detail(id), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.sustainability.all, refetchType: 'all' })
     },
   })
 }
