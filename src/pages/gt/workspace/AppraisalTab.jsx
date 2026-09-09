@@ -51,11 +51,27 @@ export default function AppraisalTab() {
 function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
   const appraisalQ = useAppraisalByRegistration(ws.iaId)
 
-  // Reviewer path: SDE / CE / HO Maker arriving at their turn on L2. Only
-  // render the review surface when an appraisal actually exists — until
-  // GT has submitted, there's nothing to review.
   const decisions = ws.decisionsForCurrent || []
-  const isReviewer = decisions.length > 0 && !!appraisalQ.data?.id
+  const appraisal = appraisalQ.data
+
+  // Reviewer path: SDE / CE / HO Maker arriving at their turn on L2.
+  const isReviewer = decisions.length > 0 && !!appraisal?.id
+
+  // GT-locked path: appraisal is submitted (or beyond) and this viewer
+  // has no reviewer decisions to make. Show a summary banner instead of
+  // the editable form so GT isn't looking at their own submission
+  // thinking it never went through. Detect "submitted" from the
+  // Submission sub-row on the L2 stage (mirrors the L1 lock in
+  // RegistrationTab — parent-stage status alone would flag as locked
+  // the moment the appraisal shell exists).
+  const l2Stage = ws.workflow?.stages?.find((s) => s.key === STAGE.DETAILED_APPRAISAL)
+  const submissionSub = (l2Stage?.subStages || []).find(
+    (s) => s.label === 'Detailed Appraisal Submission',
+  )
+  const l2Submitted = submissionSub?.status === STATUS.IN_PROGRESS
+    || submissionSub?.status === STATUS.COMPLETED
+  const l2Approved = l2Stage?.status === STATUS.COMPLETED
+  const isGtLocked = !isReviewer && !!appraisal?.id && l2Submitted
 
   if (appraisalQ.isLoading) {
     return (
@@ -71,10 +87,16 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
         <AppraisalReviewView
           iaId={ws.iaId}
           iaName={ws.ia?.name}
-          appraisal={appraisalQ.data}
+          appraisal={appraisal}
           viewerRole={ws.viewerRole}
           decisions={decisions}
           onDone={(result) => result && setToast(result)}
+        />
+      ) : isGtLocked ? (
+        <SubmittedBanner
+          approved={l2Approved}
+          submittedOn={appraisal?.updatedAt || appraisal?.createdAt}
+          submittedBy={appraisal?.updatedBy || appraisal?.createdBy}
         />
       ) : (
         <>
@@ -100,6 +122,79 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
       </Snackbar>
     </>
   )
+}
+
+// Bold hero-sized banner shown to GT once they've submitted the L2
+// appraisal. Same visual language as the L1 SubmittedBanner in
+// RegistrationTab — makes it obvious the submission landed and GT no
+// longer has anything to do here until the reviewer chain responds.
+function SubmittedBanner({ approved, submittedOn, submittedBy }) {
+  const theme = useTheme()
+  const tone = approved ? theme.palette.success : theme.palette.info
+  const title = approved ? 'Detailed Appraisal approved' : 'Submitted for L2 review'
+  const body = approved
+    ? 'The SDE / HO Maker chain has cleared this appraisal.'
+    : 'This appraisal is now with the SDE for review. You’ll see the outcome here as soon as it’s recorded.'
+  return (
+    <Box
+      sx={{
+        mt: 2,
+        borderRadius: 2,
+        border: 1,
+        borderColor: alpha(tone.main, 0.35),
+        background: alpha(tone.main, 0.07),
+        px: { xs: 3, md: 5 },
+        py: { xs: 4, md: 6 },
+        textAlign: 'center',
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: { xs: 24, md: 32 },
+          fontWeight: 800,
+          letterSpacing: '-0.02em',
+          color: tone.dark,
+          lineHeight: 1.15,
+        }}
+      >
+        {title}
+      </Typography>
+      <Typography
+        sx={{
+          mt: 1.5,
+          fontSize: { xs: 14, md: 15.5 },
+          color: theme.palette.text.secondary,
+          maxWidth: 640,
+          mx: 'auto',
+        }}
+      >
+        {body}
+      </Typography>
+      {(submittedBy || submittedOn) && (
+        <Typography
+          sx={{
+            mt: 3,
+            fontSize: 12.5,
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: theme.palette.text.disabled,
+          }}
+        >
+          {submittedBy ? `Filed by ${submittedBy}` : ''}
+          {submittedBy && submittedOn ? ' · ' : ''}
+          {submittedOn ? formatDate(submittedOn) : ''}
+        </Typography>
+      )}
+    </Box>
+  )
+}
+
+function formatDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.valueOf())) return ''
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function Header() {
