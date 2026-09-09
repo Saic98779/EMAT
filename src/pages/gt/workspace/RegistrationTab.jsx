@@ -200,7 +200,7 @@ function RegistrationForm({ ws }) {
   )
 
   // ── Submit ───────────────────────────────────────────────────────────
-  const { submit, submitting, toast, clearToast } = useRegistrationSubmit({ iaId: ws.iaId })
+  const { submit, submitting, toast, clearToast } = useRegistrationSubmit({ iaId: ws.iaId, basePath: ws.basePath })
   // Reviewer decision toast — separate from GT's submit toast so a
   // reviewer's Approve/Reject feedback surfaces even when the tab isn't
   // in submit-mode. Same Snackbar renders both.

@@ -124,11 +124,11 @@ export default function EligibilityTab() {
   // + MatrixSubmitBar to re-render on each input event.
   const submitStateRef = useRef({
     header, allAnswered, createdIaId, iaId: ws.iaId, createMatrix, answers, qc, navigate,
-    allStages: stagesQ.data,
+    allStages: stagesQ.data, basePath: ws.basePath || '/gt',
   })
   submitStateRef.current = {
     header, allAnswered, createdIaId, iaId: ws.iaId, createMatrix, answers, qc, navigate,
-    allStages: stagesQ.data,
+    allStages: stagesQ.data, basePath: ws.basePath || '/gt',
   }
 
   const submit = useCallback(async () => {
@@ -186,7 +186,7 @@ export default function EligibilityTab() {
         severity: 'success',
         msg: 'Eligibility matrix submitted. Opening the Registration form…',
       })
-      setTimeout(() => s.navigate(`/gt/ias/${regId}/workspace/l1`), 900)
+      setTimeout(() => s.navigate(`${s.basePath}/ias/${regId}/workspace/l1`), 900)
     } catch (err) {
       const stage = submitStateRef.current.createdIaId ? 'eligibility save' : 'IA creation'
       setToast({ severity: 'error', msg: err?.message || `Failed during ${stage}.` })
@@ -197,7 +197,7 @@ export default function EligibilityTab() {
 
   const onContinueFromResult = useCallback(() => {
     if (!ws.iaId) return
-    navigate(`/gt/ias/${ws.iaId}/workspace/l1`)
+    navigate(`${ws.basePath || '/gt'}/ias/${ws.iaId}/workspace/l1`)
   }, [navigate, ws.iaId])
 
   // ── Render ──────────────────────────────────────────────────────────

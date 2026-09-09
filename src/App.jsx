@@ -25,7 +25,7 @@ import BseDisbursals from './pages/bse/BseDisbursals'
 import RaiseDisbursal from './pages/bse/RaiseDisbursal'
 import BseCapexReimbursement from './pages/bse/BseCapexReimbursement'
 import GtCapexReview from './pages/gt/GtCapexReview'
-import IaWorkspaceLayout from './components/workspace/IaWorkspaceLayout'
+import IaWorkspaceLayout, { WorkspaceIndexRedirect } from './components/workspace/IaWorkspaceLayout'
 import {
   OverviewTab, EligibilityTab, RegistrationTab, SustainabilityTab,
   AppraisalTab, DocumentsTab, ActivityTab,
@@ -95,18 +95,22 @@ function DenyRawRoles({ roles, to = '/sde', children }) {
 // Redirects the deprecated per-stage GT routes into their new IA-workspace
 // tab. Keeps deep links + old-page navigation working while the tabs
 // migrate one by one — only ported stages get redirected, everything else
-// keeps hitting the legacy page.
-function GtLegacyToWorkspace({ tab }) {
+// keeps hitting the legacy page. If `tab` is null, we route to the bare
+// `/workspace` which triggers the workflow-aware index redirect (lands
+// the user on their next actionable stage, not a stale default).
+function GtLegacyToWorkspace({ tab = null }) {
   const { id } = useParams()
-  return <Navigate to={`/gt/ias/${id}/workspace/${tab}`} replace />
+  const suffix = tab ? `/${tab}` : ''
+  return <Navigate to={`/gt/ias/${id}/workspace${suffix}`} replace />
 }
 
 // Same idea for the SDE workspace — legacy per-stage routes now redirect
 // into the shared IA workspace shell, which is role-aware and picks up
 // /sde/… as its basePath automatically.
-function SdeLegacyToWorkspace({ tab = 'overview' }) {
+function SdeLegacyToWorkspace({ tab = null }) {
   const { id } = useParams()
-  return <Navigate to={`/sde/ias/${id}/workspace/${tab}`} replace />
+  const suffix = tab ? `/${tab}` : ''
+  return <Navigate to={`/sde/ias/${id}/workspace${suffix}`} replace />
 }
 
 export default function App() {
@@ -137,7 +141,7 @@ export default function App() {
         <Route path="/gt/ias/:id/appraisal" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtLegacyToWorkspace tab="appraisal" /></DenyRawRoles>} />
         <Route path="/gt/ias/:id/capex" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><CapexNote /></DenyRawRoles>} />
         {/* Legacy detail route → workspace overview. */}
-        <Route path="/gt/ias/:id" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtLegacyToWorkspace tab="overview" /></DenyRawRoles>} />
+        <Route path="/gt/ias/:id" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtLegacyToWorkspace /></DenyRawRoles>} />
         <Route path="/gt/team" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><BseTeam /></DenyRawRoles>} />
         <Route path="/gt/team/salary" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><BseSalary /></DenyRawRoles>} />
         <Route path="/gt/team/candidate/new" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><BseCandidate /></DenyRawRoles>} />
@@ -157,7 +161,7 @@ export default function App() {
           path="/gt/ias/:id/workspace"
           element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><IaWorkspaceLayout /></DenyRawRoles>}
         >
-          <Route index element={<Navigate to="eligibility" replace />} />
+          <Route index element={<WorkspaceIndexRedirect />} />
           <Route path="overview" element={<OverviewTab />} />
           <Route path="eligibility" element={<EligibilityTab />} />
           <Route path="l1" element={<RegistrationTab />} />
@@ -186,7 +190,7 @@ export default function App() {
           path="/sde/ias/:id/workspace"
           element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><IaWorkspaceLayout /></DenyRawRoles>}
         >
-          <Route index element={<Navigate to="overview" replace />} />
+          <Route index element={<WorkspaceIndexRedirect />} />
           <Route path="overview" element={<OverviewTab />} />
           <Route path="eligibility" element={<EligibilityTab />} />
           <Route path="l1" element={<RegistrationTab />} />
@@ -199,7 +203,7 @@ export default function App() {
         <Route path="/sde/ias/new" element={<DenyRawRoles roles={['SIDBI_HO_MAKER', 'CLUSTER_EXPERT']}><Navigate to="/sde/ias/new/workspace/eligibility" replace /></DenyRawRoles>} />
         <Route path="/sde/eligibility/new" element={<DenyRawRoles roles={['SIDBI_HO_MAKER', 'CLUSTER_EXPERT']}><Navigate to="/sde/ias/new/workspace/eligibility" replace /></DenyRawRoles>} />
         <Route path="/sde/ias/:id/in-principle" element={<DenyRawRoles roles={['SIDBI_HO_MAKER', 'CLUSTER_EXPERT']}><SdeLegacyToWorkspace tab="l1" /></DenyRawRoles>} />
-        <Route path="/sde/ias/:id" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><SdeLegacyToWorkspace tab="overview" /></DenyRawRoles>} />
+        <Route path="/sde/ias/:id" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><SdeLegacyToWorkspace /></DenyRawRoles>} />
         <Route path="/sde/ias/:id/edit" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><SdeLegacyToWorkspace tab="l1" /></DenyRawRoles>} />
         <Route path="/sde/ias/:id/sustainability" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><SdeLegacyToWorkspace tab="sustainability" /></DenyRawRoles>} />
         <Route path="/sde/ias/:id/appraisal" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><SdeLegacyToWorkspace tab="appraisal" /></DenyRawRoles>} />

@@ -389,18 +389,22 @@ export function useUpdateAppraisal() {
   })
 }
 
-// SDE grants L2 sanction. Callers should pass `registrationId` in the
-// variables so we can invalidate the parent IA even if the response omits it.
+// Reviewer decision on the L2 appraisal — SDE grants sanction, CE adds
+// comments, HO Maker signs off. Callers should pass `registrationId` in the
+// variables so we can invalidate the parent IA even if the response omits
+// it. Workflow keys (`stageId`, `stageComments`) are forwarded through to
+// the underlying PUT so the appraisal's sub-stage advances atomically.
 export function useApproveAppraisal() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, isSidbeApproved = true }) =>
-      approveAppraisal(id, { isSidbeApproved }),
+    mutationFn: ({ id, isSidbeApproved = true, stageId, stageComments }) =>
+      approveAppraisal(id, { isSidbeApproved, stageId, stageComments }),
     onSuccess: (_updated, { id, registrationId }) => {
       qc.invalidateQueries({ queryKey: keys.appraisals.detail(id), refetchType: 'all' })
       if (registrationId) {
         qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(registrationId), refetchType: 'all' })
         qc.invalidateQueries({ queryKey: keys.ias.detail(registrationId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(registrationId) })
       }
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })

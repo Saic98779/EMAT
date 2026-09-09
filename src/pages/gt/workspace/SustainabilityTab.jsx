@@ -78,8 +78,8 @@ export default function SustainabilityTab() {
   const showResult = !!existingMatrixQ.data
   const onContinueFromResult = useCallback(() => {
     if (!ws.iaId) return
-    navigate(`/gt/ias/${ws.iaId}/workspace/appraisal`)
-  }, [navigate, ws.iaId])
+    navigate(`${ws.basePath || '/gt'}/ias/${ws.iaId}/workspace/appraisal`)
+  }, [navigate, ws.iaId, ws.basePath])
 
   // Ref-mirror the changing dependencies so `submit` itself stays stable —
   // otherwise the memoized LiveScorePanel + MatrixSubmitBar re-render on
@@ -87,10 +87,12 @@ export default function SustainabilityTab() {
   const submitStateRef = useRef({
     allAnswered, appraisalId, createAppraisal, createMatrix, answers,
     iaId: ws.iaId, qc, navigate, allStages: stagesQ.data,
+    basePath: ws.basePath || '/gt',
   })
   submitStateRef.current = {
     allAnswered, appraisalId, createAppraisal, createMatrix, answers,
     iaId: ws.iaId, qc, navigate, allStages: stagesQ.data,
+    basePath: ws.basePath || '/gt',
   }
 
   const submit = useCallback(async () => {
@@ -124,7 +126,7 @@ export default function SustainabilityTab() {
         severity: 'success',
         msg: 'Sustainability matrix submitted. Opening Detailed Appraisal…',
       })
-      setTimeout(() => s.navigate(`/gt/ias/${s.iaId}/workspace/appraisal`), 900)
+      setTimeout(() => s.navigate(`${s.basePath}/ias/${s.iaId}/workspace/appraisal`), 900)
     } catch (err) {
       const label = submitStateRef.current.appraisalId ? 'matrix save' : 'appraisal shell / matrix save'
       setToast({ severity: 'error', msg: err?.message || `Failed during ${label}.` })

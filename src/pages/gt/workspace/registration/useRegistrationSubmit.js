@@ -29,7 +29,7 @@ import { stageIdForStage } from '../../../../apis/stageActions'
 //   submitting       Boolean
 //   toast            { severity, msg } | null   — surface via Snackbar
 //   clearToast       () => void
-export function useRegistrationSubmit({ iaId }) {
+export function useRegistrationSubmit({ iaId, basePath = '/gt' }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const updateM = useUpdateIA()
@@ -100,14 +100,14 @@ export function useRegistrationSubmit({ iaId }) {
       qc.invalidateQueries({ queryKey: keys.ias.detail(iaId), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.stageHistory(iaId) })
 
-      setTimeout(() => navigate(`/gt/ias/${iaId}/workspace/sustainability`), 900)
+      setTimeout(() => navigate(`${basePath}/ias/${iaId}/workspace/sustainability`), 900)
     } catch (err) {
       setToast({ severity: 'error', msg: err?.message || 'Failed to submit. Please try again.' })
     } finally {
       inflightRef.current = false
       setSubmitting(false)
     }
-  }, [iaId, updateM, user, qc, navigate, stagesQ.data])
+  }, [iaId, updateM, user, qc, navigate, stagesQ.data, basePath])
 
   const clearToast = useCallback(() => setToast(null), [])
 

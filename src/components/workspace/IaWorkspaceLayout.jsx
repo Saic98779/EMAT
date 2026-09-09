@@ -5,7 +5,7 @@ import {
 import ContentCopyIcon from '@mui/icons-material/ContentCopyRounded'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import { alpha, useTheme } from '@mui/material/styles'
-import { Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { Navigate, Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import {
   useIA, useEligibilityMatrixByRegistration, useAllStages, useStageHistory,
 } from '../../queries'
@@ -282,6 +282,32 @@ export default function IaWorkspaceLayout() {
 // tab from re-fetching or re-deriving what the layout already owns.
 export function useIaWorkspace() {
   return useOutletContext()
+}
+
+// Workflow-aware landing tab — used by the workspace's index route. When
+// a user hits `/gt/ias/{id}/workspace` (or the SDE equivalent) without a
+// specific tab, we send them to the first stage that still needs their
+// attention instead of a stale default. Rules:
+//   • Draft IA → Eligibility (only tab that exists)
+//   • Eligibility not done → Eligibility
+//   • L1 not done → L1
+//   • Sustainability not done → Sustainability
+//   • Appraisal not done → Appraisal
+//   • Everything done → Overview (summary landing)
+export function WorkspaceIndexRedirect() {
+  const ws = useOutletContext()
+  return <Navigate to={pickLandingTab(ws)} replace />
+}
+
+function pickLandingTab(ws) {
+  if (!ws || ws.isNew) return 'eligibility'
+  const byKey = new Map((ws.workflow?.stages || []).map((s) => [s.key, s]))
+  const done = (key) => byKey.get(key)?.status === STATUS.COMPLETED
+  if (!done(STAGE.ELIGIBILITY_MATRIX)) return 'eligibility'
+  if (!done(STAGE.IN_PRINCIPLE_APPROVAL_OF_IA)) return 'l1'
+  if (!done(STAGE.SUSTAINABILITY_MATRIX)) return 'sustainability'
+  if (!done(STAGE.DETAILED_APPRAISAL)) return 'appraisal'
+  return 'overview'
 }
 
 // ── Local components ────────────────────────────────────────────────────
