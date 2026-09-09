@@ -22,6 +22,7 @@ function RegistrationFooter({
   activeIndex, sectionCount, sectionName,
   canSubmit, submitting, completedCount,
   onPrev, onNext, onSubmit,
+  submitLabel = 'Submit for L1 review',
 }) {
   const theme = useTheme()
   const isLast = activeIndex === sectionCount - 1
@@ -91,7 +92,7 @@ function RegistrationFooter({
               disabled={!canSubmit || submitting}
               startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : null}
             >
-              {submitting ? 'Submitting…' : 'Submit for L1 review'}
+              {submitting ? 'Submitting…' : submitLabel}
             </Button>
           </span>
         </Tooltip>

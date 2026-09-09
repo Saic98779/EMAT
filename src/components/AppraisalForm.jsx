@@ -131,10 +131,27 @@ function schemaFor(role) {
         )
         .map((sec) => ({
           ...sec,
-          fields: sec.fields.filter((f) => !f.ceOnly),
+          fields: sec.fields
+            .filter((f) => !f.ceOnly)
+            .map(compactDiaTextareas),
         })),
     ),
   }
+}
+
+// The DIA Specific Details section pairs a yes/no toggle with a big
+// "remarks" textarea in the same row. The textarea defaults to `rows: 2`
+// (~90px tall), while the toggle sits ~55px tall — the mismatch leaves a
+// dead gap under every toggle. Shrink the paired textareas to `rows: 1`
+// so they start at toggle-height and auto-grow on typing. Same treatment
+// for the sector-name / sector-problems pairs.
+const GT_DIA_COMPACT_TEXTAREAS = new Set([
+  'ready_referral', 'ready_bse',
+  'sector_1_problems', 'sector_2_problems', 'sector_3_problems',
+])
+function compactDiaTextareas(f) {
+  if (!GT_DIA_COMPACT_TEXTAREAS.has(f?.name) || f.type !== 'textarea') return f
+  return { ...f, rows: 1 }
 }
 
 // The identity sections (State, IA, Constitution, Address, Apex, Nodal)
@@ -151,10 +168,17 @@ const IA_SNAPSHOT_TITLES = new Set([
 const LOCATION_INFRA_TITLES = new Set([
   'Nearest SIDBI Branch Office', 'Cluster / District Details', 'Existing Infra Details',
 ])
+// The tail sections each carry only 1–2 GT-visible fields after CE
+// filtering, so each getting its own stepper row wastes clicks. Merge
+// them into a single "Sanction & Recommendation" section.
+const SANCTION_TAIL_TITLES = new Set([
+  'Terms of Assistance', 'Budget', 'Delegation of Power', 'Recommendation',
+])
 
 function consolidateForGt(sections) {
   const snapshotFields = []
   const locationFields = []
+  const sanctionFields = []
   const passthrough = []
   for (const sec of sections) {
     if (IA_SNAPSHOT_TITLES.has(sec.title)) {
@@ -171,6 +195,13 @@ function consolidateForGt(sections) {
         name: `_loc_${sec.n}`, label: sec.title, type: 'subheading', span: 12,
       })
       locationFields.push(...sec.fields)
+      continue
+    }
+    if (SANCTION_TAIL_TITLES.has(sec.title) && sec.fields.length > 0) {
+      sanctionFields.push({
+        name: `_tail_${sec.n}`, label: sec.title, type: 'subheading', span: 12,
+      })
+      sanctionFields.push(...sec.fields)
       continue
     }
     passthrough.push(sec)
@@ -194,6 +225,14 @@ function consolidateForGt(sections) {
     })
   }
   for (const sec of passthrough) merged.push({ ...sec, n: nextN++ })
+  if (sanctionFields.length) {
+    merged.push({
+      n: nextN++,
+      title: 'Sanction & recommendation',
+      desc: 'Terms of assistance, budget, delegation of power, and final recommendation.',
+      fields: sanctionFields,
+    })
+  }
   return merged
 }
 
@@ -384,9 +423,14 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
         STAGE.DETAILED_APPRAISAL,
         'DETAILED_APPRAISAL_SUBMITTED',
       )
-      const withStage = { ...values, stageId: submitStageId }
+      // GT submits stamp the destination sub-stage so backend advances
+      // currentStage → DETAILED_APPRAISAL_SUBMITTED. SDE / CE updates
+      // don't advance — they only edit the record.
+      const withStage = (!isClusterExpert && !isSde)
+        ? { ...values, stageId: submitStageId }
+        : values
       if (existing?.id) {
-        await updateM.mutateAsync({ id: existing.id, body: toUpdatePayload(values, registrationId) })
+        await updateM.mutateAsync({ id: existing.id, body: toUpdatePayload(withStage, registrationId) })
       } else if (!isClusterExpert && !isSde) {
         await createM.mutateAsync(toCreatePayload(withStage, registrationId))
       } else {
@@ -435,6 +479,14 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
     : isSde
       ? (busy ? 'Saving…' : 'Save changes')
       : (busy ? 'Submitting…' : existing ? 'Update & Resubmit' : 'Submit to SDE for Final Approval')
+  // Stepper footer handles its own "Submitting…" state, so pass the
+  // busy-less label. Also GT's existing-appraisal case reads clearer as
+  // "Submit for L2 review" in the footer.
+  const footerSubmitLabel = isClusterExpert
+    ? 'Save Comments'
+    : isSde
+      ? 'Save changes'
+      : 'Submit for L2 review'
 
   const saveButton = (
     <Button
@@ -449,12 +501,16 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
 
   // Sustainability matrix is FK'd to the appraisal, so only offer the view
   // once an appraisal record actually exists (id resolved).
+  // Small text-only affordance — the sustainability matrix is just
+  // reference context, not a primary action, so keep it out of the way.
   const viewSustainability = (
     <Button
-      variant="outlined"
-      startIcon={<AssessmentOutlinedIcon />}
+      size="small"
+      variant="text"
+      startIcon={<AssessmentOutlinedIcon sx={{ fontSize: 16 }} />}
       onClick={() => setSustainOpen(true)}
       disabled={!existing?.id}
+      sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12.5, px: 1 }}
     >
       View Sustainability Matrix
     </Button>
@@ -470,7 +526,7 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
         submit={submit}
         busy={busy}
         canSave={canSave}
-        submitLabel={submitLabel}
+        submitLabel={footerSubmitLabel}
         viewSustainability={viewSustainability}
         sustainOpen={sustainOpen}
         setSustainOpen={setSustainOpen}
@@ -559,7 +615,7 @@ function StepperLayout({
 
   return (
     <>
-      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1, mt: -0.5 }}>
         <Box sx={{ flex: 1 }} />
         {viewSustainability}
       </Stack>
@@ -623,6 +679,7 @@ function StepperLayout({
         onPrev={goPrev}
         onNext={goNext}
         onSubmit={onSubmit}
+        submitLabel={submitLabel}
       />
 
       <SustainabilityMatrixModal

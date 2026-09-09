@@ -114,18 +114,27 @@ function stableArray(prev, next) {
 // `error` — when truthy the border/label/message go red, matching how the
 // TextField-based fields signal validation problems.
 function Framed({ label, required, error, children }) {
+  // Borderless label-above-control block. The old bordered "frame" made
+  // every yes/no + radio look like a tall panel; this version drops the
+  // border + heavy padding so the control sits flush with the surrounding
+  // text fields (label on top, control immediately below, no wasted
+  // vertical space). The error is inlined as a red caption.
   return (
-    <Box sx={{
-      border: '1px solid',
-      borderColor: error ? 'error.main' : 'divider',
-      borderRadius: 2, px: 1.75, py: 1.25, height: '100%', bgcolor: 'background.paper',
-    }}>
-      <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mb: 0.75 }}>
+    <Box sx={{ minHeight: 40 }}>
+      <Typography
+        sx={{
+          fontSize: 12.5,
+          fontWeight: 500,
+          color: error ? 'error.main' : 'text.secondary',
+          mb: 0.5,
+          lineHeight: 1.3,
+        }}
+      >
         {label}{required && ' *'}
       </Typography>
       {children}
       {error && (
-        <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 0.5 }}>
+        <Typography sx={{ mt: 0.5, fontSize: 11.5, color: 'error.main' }}>
           {error}
         </Typography>
       )}
