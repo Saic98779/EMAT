@@ -434,13 +434,14 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   }
   if (f.type === 'subheading') {
     // Modernised section subhead — no yellow overline. Sits like a
-    // divider-with-title above the following field cluster.
+    // divider-with-title above the following field cluster. Tight rhythm
+    // so it groups without eating vertical space.
     return (
       <Grid size={12}>
-        <Box sx={{ mt: 1.5, pt: 1.75, borderTop: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ mt: 0.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography
             sx={{
-              fontSize: 11.5,
+              fontSize: 11,
               fontWeight: 700,
               color: 'text.secondary',
               letterSpacing: '0.06em',
@@ -611,6 +612,28 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     if (trimmed !== cur) onChange(trimmed)
   }
 
+  // Read-only single-line fields (text, number, date, plus a read-only
+  // select which is rendered as text anyway) render as a compact
+  // label-above / value-below block. Removes the bordered-textbox weight
+  // for values the user can't edit, and packs many per row at span 4.
+  if (f.readOnly && !multiline && !f.otp) {
+    const display = lockedSelect
+      ? labelOfOption(options, selVal) || '—'
+      : (f.type === 'date' ? formatDisplayDate(selVal) : (selVal !== '' && selVal != null ? String(selVal) : '—'))
+    return (
+      <Grid size={{ xs: 12, sm: Math.min(f.span || 4, 4) }}>
+        <Box sx={{ py: 0.25 }}>
+          <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'text.disabled', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+            {f.label}
+          </Typography>
+          <Typography sx={{ mt: 0.25, fontSize: 14, fontWeight: 500, color: display === '—' ? 'text.disabled' : 'text.primary', wordBreak: 'break-word' }}>
+            {f.prefix && display !== '—' ? `${f.prefix} ${display}` : display}
+          </Typography>
+        </Box>
+      </Grid>
+    )
+  }
+
   return (
     <Grid size={{ xs: 12, sm: f.span || 6 }}>
       <TextField
@@ -652,7 +675,15 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
             </InputAdornment>
           ) : undefined,
         }}
-        sx={f.readOnly ? { '& .MuiInputBase-root': { bgcolor: 'action.hover' } } : undefined}
+        sx={f.readOnly
+          ? {
+              // Plain outline, no tinted background — the tinted "prefilled"
+              // look reads as disabled input clutter. Keep the field open-air.
+              '& .MuiInputBase-root': { bgcolor: 'transparent' },
+              '& .MuiInputBase-input': { color: 'text.primary', WebkitTextFillColor: 'inherit' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+            }
+          : undefined}
         fullWidth
       >
         {isSelect && !lockedSelect && options.map((raw) => { const o = asOption(raw)
@@ -662,6 +693,15 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     </Grid>
   )
 })
+
+// Pretty-print an ISO date for the read-only display renderer above.
+// Falls back to the raw string if it can't be parsed as a date.
+function formatDisplayDate(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.valueOf())) return String(iso)
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
 const isFilled = (v) => {
   if (Array.isArray(v)) return v.length > 0
@@ -775,9 +815,9 @@ const SectionCard = memo(function SectionCard({
         */}
         <Grid
           container
-          spacing={2.5}
+          spacing={{ xs: 1.5, md: 1.75 }}
           alignItems="flex-start"
-          sx={{ '& .MuiFormHelperText-root': { minHeight: '1.25em', mt: 0.5 } }}
+          sx={{ '& .MuiFormHelperText-root': { minHeight: '1em', mt: 0.25 } }}
         >
           {sec.fields.map((f) => {
             if (!isVisible(f, values)) return null

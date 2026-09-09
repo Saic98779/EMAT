@@ -41,12 +41,25 @@ export function updateAppraisal(id, body, { signal } = {}) {
   })
 }
 
-// PATCH /industry-association-appraisals/{id}/approve — SDE grants Final
-// (Level 2) approval. Same `ApprovalRequest` shape: { isSidbeApproved }.
-export function approveAppraisal(id, { isSidbeApproved = true } = {}, { signal } = {}) {
-  return apiFetch(`${PATH}/${encodeURIComponent(id)}/approve`, {
-    method: 'PATCH',
-    body: { isSidbeApproved },
+// Reviewer decision on the appraisal — SDE (L2), CE (comments), HO Maker.
+//
+// Same backend gotcha as `approveIndustryAssociation`: the dedicated
+// `/approve` endpoint records the flag but ignores `stageId`. We PUT
+// the main update endpoint with the three workflow keys; that both
+// records the flag and advances the workflow atomically. Fields not
+// present in the body are preserved (merge, not replace).
+export function approveAppraisal(
+  id,
+  { isSidbeApproved = true, stageId = null, stageComments = null } = {},
+  { signal } = {},
+) {
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: {
+      isSidbeApproved,
+      ...(stageId != null ? { stageId } : null),
+      ...(stageComments != null ? { stageComments } : null),
+    },
     signal,
   })
 }
@@ -234,6 +247,13 @@ export function toCreatePayload(values = {}, registrationId = null) {
     // ── Section 16 — Recommendation ──────────────────────────────────────
     recommendation: str(values.recommendation),
     recommendationRemarks: str(values.recommendation_remarks),
+    // ── Workflow ──────────────────────────────────────────────────────────
+    // Same stageId / stageComments contract as the IA registration payload:
+    // stamp the destination sub-stage so the backend advances currentStage
+    // and appends a stage-history row. Optional — omitted keys leave the
+    // record's workflow alone.
+    ...(values.stageId != null ? { stageId: values.stageId } : null),
+    ...(values.stageComments ? { stageComments: String(values.stageComments) } : null),
   }
 }
 

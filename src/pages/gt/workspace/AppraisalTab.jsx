@@ -1,9 +1,12 @@
 import { useCallback, useState } from 'react'
-import { Alert, Box, Snackbar, Typography } from '@mui/material'
+import { Alert, Box, CircularProgress, Snackbar, Typography } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
-import { stackedLabelSx } from '../../../components/workspace/formStyles'
 import AppraisalForm from '../../../components/AppraisalForm'
+import AppraisalReviewView from './appraisal/AppraisalReviewView'
+import { STAGE } from '../../../apis/registrationStages'
+import { STATUS } from '../../../apis/workflow'
+import { useAppraisalByRegistration } from '../../../queries'
 
 // AppraisalTab
 // ────────────────────────────────────────────────────────────────────────
@@ -25,17 +28,64 @@ export default function AppraisalTab() {
   if (!ws.iaId) {
     return <Notice title="IA not found" body="This IA could not be loaded." />
   }
+  // Gate: Detailed Appraisal opens only once Sustainability Matrix is
+  // submitted. Otherwise a GT user typing the URL could POST an appraisal
+  // shell before the workflow reaches that stage.
+  const sustStage = ws.workflow?.stages?.find((s) => s.key === STAGE.SUSTAINABILITY_MATRIX)
+  if (sustStage?.status !== STATUS.COMPLETED) {
+    return (
+      <Notice
+        title="Sustainability Matrix required first"
+        body="Submit the Sustainability Matrix before starting the Detailed Appraisal. The tab unlocks automatically once that step is done."
+      />
+    )
+  }
+
+  return (
+    <AppraisalTabBody ws={ws} toast={toast} setToast={setToast} onSaved={onSaved} />
+  )
+}
+
+// Split out so we can hook additional queries (appraisal record for the
+// reviewer branch) without adding hooks above the tab's early-return guards.
+function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
+  const appraisalQ = useAppraisalByRegistration(ws.iaId)
+
+  // Reviewer path: SDE / CE / HO Maker arriving at their turn on L2. Only
+  // render the review surface when an appraisal actually exists — until
+  // GT has submitted, there's nothing to review.
+  const decisions = ws.decisionsForCurrent || []
+  const isReviewer = decisions.length > 0 && !!appraisalQ.data?.id
+
+  if (appraisalQ.isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
 
   return (
     <>
-      <Header />
-      <Box sx={stackedLabelSx}>
-        <AppraisalForm
-          registrationId={ws.iaId}
-          onSaved={onSaved}
-          stickyFooter
+      {isReviewer ? (
+        <AppraisalReviewView
+          iaId={ws.iaId}
+          iaName={ws.ia?.name}
+          appraisal={appraisalQ.data}
+          viewerRole={ws.viewerRole}
+          decisions={decisions}
+          onDone={(result) => result && setToast(result)}
         />
-      </Box>
+      ) : (
+        <>
+          <Header />
+          <AppraisalForm
+            registrationId={ws.iaId}
+            onSaved={onSaved}
+            stepper
+          />
+        </>
+      )}
       <Snackbar
         open={!!toast}
         autoHideDuration={4200}
