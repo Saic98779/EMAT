@@ -13,7 +13,6 @@ import { STAGE } from '../../apis/registrationStages'
 import { deriveWorkflow, STATUS } from '../../apis/workflow'
 import { decisionsFor, stageIdOf } from '../../apis/stageActions'
 import { useAuth } from '../../auth'
-import SnapshotBar from './SnapshotBar'
 import StageCardsGrid from './StageCardsGrid'
 import DecisionDialog from './DecisionDialog'
 import { TABS } from './workspaceConfig'
@@ -78,7 +77,10 @@ export default function IaWorkspaceLayout() {
     [ia, stagesQ.data, historyQ.data, eligibility],
   )
 
-  const [expandedStageKey, setExpandedStageKey] = useState(() => defaultExpandedStage(workflow))
+  // Substages open only when the user clicks a card's chevron — no
+  // auto-expand on load. Cluttered users into thinking the substage
+  // table was the primary layout element.
+  const [expandedStageKey, setExpandedStageKey] = useState(null)
   const onStageExpandToggle = useCallback(
     (key) => setExpandedStageKey((prev) => (prev === key ? null : key)),
     [],
@@ -168,12 +170,21 @@ export default function IaWorkspaceLayout() {
     })
   }, [workflow, activeTab, basePath, id, isNew, navigate])
 
-  const snapshot = useMemo(
-    () => buildSnapshot({ isNew, ia, eligibility, workflow }),
-    [isNew, ia, eligibility, workflow],
-  )
 
-  const turn = useMemo(() => pickTurnPill(workflow, isNew, theme), [workflow, isNew, theme])
+  // Body of a stage card is a navigate button — routes the user into
+  // the workspace tab that owns that stage. A locked tab (e.g.
+  // Sustainability before L1 is approved) is a silent no-op. A stage
+  // with no entry in the `views` map (Eligibility isn't in the list
+  // anymore since we killed the tab row) still navigates — the tab's
+  // own guards decide whether to show the form or a Notice.
+  const onStageOpen = useCallback((stageKey) => {
+    if (isNew) return
+    const tab = STAGE_TO_TAB[stageKey]
+    if (!tab) return
+    const view = views.find((v) => v.key === tab)
+    if (view?.disabled) return
+    navigate(`${basePath}/ias/${id}/workspace/${tab}`)
+  }, [isNew, views, basePath, id, navigate])
 
   // Decisions available at whatever sub-stage the IA is currently sitting
   // at, from *this viewer's* perspective. Tabs (RegistrationTab etc.) use
@@ -230,25 +241,29 @@ export default function IaWorkspaceLayout() {
 
   return (
     <Box sx={{ maxWidth: 1360, mx: 'auto', pt: 1, pb: 8 }}>
+      {/* Compact single-line identity strip above the full-width stage
+          row. Uses the vertical space the old two-column-heading left
+          empty without cramping the cards. */}
       <TitleRow
         title={ia?.name || (isNew ? 'New Industry Association' : '—')}
         stateName={ia?.state}
         subtitle={ia?.raw?.constitutionType || (isNew ? 'New application' : null)}
         iaCode={ia?.uuid ? formatIaCode(ia.uuid) : isNew ? 'IA · draft' : null}
-        turn={turn}
+      />
+      <StageCardsGrid
+        workflow={workflow}
+        expandedKey={expandedStageKey}
+        onExpandToggle={onStageExpandToggle}
+        onStageOpen={onStageOpen}
+        decisionsForRow={isNew ? undefined : decisionsForRow}
+        onDecision={onDecision}
       />
 
-      {!isNew && (
-        <StageCardsGrid
-          workflow={workflow}
-          expandedKey={expandedStageKey}
-          onExpandToggle={onStageExpandToggle}
-          decisionsForRow={decisionsForRow}
-          onDecision={onDecision}
-        />
-      )}
-
-      <SnapshotBar cells={snapshot} views={isNew ? [] : views} activeViewKey={activeTab} />
+      {/* Snapshot cell row + tab-shortcut row are both gone — the stage
+          cards already carry every stage-nav affordance the client wants.
+          Overview / Documents / Activity aren't shown here anymore; they
+          remain reachable by URL, and can be re-added as an auxiliary
+          nav later if the client asks for them. */}
 
       <Box sx={{ pt: 3 }}>
         <Outlet context={context} />
@@ -312,7 +327,7 @@ function pickLandingTab(ws) {
 
 // ── Local components ────────────────────────────────────────────────────
 
-function TitleRow({ title, stateName, subtitle, iaCode, turn }) {
+function TitleRow({ title, stateName, subtitle, iaCode }) {
   const theme = useTheme()
   const [copied, setCopied] = useState(false)
 
@@ -324,56 +339,46 @@ function TitleRow({ title, stateName, subtitle, iaCode, turn }) {
   }
 
   return (
-    <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ sm: 'flex-start' }} spacing={2} flexWrap="wrap">
-      <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography component="h1" sx={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.15 }}>
-          {title}
+    <Stack
+      direction="row"
+      alignItems="baseline"
+      spacing={1.25}
+      sx={{ mt: 1, flexWrap: 'wrap', rowGap: 0.25 }}
+    >
+      <Typography
+        component="h1"
+        sx={{
+          fontSize: { xs: 20, md: 22 },
+          fontWeight: 700,
+          letterSpacing: '-0.02em',
+          lineHeight: 1.15,
+        }}
+      >
+        {title}
+      </Typography>
+      {(stateName || subtitle) && (
+        <Typography sx={{ fontSize: 13, color: theme.palette.text.secondary }}>
+          · {[stateName, subtitle].filter(Boolean).join(' · ')}
         </Typography>
-        <Stack
-          direction="row"
-          alignItems="center"
-          spacing={1}
-          flexWrap="wrap"
-          sx={{ mt: 1.25, fontSize: 13.5, color: theme.palette.text.secondary }}
-        >
-          {stateName && <span>{stateName}</span>}
-          {stateName && subtitle && <InlineDivider />}
-          {subtitle && <span>{subtitle}</span>}
-          {subtitle && iaCode && <InlineDivider />}
-          {iaCode && (
-            <>
-              <Box component="span" sx={{ fontFamily: 'ui-monospace, "Roboto Mono", monospace', fontSize: 12.5 }}>
-                {iaCode}
-              </Box>
-              <Tooltip title={copied ? 'Copied' : 'Copy IA ID'} arrow>
-                <IconButton size="small" onClick={copy} sx={{ p: 0.5, color: theme.palette.text.disabled }}>
-                  {copied ? <CheckCircleIcon sx={{ fontSize: 15, color: theme.palette.success.main }} /> : <ContentCopyIcon sx={{ fontSize: 15 }} />}
-                </IconButton>
-              </Tooltip>
-            </>
-          )}
+      )}
+      {iaCode && (
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Box
+            component="span"
+            sx={{
+              fontFamily: 'ui-monospace, "Roboto Mono", monospace',
+              fontSize: 11.5,
+              color: theme.palette.text.disabled,
+            }}
+          >
+            · {iaCode}
+          </Box>
+          <Tooltip title={copied ? 'Copied' : 'Copy IA ID'} arrow>
+            <IconButton size="small" onClick={copy} sx={{ p: 0.25, color: theme.palette.text.disabled }}>
+              {copied ? <CheckCircleIcon sx={{ fontSize: 14, color: theme.palette.success.main }} /> : <ContentCopyIcon sx={{ fontSize: 14 }} />}
+            </IconButton>
+          </Tooltip>
         </Stack>
-      </Box>
-      {turn && (
-        <Box
-          sx={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0.75,
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: turn.color,
-            background: turn.bg,
-            px: 1.5,
-            py: 0.75,
-            borderRadius: 1,
-            whiteSpace: 'nowrap',
-            mt: { xs: 0, sm: 0.5 },
-          }}
-        >
-          <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', background: turn.dot }} />
-          {turn.label}
-        </Box>
       )}
     </Stack>
   )
@@ -436,51 +441,17 @@ function pickTurnPill(workflow, isNew, theme) {
 
 // Snapshot cells — mirrors what the stage cards already show but presents
 // it as a compact strip for viewers who don't want to expand a card.
-function buildSnapshot({ isNew, ia, eligibility, workflow }) {
-  if (isNew) {
-    return [
-      { label: 'Who has it', value: 'You · Draft', tone: 'primary' },
-      { label: 'Stage', value: 'Eligibility Matrix' },
-      { label: 'Next required', value: 'Complete the eligibility form', tone: 'warning' },
-      { label: 'Progress', value: 'Not started' },
-    ]
-  }
-
-  const active = workflow.stages.find(
-    (s) => s.status === STATUS.IN_PROGRESS || s.status === STATUS.REVERTED,
-  )
-  const stageLabel = active?.label
-    || workflow.stages.slice().reverse().find((s) => s.status === STATUS.COMPLETED)?.label
-    || 'Not started'
-
-  const { completed, total, percent } = workflow.overall
-
-  return [
-    { label: 'Who has it', value: ia?.owner || 'You', tone: 'primary' },
-    { label: 'Stage', value: stageLabel },
-    {
-      label: 'Next required',
-      value: pickNextAction(active),
-      tone: active ? 'warning' : 'success',
-    },
-    {
-      label: 'Progress',
-      value: `${completed} / ${total} steps · ${percent}%`,
-      tone: percent === 100 ? 'success' : undefined,
-    },
-    // Eligibility score is a bonus fifth cell — visible when we have one.
-    ...(eligibility?.totalScore != null
-      ? [{ label: 'Score', value: `${eligibility.totalScore}% · Eligibility` }]
-      : []),
-  ]
-}
-
-function pickNextAction(activeStage) {
-  if (!activeStage) return 'Nothing pending'
-  if (activeStage.status === STATUS.REVERTED) return `Revise ${activeStage.label}`
-  const pending = activeStage.subStages.find((s) => s.status === STATUS.IN_PROGRESS || s.status === STATUS.NOT_STARTED)
-  if (pending) return pending.label
-  return activeStage.label
+// Map a stage's tab slug so a click on a stage card can route into
+// the correct workspace tab. Kept in the layout since only the layout
+// needs to know the URL shape (StageCardsGrid just forwards the
+// stageKey callback).
+const STAGE_TO_TAB = {
+  [STAGE.ELIGIBILITY_MATRIX]:          'eligibility',
+  [STAGE.IN_PRINCIPLE_APPROVAL_OF_IA]: 'l1',
+  [STAGE.SUSTAINABILITY_MATRIX]:       'sustainability',
+  [STAGE.ACTION_PLAN]:                 'appraisal',
+  [STAGE.DETAILED_APPRAISAL]:          'appraisal',
+  [STAGE.DOCUMENTATION_OF_IA]:         'documents',
 }
 
 

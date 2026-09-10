@@ -164,8 +164,17 @@ function ReadOnlyValue({ text }) {
   )
 }
 
-const labelOfOption = (options, v) =>
-  options.map((o) => asOption(o)).find((o) => o.value === v)?.label ?? (v ?? '')
+// Backend list APIs sometimes return numeric ids while the DTO stores
+// the selected value as a string (`sde: "1"`, `sidbiBranch: "17"`).
+// Strict equality would miss those, so we coerce both sides to string
+// before matching. The label lookup returns null when nothing matched
+// so callers can fall back to a raw display without accidentally
+// echoing back an id when a proper label is available.
+const labelOfOption = (options, v) => {
+  const target = v == null ? '' : String(v)
+  const hit = options.map((o) => asOption(o)).find((o) => String(o.value) === target)
+  return hit?.label ?? (v ?? '')
+}
 
 // Stores actual `File` objects in form state so the parent page can upload
 // them after the parent record has a UUID. Chips display `.name`.
@@ -511,16 +520,35 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
       }
       onChange(next)
     }
+    // Read-only view — render as a compact label + comma-separated
+    // values so it lines up with the other read-only fields instead
+    // of sitting in a bordered Framed panel.
+    if (f.readOnly) {
+      const labels = Array.isArray(arr)
+        ? arr.map((v) => labelOfOption(options, v)).filter(Boolean)
+        : []
+      const display = labels.length ? labels.join(', ') : '—'
+      return (
+        <Grid size={12}>
+          <Box sx={{ py: 0.25 }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'text.disabled', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+              {f.label}
+            </Typography>
+            <Typography sx={{ mt: 0.25, fontSize: 14, fontWeight: 500, color: display === '—' ? 'text.disabled' : 'text.primary', wordBreak: 'break-word' }}>
+              {display}
+            </Typography>
+          </Box>
+        </Grid>
+      )
+    }
     return (
       <Grid size={12}>
         <Framed label={f.label} required={f.required} error={error}>
-          {f.readOnly ? <ReadOnlyValue text={arr.map((v) => labelOfOption(options, v)).join(', ')} /> : (
-            <FormGroup row sx={{ gap: 0.5 }}>
-              {options.map((raw) => { const o = asOption(raw)
-                return <FormControlLabel key={o.value} sx={{ mr: 2 }} control={<Checkbox size="small" checked={arr.includes(o.value)} onChange={() => toggle(o.value)} />} label={o.label} />
-              })}
-            </FormGroup>
-          )}
+          <FormGroup row sx={{ gap: 0.5 }}>
+            {options.map((raw) => { const o = asOption(raw)
+              return <FormControlLabel key={o.value} sx={{ mr: 2 }} control={<Checkbox size="small" checked={arr.includes(o.value)} onChange={() => toggle(o.value)} />} label={o.label} />
+            })}
+          </FormGroup>
         </Framed>
       </Grid>
     )
@@ -626,9 +654,25 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   // label-above / value-below block. Removes the bordered-textbox weight
   // for values the user can't edit, and packs many per row at span 4.
   if (f.readOnly && !multiline && !f.otp) {
-    const display = lockedSelect
-      ? labelOfOption(options, selVal) || '—'
-      : (f.type === 'date' ? formatDisplayDate(selVal) : (selVal !== '' && selVal != null ? String(selVal) : '—'))
+    // For a read-only select we can't rely on `selVal` (which blanks
+    // itself when the current value isn't in the options list — that
+    // guard only exists to keep the editable dropdown from
+    // uncontrolled-warning). Fall through to the raw `value` so
+    // async-loaded options (branches, SDE list) don't cause the
+    // display to render as an em-dash when they haven't hydrated yet.
+    let display = '—'
+    if (lockedSelect) {
+      const resolved = labelOfOption(options, value)
+      if (resolved && resolved !== '' && resolved !== value) {
+        display = resolved                    // option label resolved
+      } else if (value !== '' && value != null) {
+        display = String(value)               // fall back to raw value
+      }
+    } else if (f.type === 'date') {
+      display = formatDisplayDate(selVal)
+    } else if (selVal !== '' && selVal != null) {
+      display = String(selVal)
+    }
     return (
       <Grid size={{ xs: 12, sm: Math.min(f.span || 4, 4) }}>
         <Box sx={{ py: 0.25 }}>

@@ -92,19 +92,18 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
           decisions={decisions}
           onDone={(result) => result && setToast(result)}
         />
-      ) : isGtLocked ? (
-        <SubmittedBanner
-          approved={l2Approved}
-          submittedOn={appraisal?.updatedAt || appraisal?.createdAt}
-          submittedBy={appraisal?.updatedBy || appraisal?.createdBy}
-        />
       ) : (
+        // GT view — editable form until submission, read-only form
+        // afterwards. `isGtLocked` cascades a `readOnly` flag into the
+        // AppraisalForm which flips every field non-editable and hides
+        // the submit footer. Same visual shell either way.
         <>
           <Header />
           <AppraisalForm
             registrationId={ws.iaId}
             onSaved={onSaved}
             stepper
+            readOnly={isGtLocked}
           />
         </>
       )}

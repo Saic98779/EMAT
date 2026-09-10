@@ -27,6 +27,27 @@ export function updateIndustryAssociation(id, values, extra = {}, { signal } = {
   })
 }
 
+// PUT that ONLY carries a `stageId` (+ optional comments) — no scalar
+// field values. Used to advance the workflow without triggering the
+// backend's "fields + stageId in one body" bug (which silently drops
+// every scalar). Bypasses `toPayload` so we don't send 40 explicit
+// nulls that could get interpreted as "clear these fields".
+export function advanceIndustryAssociationStage(
+  id,
+  { stageId, stageComments = null } = {},
+  { signal } = {},
+) {
+  if (stageId == null) throw new Error('advanceIndustryAssociationStage: stageId is required')
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: {
+      stageId,
+      ...(stageComments != null ? { stageComments } : null),
+    },
+    signal,
+  })
+}
+
 // Reviewer decision — SDE (or any reviewer) records their outcome on the
 // IA at a specific sub-stage.
 //
@@ -176,12 +197,9 @@ export function toPayload(v = {}) {
 // out so the backend keeps its current value.
 export function toUpdatePayload(v = {}, extra = {}) {
   const payload = toPayload(v)
-  // Backend PUT /industry-association-registrations/{id} throws a 500 the
-  // moment `secretariatStaff` is present in the body — empty array, null,
-  // AND a populated array all crash the handler. POST works fine, only PUT
-  // is broken. Omitting the key lets the backend keep whatever it already
-  // has for that record. Restore this once the backend is patched.
-  delete payload.secretariatStaff
+  // Historic note: PUT used to 500 when `secretariatStaff` was in the
+  // body. Backend patched — verified via curl 2026-09-10. Field is now
+  // sent through `toPayload` normally, so nothing to strip here.
   if (extra.isActive != null) payload.isActive = !!extra.isActive
   if (extra.updatedBy != null) payload.updatedBy = str(extra.updatedBy)
   return payload

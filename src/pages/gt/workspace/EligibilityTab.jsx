@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Box, Snackbar, Stack, Typography,
 } from '@mui/material'
+import { alpha, useTheme } from '@mui/material/styles'
 import { categorise, DIMENSIONS, PARAM_KEYS, TIERS } from '../../../apis/eligibilityMatrix'
 import { createIndustryAssociation } from '../../../apis/industryAssociations'
 import { STAGE } from '../../../apis/registrationStages'
@@ -14,7 +15,6 @@ import IdentityFields from './eligibility/IdentityFields'
 import ParameterGroup from './eligibility/ParameterGroup'
 import LiveScorePanel from './eligibility/LiveScorePanel'
 import MatrixSubmitBar from './eligibility/MatrixSubmitBar'
-import ResultView from './eligibility/ResultView'
 import { FIELDS, LABELS, validateAll } from './eligibility/validation'
 
 // EligibilityTab
@@ -202,19 +202,23 @@ export default function EligibilityTab() {
 
   // ── Render ──────────────────────────────────────────────────────────
   if (showResult) {
+    // Derive the tier from the PERSISTED score, not from the local
+    // (post-submit-reset) answers state. Otherwise every submitted
+    // matrix would render as "Weak" because local answers are all
+    // null after submit → local score is 0 → local tier is Weak.
+    const persistedScore = ws.eligibility.totalScore ?? score
+    const persistedTier = TIERS.find((t) => persistedScore >= t.min) || TIERS[TIERS.length - 1]
     return (
       <>
-        <ResultView
-          score={ws.eligibility.totalScore ?? score}
-          tier={tier}
+        <ReadOnlyMatrix
+          title="Eligibility Matrix"
+          score={persistedScore}
+          tier={persistedTier}
           tiers={TIERS}
           dimensions={DIMENSIONS}
           answers={ws.eligibility}
-          continueLabel="Continue to Registration (L1)"
-          continueBody="The next step is your In-Principle Approval form."
-          submittedBy={ws.ia?.createdBy}
-          submittedAt={ws.ia?.submitted}
-          onContinue={onContinueFromResult}
+          submittedBy={ws.eligibility.createdBy || ws.ia?.createdBy}
+          submittedAt={ws.eligibility.createdAt || ws.ia?.submitted}
         />
         <Toast toast={toast} onClose={() => setToast(null)} />
       </>
@@ -295,6 +299,79 @@ export default function EligibilityTab() {
 }
 
 // ── Local helpers ───────────────────────────────────────────────────────
+
+// Read-only view of a submitted matrix (Eligibility or Sustainability).
+// Same ParameterGroup checklist the user filled during entry, in
+// read-only mode. Compact score header at the top for context.
+function ReadOnlyMatrix({ title, score, tier, tiers = [], dimensions = [], answers = {}, submittedBy, submittedAt }) {
+  const theme = useTheme()
+  const activeTier = tier || tiers[tiers.length - 1] || { label: '—', color: 'info' }
+  const tierPalette = theme.palette[activeTier.color] || theme.palette.info
+  const noop = useCallback(() => {}, [])
+  return (
+    <Box>
+      <Box
+        sx={{
+          mt: 1,
+          mb: 3,
+          px: 2.5,
+          py: 2,
+          borderRadius: 2,
+          border: 1,
+          borderColor: alpha(theme.palette.text.primary, 0.09),
+          background: '#fff',
+        }}
+      >
+        <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+          <Typography sx={{ fontSize: 15.5, fontWeight: 700 }}>{title}</Typography>
+          <Box
+            sx={{
+              fontSize: 12.5,
+              fontWeight: 600,
+              px: 1.25,
+              py: 0.375,
+              borderRadius: 0.75,
+              background: alpha(tierPalette.main, 0.16),
+              color: tierPalette.dark,
+            }}
+          >
+            {score}% · {activeTier.label}
+          </Box>
+          <Box sx={{ flex: 1 }} />
+          {(submittedBy || submittedAt) && (
+            <Typography sx={{ fontSize: 12.5, color: theme.palette.text.disabled }}>
+              {submittedBy ? `Submitted by ${submittedBy}` : ''}
+              {submittedBy && submittedAt ? ' · ' : ''}
+              {submittedAt ? formatSubmitted(submittedAt) : ''}
+            </Typography>
+          )}
+        </Stack>
+      </Box>
+
+      <Stack spacing={2.5}>
+        {dimensions.map((dim) => (
+          <ParameterGroup
+            key={dim.title}
+            title={dim.title}
+            params={dim.params}
+            answers={answers}
+            expanded
+            onToggle={noop}
+            onAnswer={noop}
+            readOnly
+          />
+        ))}
+      </Stack>
+    </Box>
+  )
+}
+
+function formatSubmitted(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.valueOf())) return String(iso)
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
 function Section({ title, subtitle, children }) {
   return (

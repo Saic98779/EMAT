@@ -7,6 +7,7 @@ import { encodeFilename } from '../../../../fileFieldLabels'
 import { useAuth } from '../../../../auth'
 import { STAGE } from '../../../../apis/registrationStages'
 import { stageIdForStage } from '../../../../apis/stageActions'
+import { advanceIndustryAssociationStage } from '../../../../apis/industryAssociations'
 
 // useRegistrationSubmit
 // ────────────────────────────────────────────────────────────────────────
@@ -55,9 +56,16 @@ export function useRegistrationSubmit({ iaId, basePath = '/gt' }) {
     inflightRef.current = true
     setSubmitting(true)
     try {
-      // Advance the IA to the "L1 submitted" sub-stage. If the backend's
-      // master list doesn't expose that key, fall back to any row for the
-      // IN_PRINCIPLE_APPROVAL_OF_IA stage so we never send `null`.
+      // Backend bug: a single PUT that carries both scalar field values
+      // AND a `stageId` advances the stage but silently drops every
+      // scalar field (updatedBy = SYSTEM, currentStage moves, but
+      // constitutionType / district / apex / … all land as null).
+      // Verified on IA 121 and IA 127. Workaround: split the submit
+      // into two PUTs.
+      //   1. Save the L1 form fields — no stageId in this body.
+      //   2. Advance the workflow — stageId + comments only, no fields.
+      // Backend treats field-omission as "leave unchanged" (merge, not
+      // replace), so the fields we wrote in step 1 stay intact.
       const stageId = stageIdForStage(
         stagesQ.data,
         STAGE.IN_PRINCIPLE_APPROVAL_OF_IA,
@@ -65,9 +73,22 @@ export function useRegistrationSubmit({ iaId, basePath = '/gt' }) {
       )
       const updated = await updateM.mutateAsync({
         id: iaId,
-        values: { ...values, stageId },
+        values,                       // ← fields only, no stageId
         extra: { updatedBy: user?.username },
       })
+      // Second PUT — stage advance only. Bypasses `toPayload` because
+      // that adapter fills every scalar with `null` when omitted from
+      // the input; sending 40 explicit nulls alongside stageId would
+      // either trip the same field-drop bug or actively clear the
+      // fields we just saved. This helper sends ONLY {stageId,
+      // stageComments} and lets the backend's merge semantics preserve
+      // everything else.
+      if (stageId != null) {
+        await advanceIndustryAssociationStage(iaId, {
+          stageId,
+          stageComments: 'GT submitting for L1 review',
+        })
+      }
       const autoApproved = updated?.isSidbeApproved === true
 
       const files = collectFiles(values)

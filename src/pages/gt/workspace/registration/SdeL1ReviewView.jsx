@@ -466,19 +466,41 @@ function formatValue(f, raw) {
         .map((r) => [r.name, r.contact, r.email].filter(Boolean).join(' · '))
         .join(' • ') || ''
     }
+    // Checkbox arrays — resolve each entry to its option label so
+    // free-text options still render, and numeric-id options aren't
+    // dropped by the opaque-id guard.
+    if (f.type === 'checkboxes') {
+      const opts = f.options || []
+      const target = (v) => String(v)
+      return raw
+        .map((v) => {
+          const hit = opts.map((o) => (o && typeof o === 'object' && 'value' in o ? o : { value: o, label: String(o) }))
+            .find((o) => String(o.value) === target(v))
+          return hit?.label ?? String(v)
+        })
+        .join(', ')
+    }
     return raw.join(', ')
   }
   if (f.type === 'yesno') return raw === 'yes' ? 'Yes' : raw === 'no' ? 'No' : ''
   if (f.type === 'select' || f.type === 'radio') {
-    // Try to resolve to a human label from the schema's options / lazy
-    // optionsFrom(). If nothing matches AND the raw value looks like an
-    // opaque id (UUID, numeric primary key, or dev sentinel like
-    // "some-branch-uuid"), don't leak it — render as em-dash. Otherwise
-    // fall back to the raw string so a valid free-text value still shows.
+    // Backend list APIs return numeric ids that the DTO stores as
+    // strings (e.g. `sde: "1"`, `sidbiBranch: "17"`), so coerce both
+    // sides to string before matching. When the label lookup fails,
+    // prefer showing the raw value over an em-dash — an unresolved
+    // "1" is still more useful to the reviewer than "—". The
+    // opaque-id filter only kicks in for truly opaque strings
+    // (UUIDs / dev sentinels) so we don't leak DB internals.
     const opts = f.options || (typeof f.optionsFrom === 'function' ? f.optionsFrom({}) : [])
-    const match = opts.find((o) => (o?.value ?? o) === raw)
+    const target = String(raw)
+    const match = opts.find((o) => {
+      const v = o && typeof o === 'object' && 'value' in o ? o.value : o
+      return String(v) === target
+    })
     if (match) return match.label ?? match.value ?? String(match)
-    return looksLikeOpaqueId(raw) ? '' : String(raw)
+    // Never resolved. Show the raw string unless it looks like a UUID
+    // or dev sentinel — those we hide as they don't help the viewer.
+    return looksLikeOpaqueId(raw) && !/^\d+$/.test(target) ? '' : target
   }
   if (f.type === 'date') return formatDate(raw)
   return String(raw)

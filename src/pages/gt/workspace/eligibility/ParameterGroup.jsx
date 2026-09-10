@@ -18,7 +18,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 //   expanded    Boolean — is this group open
 //   onToggle    () => void
 //   onAnswer    (paramKey, nextValue) => void   nextValue is true | false | null
-function ParameterGroup({ title, params, answers, expanded, onToggle, onAnswer }) {
+function ParameterGroup({ title, params, answers, expanded, onToggle, onAnswer, readOnly = false }) {
   const theme = useTheme()
   const unanswered = params.filter((p) => answers[p.key] !== true && answers[p.key] !== false).length
 
@@ -81,6 +81,7 @@ function ParameterGroup({ title, params, answers, expanded, onToggle, onAnswer }
               param={param}
               value={answers[param.key]}
               onAnswer={onAnswer}
+              readOnly={readOnly}
             />
           ))}
         </Stack>
@@ -91,7 +92,7 @@ function ParameterGroup({ title, params, answers, expanded, onToggle, onAnswer }
 
 export default memo(ParameterGroup)
 
-const ParameterRow = memo(function ParameterRow({ param, value, onAnswer }) {
+const ParameterRow = memo(function ParameterRow({ param, value, onAnswer, readOnly = false }) {
   const theme = useTheme()
 
   // Hold the latest value in a ref so the click handlers stay referentially
@@ -101,12 +102,14 @@ const ParameterRow = memo(function ParameterRow({ param, value, onAnswer }) {
   valueRef.current = value
 
   const handleYes = useCallback(() => {
+    if (readOnly) return
     onAnswer(param.key, valueRef.current === true ? null : true)
-  }, [param.key, onAnswer])
+  }, [param.key, onAnswer, readOnly])
 
   const handleNo = useCallback(() => {
+    if (readOnly) return
     onAnswer(param.key, valueRef.current === false ? null : false)
-  }, [param.key, onAnswer])
+  }, [param.key, onAnswer, readOnly])
 
   return (
     <Stack
@@ -145,19 +148,21 @@ const ParameterRow = memo(function ParameterRow({ param, value, onAnswer }) {
           tone="yes"
           onClick={handleYes}
           label="Yes"
+          readOnly={readOnly}
         />
         <ToggleChip
           selected={value === false}
           tone="no"
           onClick={handleNo}
           label="No"
+          readOnly={readOnly}
         />
       </Stack>
     </Stack>
   )
 })
 
-const ToggleChip = memo(function ToggleChip({ selected, tone, onClick, label }) {
+const ToggleChip = memo(function ToggleChip({ selected, tone, onClick, label, readOnly = false }) {
   const theme = useTheme()
   const activeBg = tone === 'yes' ? theme.palette.success.main : theme.palette.error.main
   return (
@@ -165,6 +170,7 @@ const ToggleChip = memo(function ToggleChip({ selected, tone, onClick, label }) 
       component="button"
       type="button"
       onClick={onClick}
+      disabled={readOnly}
       sx={{
         border: 0,
         px: 2,
@@ -172,11 +178,12 @@ const ToggleChip = memo(function ToggleChip({ selected, tone, onClick, label }) 
         fontFamily: 'inherit',
         fontSize: 12.75,
         fontWeight: 600,
-        cursor: 'pointer',
+        cursor: readOnly ? 'default' : 'pointer',
         background: selected ? activeBg : theme.palette.background.paper,
         color: selected ? '#fff' : theme.palette.text.disabled,
         transition: 'background 120ms ease, color 120ms ease',
-        '&:hover': selected ? {} : { background: alpha(theme.palette.text.primary, 0.04) },
+        opacity: readOnly && !selected ? 0.5 : 1,
+        '&:hover': (selected || readOnly) ? {} : { background: alpha(theme.palette.text.primary, 0.04) },
       }}
     >
       {label}

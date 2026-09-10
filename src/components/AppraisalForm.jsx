@@ -252,11 +252,25 @@ function consolidateForGt(sections) {
 //                             viewer's schema only exposes 1–2 sections
 //                             (Cluster Expert), where a single scroll is
 //                             lighter than a stepper.
-export default function AppraisalForm({ registrationId, onSaved, stickyFooter = false, stepper = false }) {
+export default function AppraisalForm({ registrationId, onSaved, stickyFooter = false, stepper = false, readOnly = false }) {
   const { rawRole } = useAuth()
   const isClusterExpert = rawRole === 'CLUSTER_EXPERT'
   const isSde = rawRole === 'SIDBI_SDE'
-  const schema = useMemo(() => schemaFor(rawRole), [rawRole])
+  // Base schema per role, then a global read-only overlay when the
+  // caller opts in (e.g., GT viewing a submitted appraisal). The
+  // overlay flips every field to read-only + non-required so the
+  // stepper's own submit gate doesn't refuse a "no changes" click.
+  const schema = useMemo(() => {
+    const base = schemaFor(rawRole)
+    if (!readOnly) return base
+    return {
+      ...base,
+      sections: base.sections.map((sec) => ({
+        ...sec,
+        fields: sec.fields.map((f) => ({ ...f, readOnly: true, required: false })),
+      })),
+    }
+  }, [rawRole, readOnly])
 
   const iaQ = useIA(registrationId)
   const apprQ = useAppraisalByRegistration(registrationId)
@@ -532,6 +546,7 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
         setSustainOpen={setSustainOpen}
         existing={existing}
         registrationId={registrationId}
+        readOnly={readOnly}
       />
     )
   }
@@ -575,6 +590,7 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
 function StepperLayout({
   schema, values, setValue, showAllErrors, submit, busy, canSave, submitLabel,
   viewSustainability, sustainOpen, setSustainOpen, existing, registrationId,
+  readOnly = false,
 }) {
   const theme = useTheme()
   const sections = schema.sections
@@ -669,18 +685,20 @@ function StepperLayout({
         </Box>
       </Box>
 
-      <RegistrationFooter
-        activeIndex={clampedActive}
-        sectionCount={sections.length}
-        sectionName={activeSection?.title || ''}
-        canSubmit={canSubmit}
-        submitting={busy}
-        completedCount={completedCount}
-        onPrev={goPrev}
-        onNext={goNext}
-        onSubmit={onSubmit}
-        submitLabel={submitLabel}
-      />
+      {!readOnly && (
+        <RegistrationFooter
+          activeIndex={clampedActive}
+          sectionCount={sections.length}
+          sectionName={activeSection?.title || ''}
+          canSubmit={canSubmit}
+          submitting={busy}
+          completedCount={completedCount}
+          onPrev={goPrev}
+          onNext={goNext}
+          onSubmit={onSubmit}
+          submitLabel={submitLabel}
+        />
+      )}
 
       <SustainabilityMatrixModal
         open={sustainOpen}

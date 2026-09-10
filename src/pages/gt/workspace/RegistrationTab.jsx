@@ -1,12 +1,14 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Alert, Box, CircularProgress, Snackbar, Stack, Typography,
+  Alert, Box, Button, CircularProgress, Snackbar, Stack, Typography,
 } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import { makeInPrincipleSchema } from '../../../formSchemas'
 import FormRenderer, { fieldError } from '../../../components/FormRenderer'
-import { useBranchesByState, useSdesByBranch } from '../../../queries'
+import { useBranchesByState, useFilesByRegistration, useSdesByBranch } from '../../../queries'
 import { toFormValues as iaToFormValues } from '../../../apis/industryAssociations'
+import { downloadFile } from '../../../apis/files'
+import { decodeFilename } from '../../../fileFieldLabels'
 import { STAGE } from '../../../apis/registrationStages'
 import { STATUS } from '../../../apis/workflow'
 import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
@@ -239,29 +241,20 @@ function RegistrationForm({ ws }) {
   const decisions = ws.decisionsForCurrent || []
   const isReviewer = decisions.length > 0
 
-  // Locked view — two audiences:
-  //   • Applicant (GT) view: single bold banner. Nothing to act on.
-  //   • Reviewer (SDE) view: full L1 review surface — collapsible field
-  //     sections + docs sidebar + sticky Approve/Reject/Send-back bar.
-  if (isLocked) {
+  // Reviewer branch — SDE opens the L1 tab on a submitted IA. Full
+  // review surface (fields + docs + Approve/Reject bar). GT / other
+  // non-reviewers fall through to the read-only-form branch below.
+  if (isLocked && isReviewer) {
     return (
       <>
-        {isReviewer ? (
-          <SdeL1ReviewView
-            iaId={ws.iaId}
-            iaName={ws.ia?.name}
-            dto={dto}
-            schema={fullSchema}
-            decisions={decisions}
-            onDone={(result) => result && setReviewerToast(result)}
-          />
-        ) : (
-          <SubmittedBanner
-            approved={l1Status === STATUS.COMPLETED}
-            submittedOn={dto?.updatedAt || dto?.createdAt}
-            submittedBy={dto?.updatedBy || dto?.createdBy}
-          />
-        )}
+        <SdeL1ReviewView
+          iaId={ws.iaId}
+          iaName={ws.ia?.name}
+          dto={dto}
+          schema={fullSchema}
+          decisions={decisions}
+          onDone={(result) => result && setReviewerToast(result)}
+        />
         <Snackbar
           open={!!activeToast}
           autoHideDuration={4200}
@@ -318,20 +311,29 @@ function RegistrationForm({ ws }) {
               chrome="minimal"
             />
           </Box>
+
+          {/* Uploaded documents — surfaced only in read-only mode so GT
+              can see what they filed alongside their form values. The
+              editable path already has per-field Uploader inputs. */}
+          {isLocked && ws.iaId && (
+            <UploadedDocumentsPanel iaId={ws.iaId} />
+          )}
         </Box>
       </Box>
 
-      <RegistrationFooter
-        activeIndex={activeIndexClamped}
-        sectionCount={sections.length}
-        sectionName={activeSection?.title || ''}
-        canSubmit={canSubmit && !submitting}
-        submitting={submitting}
-        completedCount={completedCount}
-        onPrev={goPrev}
-        onNext={goNext}
-        onSubmit={onSubmit}
-      />
+      {!isLocked && (
+        <RegistrationFooter
+          activeIndex={activeIndexClamped}
+          sectionCount={sections.length}
+          sectionName={activeSection?.title || ''}
+          canSubmit={canSubmit && !submitting}
+          submitting={submitting}
+          completedCount={completedCount}
+          onPrev={goPrev}
+          onNext={goNext}
+          onSubmit={onSubmit}
+        />
+      )}
 
       <Snackbar
         open={!!toast}
@@ -493,4 +495,113 @@ function NoticeBox({ severity, title, body }) {
       </Alert>
     </Box>
   )
+}
+
+// Documents panel shown at the bottom of the read-only L1 view. Lists
+// every file uploaded against this IA (grouped by original slot label)
+// with a click-to-download action.
+function UploadedDocumentsPanel({ iaId }) {
+  const filesQ = useFilesByRegistration(iaId)
+  const files = filesQ.data || []
+  const [busy, setBusy] = useState(null)
+  const theme = useTheme()
+
+  const onDownload = async (filename) => {
+    setBusy(filename)
+    try { await downloadFile(iaId, filename) } finally { setBusy(null) }
+  }
+
+  return (
+    <Box
+      sx={{
+        mt: 4,
+        p: 2.5,
+        borderRadius: 2,
+        border: 1,
+        borderColor: alpha(theme.palette.text.primary, 0.09),
+        background: '#fff',
+      }}
+    >
+      <Typography sx={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: theme.palette.text.secondary, mb: 1.5 }}>
+        Uploaded documents · {files.length}
+      </Typography>
+      {filesQ.isLoading && files.length === 0 ? (
+        <Typography sx={{ fontSize: 13, color: theme.palette.text.disabled }}>Loading…</Typography>
+      ) : files.length === 0 ? (
+        <Typography sx={{ fontSize: 13, color: theme.palette.text.disabled }}>No files were uploaded with this submission.</Typography>
+      ) : (
+        <Stack spacing={1}>
+          {files.map((f) => {
+            const filename = f.filename || f.name
+            const decoded = decodeFilename(filename)
+            const label = decoded.label || decoded.name
+            const size = f.size ? formatFileSize(f.size) : ''
+            const ext = (decoded.name.split('.').pop() || '').toUpperCase().slice(0, 4)
+            const rowBusy = busy === filename
+            return (
+              <Stack
+                key={filename}
+                direction="row"
+                alignItems="center"
+                spacing={1.5}
+                sx={{ py: 0.75, borderBottom: 1, borderColor: alpha(theme.palette.text.primary, 0.06), '&:last-of-type': { borderBottom: 0 } }}
+              >
+                <Box
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 1,
+                    flexShrink: 0,
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: alpha(theme.palette.primary.main, 0.09),
+                    color: theme.palette.primary.dark,
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  {ext || 'FILE'}
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography
+                    sx={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: theme.palette.text.primary,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={label}
+                  >
+                    {label}
+                  </Typography>
+                  {size && (
+                    <Typography sx={{ fontSize: 11.5, color: theme.palette.text.disabled }}>
+                      {size}
+                    </Typography>
+                  )}
+                </Box>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => onDownload(filename)}
+                  disabled={rowBusy}
+                  sx={{ textTransform: 'none', fontWeight: 600 }}
+                >
+                  {rowBusy ? 'Downloading…' : 'Download'}
+                </Button>
+              </Stack>
+            )
+          })}
+        </Stack>
+      )}
+    </Box>
+  )
+}
+
+function formatFileSize(bytes) {
+  if (!bytes || bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
