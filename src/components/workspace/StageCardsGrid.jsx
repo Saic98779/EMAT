@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import {
-  Box, Button, Stack, Table, TableBody, TableCell,
+  Box, Button, IconButton, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, Typography,
 } from '@mui/material'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
@@ -28,15 +28,13 @@ import { DECISION } from '../../apis/stageActions'
 //                      buttons rendered inline on the sub-stage row.
 //   onDecision         Optional (stage, subStage, decision) => void — click.
 function StageCardsGrid({
-  workflow, expandedKey, onExpandToggle,
+  workflow, expandedKey, onExpandToggle, onStageOpen,
   decisionsForRow, onDecision,
 }) {
-  const { overall, stages } = workflow || { overall: { completed: 0, total: 0, percent: 0 }, stages: [] }
+  const { stages } = workflow || { stages: [] }
 
   return (
     <Box sx={{ mt: 2.5 }}>
-      <OverallProgress overall={overall} />
-
       <Box
         sx={{
           display: 'grid',
@@ -49,7 +47,8 @@ function StageCardsGrid({
             key={stage.key}
             stage={stage}
             expanded={stage.key === expandedKey}
-            onToggle={() => onExpandToggle?.(stage.key)}
+            onToggleExpand={() => onExpandToggle?.(stage.key)}
+            onOpen={() => onStageOpen?.(stage.key)}
           />
         ))}
       </Box>
@@ -68,150 +67,132 @@ function StageCardsGrid({
 
 export default memo(StageCardsGrid)
 
-// ── Overall progress strip ─────────────────────────────────────────────
-
-function OverallProgress({ overall }) {
-  const theme = useTheme()
-  const { completed, total, percent } = overall
-  return (
-    <Stack
-      direction="row"
-      alignItems="center"
-      spacing={2}
-      sx={{
-        mb: 2,
-        px: 2.25,
-        py: 1.5,
-        borderRadius: 2,
-        border: 1,
-        borderColor: alpha(theme.palette.text.primary, 0.09),
-        background: '#fff',
-      }}
-    >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography
-          variant="overline"
-          sx={{ fontSize: 11, letterSpacing: '0.05em', color: theme.palette.text.disabled, fontWeight: 600 }}
-        >
-          Overall Progress
-        </Typography>
-        <Typography sx={{ fontSize: 14, fontWeight: 500, color: theme.palette.text.secondary }}>
-          <Box component="span" sx={{ color: 'text.primary', fontWeight: 700, fontSize: 15 }}>
-            {completed} / {total}
-          </Box>{' '}
-          steps completed
-        </Typography>
-      </Box>
-      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: { md: 260 } }}>
-        <Box
-          sx={{
-            flex: 1,
-            height: 6,
-            borderRadius: 3,
-            background: alpha(theme.palette.text.primary, 0.09),
-            overflow: 'hidden',
-          }}
-        >
-          <Box
-            sx={{
-              width: `${percent}%`,
-              height: '100%',
-              background: theme.palette.success.main,
-              transition: 'width 240ms ease',
-            }}
-          />
-        </Box>
-        <Typography sx={{ fontSize: 14, fontWeight: 700, minWidth: 40, textAlign: 'right' }}>
-          {percent}%
-        </Typography>
-      </Stack>
-    </Stack>
-  )
-}
-
 // ── Individual stage card ──────────────────────────────────────────────
+// Card body is a clickable region that opens the stage's workspace tab
+// (read-only if completed, editable if the stage is the user's turn).
+// The chevron in the corner is a *separate* IconButton that toggles the
+// sub-stage detail table underneath the grid — the only way to expand
+// the sub-stage list. Splitting the two prevents the previous "click
+// anywhere expands substages" surprise the client called out.
 
-function StageCard({ stage, expanded, onToggle }) {
+function StageCard({ stage, expanded, onToggleExpand, onOpen }) {
   const theme = useTheme()
   const visuals = statusVisuals(stage.status, theme)
 
   return (
     <Box
-      component="button"
-      type="button"
-      onClick={onToggle}
       sx={{
         position: 'relative',
-        textAlign: 'left',
-        fontFamily: 'inherit',
-        border: `${expanded ? 2 : 1}px solid ${expanded ? theme.palette.warning.main : alpha(theme.palette.text.primary, 0.1)}`,
+        border: `${expanded ? 2 : 1}px solid ${expanded ? theme.palette.warning.main : visuals.borderColor}`,
         borderRadius: 2,
-        background: '#fff',
-        cursor: 'pointer',
-        px: 2,
-        py: 1.75,
-        transition: 'border-color 150ms ease, box-shadow 150ms ease',
-        '&:hover': !expanded ? { borderColor: alpha(theme.palette.text.primary, 0.24) } : undefined,
+        background: expanded ? visuals.cardBgActive : visuals.cardBg,
+        transition: 'border-color 150ms ease, background 150ms ease',
+        overflow: 'hidden',
+        '&:hover': !expanded
+          ? { background: visuals.cardBgActive }
+          : undefined,
       }}
     >
-      <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1 }}>
-        <Box
-          sx={{
-            width: 32,
-            height: 32,
-            flexShrink: 0,
-            borderRadius: '50%',
-            display: 'grid',
-            placeItems: 'center',
-            fontSize: 13,
-            fontWeight: 700,
-            background: visuals.iconBg,
-            color: visuals.iconColor,
-            border: visuals.iconBorder,
-          }}
-        >
-          {visuals.icon}
-        </Box>
-        <Typography
-          sx={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: theme.palette.text.disabled,
-            letterSpacing: '0.04em',
-          }}
-        >
-          {stageIndexLabel(stage.key)}
-        </Typography>
-      </Stack>
-
-      <Typography
+      {/* Coloured top stripe — 4px band encoding stage status. Doubles
+          as the visual identifier when the tint alone is too subtle. */}
+      <Box
         sx={{
-          fontSize: 13.5,
-          fontWeight: 600,
-          lineHeight: 1.3,
-          color: theme.palette.text.primary,
-          minHeight: 34,
-          mb: 1,
-          textWrap: 'pretty',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 4,
+          background: visuals.stripe,
+        }}
+      />
+      <Box
+        component="button"
+        type="button"
+        onClick={onOpen}
+        sx={{
+          display: 'block',
+          width: '100%',
+          textAlign: 'left',
+          fontFamily: 'inherit',
+          border: 0,
+          background: 'transparent',
+          cursor: 'pointer',
+          px: 2,
+          pt: 1.75,
+          pb: 1,
         }}
       >
-        {stage.label}
-      </Typography>
+        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1 }}>
+          <Box
+            sx={{
+              width: 32,
+              height: 32,
+              flexShrink: 0,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              fontSize: 13,
+              fontWeight: 700,
+              background: visuals.iconBg,
+              color: visuals.iconColor,
+              border: visuals.iconBorder,
+            }}
+          >
+            {visuals.icon}
+          </Box>
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: theme.palette.text.disabled,
+              letterSpacing: '0.04em',
+            }}
+          >
+            {stageIndexLabel(stage.key)}
+          </Typography>
+        </Stack>
 
-      <StatusChip status={stage.status} />
+        <Typography
+          sx={{
+            fontSize: 13.5,
+            fontWeight: 600,
+            lineHeight: 1.3,
+            color: theme.palette.text.primary,
+            minHeight: 34,
+            mb: 1,
+            textWrap: 'pretty',
+          }}
+        >
+          {stage.label}
+        </Typography>
 
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
+        <StatusChip status={stage.status} />
+      </Box>
+
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ px: 2, pb: 1.25 }}
+      >
         <Typography sx={{ fontSize: 12, color: theme.palette.text.disabled, fontWeight: 500 }}>
           {stage.progress.completed}/{stage.progress.total}
         </Typography>
-        <ExpandMoreRoundedIcon
-          sx={{
-            fontSize: 20,
-            color: theme.palette.text.disabled,
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 150ms ease',
-          }}
-        />
+        <IconButton
+          size="small"
+          onClick={onToggleExpand}
+          aria-label={expanded ? 'Hide sub-stages' : 'Show sub-stages'}
+          sx={{ p: 0.5 }}
+        >
+          <ExpandMoreRoundedIcon
+            sx={{
+              fontSize: 20,
+              color: theme.palette.text.disabled,
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 150ms ease',
+            }}
+          />
+        </IconButton>
       </Stack>
     </Box>
   )
@@ -423,6 +404,15 @@ function StatusChip({ status }) {
 
 function statusVisuals(status, theme) {
   const neutralBorder = `1.5px solid ${alpha(theme.palette.text.primary, 0.18)}`
+  // Card = soft wash of the status colour + a punchy 4px top stripe of
+  // the same colour. Enough tint to identify each card at-a-glance,
+  // low enough opacity to stay calm on the workspace background.
+  const forColour = (c) => ({
+    cardBg: alpha(c, 0.09),
+    cardBgActive: alpha(c, 0.16),
+    borderColor: alpha(c, 0.28),
+    stripe: c,
+  })
   switch (status) {
     case STATUS.COMPLETED:
       return {
@@ -430,6 +420,7 @@ function statusVisuals(status, theme) {
         iconBg: 'transparent',
         iconColor: theme.palette.success.main,
         iconBorder: 'none',
+        ...forColour(theme.palette.success.main),
       }
     case STATUS.IN_PROGRESS:
       return {
@@ -437,6 +428,7 @@ function statusVisuals(status, theme) {
         iconBg: '#fff',
         iconColor: theme.palette.warning.main,
         iconBorder: `1.5px solid ${theme.palette.warning.main}`,
+        ...forColour(theme.palette.warning.main),
       }
     case STATUS.REVERTED:
       return {
@@ -444,6 +436,7 @@ function statusVisuals(status, theme) {
         iconBg: '#fff',
         iconColor: theme.palette.warning.dark,
         iconBorder: `1.5px solid ${theme.palette.warning.dark}`,
+        ...forColour(theme.palette.warning.dark),
       }
     case STATUS.REJECTED:
       return {
@@ -451,13 +444,19 @@ function statusVisuals(status, theme) {
         iconBg: '#fff',
         iconColor: theme.palette.error.main,
         iconBorder: `1.5px solid ${theme.palette.error.main}`,
+        ...forColour(theme.palette.error.main),
       }
     default:
+      // Not started — neutral slate. Primary-blue tinted cards read as
+      // "selected" (blue is the app's action colour); using slate keeps
+      // the "waiting" cards clearly distinct from the active/hover
+      // state without falling back to washed-out white.
       return {
         icon: <LockOutlinedIcon sx={{ fontSize: 16 }} />,
         iconBg: '#fff',
         iconColor: theme.palette.text.disabled,
         iconBorder: neutralBorder,
+        ...forColour(theme.palette.text.secondary),
       }
   }
 }

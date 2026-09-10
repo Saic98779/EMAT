@@ -37,16 +37,23 @@ function IdentityFields({ values, errors, touched, onChange, onBlur, disabled = 
     [onChange, onBlur],
   )
 
-  const commonProps = (name) => ({
-    value: values[name] || '',
-    onChange: handlers[name].onChange,
-    onBlur: handlers[name].onBlur,
-    error: !!(touched[name] && errors[name]),
-    helperText: touched[name] && errors[name] ? errors[name] : undefined,
-    disabled,
-    size: 'small',
-    fullWidth: true,
-  })
+  // Reserve a single-line helper slot so a field's row height doesn't
+  // grow when its error appears (which used to shift the entire grid
+  // and mis-align siblings). The help text is a whitespace character
+  // so the DOM node still occupies space when there's no error / hint.
+  const commonProps = (name, hint) => {
+    const err = touched[name] && errors[name]
+    return {
+      value: values[name] || '',
+      onChange: handlers[name].onChange,
+      onBlur: handlers[name].onBlur,
+      error: !!err,
+      helperText: err || hint || ' ',
+      disabled,
+      size: 'small',
+      fullWidth: true,
+    }
+  }
 
   return (
     <Box
@@ -54,7 +61,18 @@ function IdentityFields({ values, errors, touched, onChange, onBlur, disabled = 
         display: 'grid',
         gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fit, minmax(240px, 1fr))' },
         columnGap: 3,
-        rowGap: 2.25,
+        rowGap: 2,
+        alignItems: 'flex-start',
+        // Uniform helper text row — same size + colour whether the
+        // field is showing an error, a hint, or nothing at all. Keeps
+        // the identity row visually locked to one grid rhythm.
+        '& .MuiFormHelperText-root': {
+          minHeight: '1.15em',
+          fontSize: 11.5,
+          lineHeight: 1.35,
+          marginTop: '4px',
+          whiteSpace: 'normal',
+        },
         ...stackedLabelSx,
       }}
     >
@@ -73,7 +91,7 @@ function IdentityFields({ values, errors, touched, onChange, onBlur, disabled = 
         ))}
       </TextField>
       <TextField
-        {...commonProps('pan_no')}
+        {...commonProps('pan_no', 'Company, Trust, AOP or Government PAN')}
         label={LABELS.pan_no}
         inputProps={{
           maxLength: 10,

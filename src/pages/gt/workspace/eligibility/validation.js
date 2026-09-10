@@ -13,6 +13,21 @@ const PAN_RE = /^[A-Z]{5}\d{4}[A-Z]$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const HAS_WHITESPACE_RE = /\s/
 
+// The 4th character of an Indian PAN encodes the entity type. For an
+// Industry Association we only accept the "collective / juridical"
+// buckets (Company, Trust, Association of Persons, Government) — the
+// individual + partnership + BOI + HUF + local-authority PANs are
+// rejected per client rule (WhatsApp note 2026-09-04). Keyed as
+// { code: labelForRejectMessage }.
+const PAN_HOLDER_TYPES = {
+  P: 'Individual',
+  F: 'Firm / Partnership',
+  B: 'Body of Individuals',
+  H: 'Hindu Undivided Family',
+  L: 'Local Authority',
+}
+const PAN_ALLOWED_HOLDERS = new Set(['C', 'T', 'A', 'G']) // Company, Trust, AOP, Government
+
 export const FIELDS = ['ia_name', 'state', 'pan_no', 'email']
 
 export const LABELS = {
@@ -41,8 +56,17 @@ export function validateField(name, raw) {
     case 'pan_no': {
       if (!value) return 'Required'
       if (HAS_WHITESPACE_RE.test(value)) return 'No spaces allowed'
-      if (value.length !== 10) return '10 characters required'
+      if (value.length !== 10) return '10-character PAN required'
       if (!PAN_RE.test(value)) return 'Format: AAAAA9999A'
+      // Position 4 → entity type. Short one-line messages — the "why"
+      // sits in the field's help text so the error itself stays tidy.
+      const holder = value.charAt(3)
+      if (PAN_HOLDER_TYPES[holder]) {
+        return `${PAN_HOLDER_TYPES[holder]} PAN not allowed`
+      }
+      if (!PAN_ALLOWED_HOLDERS.has(holder)) {
+        return 'PAN must belong to a Company, Trust, AOP or Government'
+      }
       return ''
     }
 

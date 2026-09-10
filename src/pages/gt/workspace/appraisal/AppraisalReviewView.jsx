@@ -557,14 +557,32 @@ function formatValue(f, raw) {
         .map((r) => Object.values(r).filter(Boolean).join(' · '))
         .join(' • ') || ''
     }
+    if (f.type === 'checkboxes') {
+      const opts = f.options || []
+      return raw
+        .map((v) => {
+          const hit = opts.map((o) => (o && typeof o === 'object' && 'value' in o ? o : { value: o, label: String(o) }))
+            .find((o) => String(o.value) === String(v))
+          return hit?.label ?? String(v)
+        })
+        .join(', ')
+    }
     return raw.join(', ')
   }
   if (f.type === 'yesno') return raw === 'yes' ? 'Yes' : raw === 'no' ? 'No' : ''
   if (f.type === 'select' || f.type === 'radio') {
+    // Coerce both sides to string — backend list APIs return numeric
+    // ids while the DTO stores them as strings, so `1 === "1"` misses.
+    // If we can't resolve the label, fall back to the raw value; only
+    // truly opaque strings (UUIDs, dev sentinels) get hidden.
     const opts = f.options || (typeof f.optionsFrom === 'function' ? f.optionsFrom({}) : [])
-    const match = opts.find((o) => (o?.value ?? o) === raw)
+    const target = String(raw)
+    const match = opts.find((o) => {
+      const v = o && typeof o === 'object' && 'value' in o ? o.value : o
+      return String(v) === target
+    })
     if (match) return match.label ?? match.value ?? String(match)
-    return looksLikeOpaqueId(raw) ? '' : String(raw)
+    return looksLikeOpaqueId(raw) && !/^\d+$/.test(target) ? '' : target
   }
   if (f.type === 'date') return formatDate(raw)
   return String(raw)

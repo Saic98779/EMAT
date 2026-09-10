@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from './api'
 import { ROLES } from './data'
 
@@ -72,6 +73,7 @@ function loadSession() {
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(() => loadSession())
+  const qc = useQueryClient()
 
   useEffect(() => {
     if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
@@ -87,6 +89,12 @@ export function AuthProvider({ children }) {
     const role = normalizeRole(data?.role)
     if (!role) throw new Error(`Role “${data?.role}” is not configured in this app.`)
     const user = buildUser(data)
+    // Nuke the react-query cache before the new session starts. Prevents
+    // the classic "logged out as GT, logged back in as SDE, still see
+    // GT's IA list until I hit refresh" bug — every query was cached in
+    // memory keyed only on its query key, not on the auth token, so the
+    // stale data from the previous user got served instantly.
+    qc.clear()
     setSession({
       role,
       user,
@@ -95,9 +103,14 @@ export function AuthProvider({ children }) {
       rawRole: data.role,
     })
     return { role }
-  }, [])
+  }, [qc])
 
-  const logout = useCallback(() => setSession(null), [])
+  // Same cache reset on logout so nothing from the previous session
+  // lingers into the next login attempt.
+  const logout = useCallback(() => {
+    qc.clear()
+    setSession(null)
+  }, [qc])
 
   // The value object is memoized on session identity so consumers of
   // useAuth() don't re-render whenever an unrelated parent re-renders.
