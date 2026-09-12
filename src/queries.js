@@ -88,6 +88,7 @@ import {
   getSustainabilityMatrix,
   getSustainabilityMatrixByAppraisal,
   createSustainabilityMatrix, updateSustainabilityMatrix, deleteSustainabilityMatrix,
+  updateSustainabilityActionPlan,
 } from './apis/sustainabilityMatrix'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
@@ -397,7 +398,7 @@ export function useUpdateAppraisal() {
 export function useApproveAppraisal() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, isSidbeApproved = true, stageId, stageComments }) =>
+    mutationFn: ({ id, isSidbeApproved = null, stageId, stageComments }) =>
       approveAppraisal(id, { isSidbeApproved, stageId, stageComments }),
     onSuccess: (_updated, { id, registrationId }) => {
       qc.invalidateQueries({ queryKey: keys.appraisals.detail(id), refetchType: 'all' })
@@ -895,11 +896,20 @@ export function useSustainabilityMatrixOne(id) {
 
 // Used to check whether the matrix has already been submitted for this
 // IA's appraisal — gates the flow into Detailed Appraisal.
+// Backend returns a *list* wrapper (`{data: [ … ]}`) even for the
+// per-appraisal lookup, but the FK is one-to-one — an appraisal has at
+// most one matrix. Collapse to the first row (or null) so callers can
+// destructure `data.id`, `data.totalScore`, `data.actionPlans` without
+// tripping on an array. Silences an "undefined" URL bug the Action Plan
+// submit hit when `data.id` was read straight off the array.
 export function useSustainabilityMatrixByAppraisal(appraisalId) {
   return useQuery({
     queryKey: keys.sustainability.byAppraisal(appraisalId),
     enabled: !!appraisalId,
-    queryFn: ({ signal }) => getSustainabilityMatrixByAppraisal(appraisalId, { signal }).catch(() => null),
+    queryFn: ({ signal }) =>
+      getSustainabilityMatrixByAppraisal(appraisalId, { signal })
+        .then((res) => (Array.isArray(res) ? (res[0] ?? null) : (res ?? null)))
+        .catch(() => null),
   })
 }
 
@@ -936,6 +946,54 @@ export function useDeleteSustainabilityMatrix() {
   return useMutation({
     mutationFn: (id) => deleteSustainabilityMatrix(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.sustainability.all }),
+  })
+}
+
+// ── Action Plan (Annexure IV) ─────────────────────────────────────────
+// GT ticks the 8 checkboxes below the sustainability matrix; Cluster
+// Expert then reviews and either approves the plan or reverts it with a
+// comment. Both writes reuse the sustainability-matrix row via
+// `updateSustainabilityActionPlan` (slim PUT body — see the API helper).
+// Callers pass the parent registrationId in `variables` so we can
+// invalidate the workflow / stage-history views that the workspace
+// listens on. Without that, the stage cards would keep showing the old
+// "action plan submission pending" state until a manual refresh.
+export function useSubmitActionPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ matrixId, dto, actionPlans, stageId, stageComments }) =>
+      updateSustainabilityActionPlan(matrixId, { dto, actionPlans, stageId, stageComments }),
+    onSuccess: (_updated, { matrixId, registrationId }) => {
+      qc.invalidateQueries({ queryKey: keys.sustainability.detail(matrixId), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.sustainability.all, refetchType: 'all' })
+      if (registrationId) {
+        qc.invalidateQueries({ queryKey: keys.ias.detail(registrationId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(registrationId) })
+      }
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
+    },
+  })
+}
+
+export function useDecideActionPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ matrixId, dto, actionPlanClusterExpertComment, stageId, stageComments }) =>
+      updateSustainabilityActionPlan(matrixId, {
+        dto,
+        actionPlanClusterExpertComment,
+        stageId,
+        stageComments,
+      }),
+    onSuccess: (_updated, { matrixId, registrationId }) => {
+      qc.invalidateQueries({ queryKey: keys.sustainability.detail(matrixId), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.sustainability.all, refetchType: 'all' })
+      if (registrationId) {
+        qc.invalidateQueries({ queryKey: keys.ias.detail(registrationId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(registrationId) })
+      }
+      qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
+    },
   })
 }
 

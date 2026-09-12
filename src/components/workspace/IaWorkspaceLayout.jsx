@@ -124,28 +124,32 @@ export default function IaWorkspaceLayout() {
   }, [])
 
   // Workspace tabs surfaced in the header. Stage tabs (L1 / Sustainability
-  // / Appraisal) unlock progressively so viewers can't jump ahead into a
-  // form that isn't ready yet.
-  //   • L1           — needs the eligibility matrix on record
-  //   • Sustainability — needs L1 fully approved (stage 2 COMPLETED)
-  //   • Appraisal    — needs Sustainability submitted (stage 3 COMPLETED)
+  // / Action Plan / Appraisal) unlock progressively so viewers can't jump
+  // ahead into a form that isn't ready yet.
+  //   • L1             — needs the eligibility matrix on record
+  //   • Sustainability — needs L1 fully approved
+  //   • Action Plan    — needs Sustainability submitted
+  //   • Appraisal      — needs Action Plan CE-approved (stage 4 COMPLETED)
   const views = useMemo(() => {
     const stagesByKey = new Map((workflow?.stages || []).map((s) => [s.key, s]))
     const eligibilityDone = stagesByKey.get(STAGE.ELIGIBILITY_MATRIX)?.status === STATUS.COMPLETED
     const l1Done = stagesByKey.get(STAGE.IN_PRINCIPLE_APPROVAL_OF_IA)?.status === STATUS.COMPLETED
     const sustainabilityDone = stagesByKey.get(STAGE.SUSTAINABILITY_MATRIX)?.status === STATUS.COMPLETED
+    const actionPlanDone = stagesByKey.get(STAGE.ACTION_PLAN)?.status === STATUS.COMPLETED
 
     const disabledFor = (key) => {
       if (isNew) return key !== 'overview' && key !== 'l1' // draft mode: nothing else exists
       if (key === 'l1') return !eligibilityDone
       if (key === 'sustainability') return !l1Done
-      if (key === 'appraisal') return !sustainabilityDone
+      if (key === 'action-plan') return !sustainabilityDone
+      if (key === 'appraisal') return !actionPlanDone
       return false
     }
     const disabledReason = (key) => {
       if (key === 'l1') return 'Complete the Eligibility Matrix first.'
       if (key === 'sustainability') return 'Opens once In-Principle Approval (L1) is granted.'
-      if (key === 'appraisal') return 'Opens once the Sustainability Matrix is submitted.'
+      if (key === 'action-plan') return 'Opens once the Sustainability Matrix is submitted.'
+      if (key === 'appraisal') return 'Opens once the Cluster Expert approves the Action Plan.'
       return ''
     }
 
@@ -153,6 +157,7 @@ export default function IaWorkspaceLayout() {
       { key: 'overview',       label: 'Overview' },
       { key: 'l1',             label: 'Registration (L1)' },
       { key: 'sustainability', label: 'Sustainability' },
+      { key: 'action-plan',    label: 'Action Plan' },
       { key: 'appraisal',      label: 'Detailed Appraisal' },
       { key: 'documents',      label: 'Documents' },
       { key: 'activity',       label: 'Activity' },
@@ -321,6 +326,7 @@ function pickLandingTab(ws) {
   if (!done(STAGE.ELIGIBILITY_MATRIX)) return 'eligibility'
   if (!done(STAGE.IN_PRINCIPLE_APPROVAL_OF_IA)) return 'l1'
   if (!done(STAGE.SUSTAINABILITY_MATRIX)) return 'sustainability'
+  if (!done(STAGE.ACTION_PLAN)) return 'action-plan'
   if (!done(STAGE.DETAILED_APPRAISAL)) return 'appraisal'
   return 'overview'
 }
@@ -449,7 +455,7 @@ const STAGE_TO_TAB = {
   [STAGE.ELIGIBILITY_MATRIX]:          'eligibility',
   [STAGE.IN_PRINCIPLE_APPROVAL_OF_IA]: 'l1',
   [STAGE.SUSTAINABILITY_MATRIX]:       'sustainability',
-  [STAGE.ACTION_PLAN]:                 'appraisal',
+  [STAGE.ACTION_PLAN]:                 'action-plan',
   [STAGE.DETAILED_APPRAISAL]:          'appraisal',
   [STAGE.DOCUMENTATION_OF_IA]:         'documents',
 }

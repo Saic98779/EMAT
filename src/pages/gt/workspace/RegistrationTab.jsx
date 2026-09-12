@@ -137,14 +137,24 @@ function RegistrationForm({ ws }) {
   // so the stage-level status is too coarse — it would lock the form
   // before GT ever gets to fill it. Check the specific "Submission"
   // sub-stage (or a later positive sub-stage like SDE Approval) instead.
+  //
+  // Revert carve-out: when the SDE sends L1 back to GT, the stage-level
+  // status flips to REVERTED but the "Submission" sub-row is still
+  // COMPLETED (backend keeps the earlier submit in history). GT needs
+  // the form editable again to fix things and resubmit — so bypass the
+  // lock whenever the parent stage is in the REVERTED state.
   const l1Stage = ws.workflow?.stages?.find((s) => s.key === STAGE.IN_PRINCIPLE_APPROVAL_OF_IA)
   const l1Status = l1Stage?.status
+  const l1Reverted = l1Status === STATUS.REVERTED
   const submissionDone = (l1Stage?.subStages || []).some((s) => {
     const label = s.label || ''
     if (label === 'In Principle Registration') return false // derived-existence row
     return s.status === STATUS.COMPLETED || s.status === STATUS.IN_PROGRESS
   })
-  const isLocked = submissionDone
+  const isLocked = submissionDone && !l1Reverted
+  // Latest reviewer remark to show GT what needs fixing (populated by
+  // deriveWorkflow when it saw a REVERTED sub-stage in history).
+  const revertRemark = l1Reverted ? l1Stage?.comment : null
 
   // ── Schema derivation ────────────────────────────────────────────────
   // Base schema locks the header fields as read-only. This matches the
@@ -273,6 +283,7 @@ function RegistrationForm({ ws }) {
 
   return (
     <>
+      {l1Reverted && <RevertedBanner remark={revertRemark} />}
       {/* CSS grid layout so the stepper (left) and form area (right) stay
           side-by-side reliably — MUI Grid v1/v2 mixing was causing them
           to stack vertically. */}
@@ -427,6 +438,69 @@ function formatDate(iso) {
   const d = new Date(iso)
   if (Number.isNaN(d.valueOf())) return ''
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// RevertedBanner
+// ────────────────────────────────────────────────────────────────────────
+// Shown at the top of the L1 tab when the SDE has sent the form back to
+// GT for revisions. Surfaces the reviewer's remarks so GT knows what to
+// fix before resubmitting.
+function RevertedBanner({ remark }) {
+  const theme = useTheme()
+  const tone = theme.palette.warning
+  return (
+    <Box
+      sx={{
+        mt: 1,
+        mb: 2,
+        borderRadius: 2,
+        border: 1,
+        borderColor: alpha(tone.main, 0.4),
+        background: alpha(tone.main, 0.08),
+        px: { xs: 3, md: 4 },
+        py: { xs: 2, md: 2.5 },
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: tone.dark,
+        }}
+      >
+        Sent back for revisions
+      </Typography>
+      <Typography sx={{ mt: 0.5, fontSize: 15, fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '-0.01em' }}>
+        The SDE has asked for changes before L1 can move forward.
+      </Typography>
+      {remark ? (
+        <Box
+          sx={{
+            mt: 1.5,
+            borderRadius: 1.25,
+            border: 1,
+            borderColor: alpha(tone.main, 0.3),
+            background: '#fff',
+            px: 1.75,
+            py: 1.25,
+          }}
+        >
+          <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: tone.dark, mb: 0.25 }}>
+            Reviewer remarks
+          </Typography>
+          <Typography sx={{ fontSize: 13.5, color: theme.palette.text.primary, whiteSpace: 'pre-wrap' }}>
+            {remark}
+          </Typography>
+        </Box>
+      ) : (
+        <Typography sx={{ mt: 0.75, fontSize: 13, color: theme.palette.text.secondary }}>
+          No specific remarks were left — reach out to the SDE for guidance.
+        </Typography>
+      )}
+    </Box>
+  )
 }
 
 // Lightweight section header — sits above the fields grid. Matches the
