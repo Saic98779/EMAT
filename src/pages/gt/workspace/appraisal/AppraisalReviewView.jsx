@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import {
   Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, Divider, IconButton, Stack, TextField,
@@ -12,9 +12,17 @@ import { alpha, useTheme } from '@mui/material/styles'
 import { DECISION, REVIEWER_ROLES } from '../../../../apis/stageActions'
 import { downloadFile } from '../../../../apis/files'
 import { decodeFilename } from '../../../../fileFieldLabels'
-import { toFormValues as appraisalToFormValues } from '../../../../apis/industryAssociationAppraisals'
+import {
+  buildIaSeed,
+  toFormValues as appraisalToFormValues,
+} from '../../../../apis/industryAssociationAppraisals'
 import { appraisalSchema } from '../../../../formSchemas'
-import { useApproveIA, useFilesByRegistration } from '../../../../queries'
+import {
+  useApproveAppraisal,
+  useBranchesByState,
+  useFilesByRegistration,
+  useIA,
+} from '../../../../queries'
 
 // AppraisalReviewView
 // ────────────────────────────────────────────────────────────────────────
@@ -42,18 +50,44 @@ export default function AppraisalReviewView({
 }) {
   const theme = useTheme()
   const filesQ = useFilesByRegistration(iaId)
-  const approve = useApproveIA()
-  const [comments, setComments] = useState('')
-  const [busyKind, setBusyKind] = useState(null)
-  const [pendingDecision, setPendingDecision] = useState(null)
+  // Reviewer sections use identity fields (state, ia_name, apex, nodal,
+  // district, pincode, sidbi_branch, etc.) that live on the parent IA
+  // registration — the appraisal DTO doesn't always echo them back on GET.
+  // Fetch the IA + branches list so the seed helper can populate those
+  // mirror fields; the appraisal DTO then overlays whatever it does carry.
+  const iaQ = useIA(iaId)
+  const branchesQ = useBranchesByState(iaQ.data?.raw?.state || iaQ.data?.state)
+  const approve = useApproveAppraisal()
   const [justRecorded, setJustRecorded] = useState(null)
 
-  // Values map is derived fresh from the appraisal DTO each render — the
-  // reviewer surface is strictly read-only, so no editable state to
-  // preserve. Background refetches will surface here immediately.
-  const values = useMemo(() => appraisalToFormValues(appraisal || {}), [appraisal])
+  // Values map is derived fresh each render — the reviewer surface is
+  // strictly read-only, so no editable state to preserve. Background
+  // refetches surface immediately. IA seed first, appraisal overlays.
+  const values = useMemo(
+    () => ({
+      ...buildIaSeed(iaQ.data, branchesQ.data),
+      ...appraisalToFormValues(appraisal || {}),
+    }),
+    [iaQ.data, branchesQ.data, appraisal],
+  )
 
-  const sections = appraisalSchema?.sections || []
+  // Trim schema sections to what makes sense for this reviewer to *read*.
+  // For CE, drop the sections they're about to author via the decision
+  // bar (Section 12 "Cluster Expert Comments") and strip any `ceOnly`
+  // fields that live inside other sections (e.g. the Terms-of-Assistance
+  // section carries `cluster_expert_terms_comments` which is CE-owned).
+  // Otherwise CE sees two "empty comments" fields alongside the input
+  // box in the sticky bar, which reads like the value is missing.
+  const sections = useMemo(() => {
+    const all = appraisalSchema?.sections || []
+    if (viewerRole !== REVIEWER_ROLES.CLUSTER_EXPERT) return all
+    return all
+      .filter((sec) => sec.n !== 12)
+      .map((sec) => ({
+        ...sec,
+        fields: (sec.fields || []).filter((f) => !f.ceOnly),
+      }))
+  }, [viewerRole])
   const [openSection, setOpenSection] = useState(() => sections[0]?.n ?? null)
   const toggleSection = (n) => setOpenSection((prev) => (prev === n ? null : n))
 
@@ -64,47 +98,48 @@ export default function AppraisalReviewView({
   // showing one generic "Awaiting decision" line.
   const roleCopy = useMemo(() => copyForRole(viewerRole), [viewerRole])
 
-  function requestDecision(d) {
+  // Ready-to-fire decision handler. Kept referentially stable via
+  // useCallback so the memoized DecisionBar below doesn't re-render on
+  // every parent tick — the whole point of that memo is to isolate the
+  // sticky-bar input from the (heavy) schema-section tree above it.
+  //
+  // Contract with DecisionBar:
+  //   • It manages the comments input state locally (no parent re-render
+  //     per keystroke).
+  //   • On confirm, it calls onDecide(decision, commentsText) and awaits.
+  //   • Return normally → decision recorded; throw → DecisionBar re-opens
+  //     the input for retry.
+  const onDecide = useCallback(async (d, commentsText) => {
     if (!iaId || !d?.stageId) {
       onDone?.({ severity: 'error', msg: 'Missing IA id or destination stage.' })
-      return
+      throw new Error('missing-stage')
     }
-    const trimmed = comments.trim()
-    if (d.kind === DECISION.REJECT && !trimmed) {
-      onDone?.({ severity: 'warning', msg: 'Please add remarks explaining the rejection.' })
-      return
+    if (!appraisal?.id) {
+      onDone?.({ severity: 'error', msg: 'Appraisal record not loaded yet — try again in a moment.' })
+      throw new Error('appraisal-not-loaded')
     }
-    if (d.kind === DECISION.COMMENT && !trimmed) {
-      onDone?.({ severity: 'warning', msg: 'Please write your CE comments before submitting.' })
-      return
-    }
-    setPendingDecision(d)
-  }
-
-  async function confirmDecision() {
-    const d = pendingDecision
-    if (!d) return
-    setBusyKind(d.kind)
+    // L2 decisions belong to the appraisal record, so we PUT
+    // /industry-association-appraisals/{appraisalId}. Only APPROVE /
+    // REJECT flip `isSidbeApproved`; COMMENT and REVERT leave it alone.
+    const isSidbeApproved =
+      d.kind === DECISION.APPROVE ? true
+      : d.kind === DECISION.REJECT ? false
+      : null
     try {
       await approve.mutateAsync({
-        id: iaId,
-        // COMMENT (CE) is neither approval nor rejection — send false so
-        // we don't accidentally toggle the sidbeApproved flag when the
-        // CE only wanted to attach observations.
-        isSidbeApproved: d.kind === DECISION.APPROVE,
+        id: appraisal.id,
+        registrationId: iaId,
+        isSidbeApproved,
         stageId: d.stageId,
-        stageComments: comments.trim() || undefined,
+        stageComments: commentsText || undefined,
       })
-      setJustRecorded({ kind: d.kind, label: d.label, comments: comments.trim() })
-      setComments('')
-      setPendingDecision(null)
+      setJustRecorded({ kind: d.kind, label: d.label, comments: commentsText })
       onDone?.({ severity: 'success', msg: `${d.label} · recorded.` })
     } catch (err) {
       onDone?.({ severity: 'error', msg: err?.message || 'Failed to record decision.' })
-    } finally {
-      setBusyKind(null)
+      throw err
     }
-  }
+  }, [iaId, appraisal?.id, approve, onDone])
 
   return (
     <>
@@ -159,102 +194,14 @@ export default function AppraisalReviewView({
       {!justRecorded && <Box sx={{ height: 112 }} />}
 
       {!justRecorded && (
-        <Box
-          sx={{
-            position: 'sticky',
-            bottom: 0,
-            mt: 3,
-            mx: { xs: -1, md: -1.5 },
-            background: theme.palette.background.paper,
-            borderTop: 1,
-            borderColor: alpha(theme.palette.text.primary, 0.09),
-            px: { xs: 2.5, md: 4 },
-            py: 2.25,
-            zIndex: 10,
-            boxShadow: '0 -6px 20px rgba(0,0,0,0.06)',
-          }}
-        >
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={{ xs: 1.5, md: 3 }}
-            alignItems={{ md: 'center' }}
-          >
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography
-                sx={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  color: theme.palette.text.disabled,
-                  mb: 0.5,
-                }}
-              >
-                {roleCopy.remarksLabel}
-              </Typography>
-              <TextField
-                value={comments}
-                onChange={(e) => setComments(e.target.value.slice(0, 1000))}
-                placeholder={roleCopy.remarksPlaceholder}
-                fullWidth
-                size="small"
-                multiline
-                minRows={1}
-                maxRows={4}
-                slotProps={{
-                  input: {
-                    sx: {
-                      borderRadius: 1.5,
-                      background: alpha(theme.palette.text.primary, 0.025),
-                      '& fieldset': { borderColor: alpha(theme.palette.text.primary, 0.12) },
-                    },
-                  },
-                }}
-              />
-            </Box>
-
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ flexShrink: 0, alignSelf: { xs: 'flex-end', md: 'auto' } }}
-            >
-              {decisions.map((d) => {
-                const busy = busyKind === d.kind
-                const disabled = busyKind !== null
-                return (
-                  <Button
-                    key={d.kind + d.to}
-                    onClick={() => requestDecision(d)}
-                    disabled={disabled}
-                    variant={buttonVariantFor(d.kind)}
-                    color={buttonColorFor(d.kind)}
-                    disableElevation
-                    startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: 700,
-                      minWidth: 148,
-                      py: 1,
-                      borderRadius: 1.5,
-                    }}
-                  >
-                    {busy ? 'Recording…' : d.label}
-                  </Button>
-                )
-              })}
-            </Stack>
-          </Stack>
-        </Box>
+        <DecisionBar
+          decisions={decisions}
+          roleCopy={roleCopy}
+          iaName={iaName}
+          onDecide={onDecide}
+          onValidationFail={onDone}
+        />
       )}
-
-      <ConfirmDecisionDialog
-        pending={pendingDecision}
-        iaName={iaName}
-        comments={comments}
-        busy={busyKind !== null}
-        onCancel={() => (busyKind === null ? setPendingDecision(null) : null)}
-        onConfirm={confirmDecision}
-      />
     </>
   )
 }
@@ -269,7 +216,7 @@ function copyForRole(role) {
         titlePrefix: 'Review appraisal for',
         titleFallback: 'Review the L2 appraisal',
         remarksLabel: 'Approval remarks',
-        remarksPlaceholder: 'Optional — required if rejecting',
+        remarksPlaceholder: 'Optional — required if rejecting or sending back to GT',
       }
     case REVIEWER_ROLES.CLUSTER_EXPERT:
       return {
@@ -285,7 +232,7 @@ function copyForRole(role) {
         titlePrefix: 'Final review of',
         titleFallback: 'Final HO Maker sign-off',
         remarksLabel: 'HO Maker remarks',
-        remarksPlaceholder: 'Optional — required if rejecting',
+        remarksPlaceholder: 'Optional — required if rejecting or sending back to GT',
       }
     default:
       return {
@@ -297,6 +244,157 @@ function copyForRole(role) {
       }
   }
 }
+
+// ── Sticky decision bar ─────────────────────────────────────────────────
+// Own the comments input state locally so typing doesn't force the parent
+// (schema sections + docs sidebar + hero) to re-render on every keystroke.
+// The parent used to hold this state, which meant every character re-ran
+// buildRows across every section — 14 sections × avg 8 fields — enough
+// to trip the browser's "input handler took >50ms" violation.
+//
+// Also encapsulates the confirm dialog (which needs the comments text)
+// so the parent doesn't need to see it either.
+const DecisionBar = memo(function DecisionBar({
+  decisions, roleCopy, iaName, onDecide, onValidationFail,
+}) {
+  const theme = useTheme()
+  const [comments, setComments] = useState('')
+  const [busyKind, setBusyKind] = useState(null)
+  const [pendingDecision, setPendingDecision] = useState(null)
+
+  const requestDecision = useCallback((d) => {
+    const trimmed = comments.trim()
+    if (d.kind === DECISION.REJECT && !trimmed) {
+      onValidationFail?.({ severity: 'warning', msg: 'Please add remarks explaining the rejection.' })
+      return
+    }
+    if (d.kind === DECISION.REVERT && !trimmed) {
+      onValidationFail?.({ severity: 'warning', msg: 'Please add remarks telling GT what needs to change.' })
+      return
+    }
+    if (d.kind === DECISION.COMMENT && !trimmed) {
+      onValidationFail?.({ severity: 'warning', msg: 'Please write your CE comments before submitting.' })
+      return
+    }
+    setPendingDecision(d)
+  }, [comments, onValidationFail])
+
+  const confirm = useCallback(async () => {
+    const d = pendingDecision
+    if (!d) return
+    setBusyKind(d.kind)
+    try {
+      await onDecide(d, comments.trim())
+      setComments('')
+      setPendingDecision(null)
+    } catch {
+      // parent already surfaced the error toast; leave the input intact
+      // so the reviewer can retry without re-typing.
+    } finally {
+      setBusyKind(null)
+    }
+  }, [pendingDecision, comments, onDecide])
+
+  return (
+    <>
+      <Box
+        sx={{
+          position: 'sticky',
+          bottom: 0,
+          mt: 3,
+          mx: { xs: -1, md: -1.5 },
+          background: theme.palette.background.paper,
+          borderTop: 1,
+          borderColor: alpha(theme.palette.text.primary, 0.09),
+          px: { xs: 2.5, md: 4 },
+          py: 2.25,
+          zIndex: 10,
+          boxShadow: '0 -6px 20px rgba(0,0,0,0.06)',
+        }}
+      >
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={{ xs: 1.5, md: 3 }}
+          alignItems={{ md: 'center' }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              sx={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: theme.palette.text.disabled,
+                mb: 0.5,
+              }}
+            >
+              {roleCopy.remarksLabel}
+            </Typography>
+            <TextField
+              value={comments}
+              onChange={(e) => setComments(e.target.value.slice(0, 1000))}
+              placeholder={roleCopy.remarksPlaceholder}
+              fullWidth
+              size="small"
+              multiline
+              minRows={1}
+              maxRows={4}
+              slotProps={{
+                input: {
+                  sx: {
+                    borderRadius: 1.5,
+                    background: alpha(theme.palette.text.primary, 0.025),
+                    '& fieldset': { borderColor: alpha(theme.palette.text.primary, 0.12) },
+                  },
+                },
+              }}
+            />
+          </Box>
+
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ flexShrink: 0, alignSelf: { xs: 'flex-end', md: 'auto' } }}
+          >
+            {decisions.map((d) => {
+              const busy = busyKind === d.kind
+              const disabled = busyKind !== null
+              return (
+                <Button
+                  key={d.kind + d.to}
+                  onClick={() => requestDecision(d)}
+                  disabled={disabled}
+                  variant={buttonVariantFor(d.kind)}
+                  color={buttonColorFor(d.kind)}
+                  disableElevation
+                  startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    minWidth: 148,
+                    py: 1,
+                    borderRadius: 1.5,
+                  }}
+                >
+                  {busy ? 'Recording…' : d.label}
+                </Button>
+              )
+            })}
+          </Stack>
+        </Stack>
+      </Box>
+
+      <ConfirmDecisionDialog
+        pending={pendingDecision}
+        iaName={iaName}
+        comments={comments}
+        busy={busyKind !== null}
+        onCancel={() => (busyKind === null ? setPendingDecision(null) : null)}
+        onConfirm={confirm}
+      />
+    </>
+  )
+})
 
 function buttonVariantFor(kind) {
   return kind === DECISION.APPROVE || kind === DECISION.COMMENT ? 'contained' : 'outlined'
@@ -375,6 +473,7 @@ function confirmTitleFor(kind, iaName) {
   const suffix = iaName ? ` for ${iaName}?` : '?'
   if (kind === DECISION.APPROVE) return `Approve L2${suffix}`
   if (kind === DECISION.REJECT) return `Reject L2${suffix}`
+  if (kind === DECISION.REVERT) return `Send L2 back to GT${suffix}`
   if (kind === DECISION.COMMENT) return `Submit CE comments${suffix}`
   return `Confirm decision${suffix}`
 }
@@ -382,6 +481,7 @@ function confirmTitleFor(kind, iaName) {
 function confirmBodyFor(kind) {
   if (kind === DECISION.APPROVE) return 'This advances the workflow to the next reviewer. Recorded in the audit trail.'
   if (kind === DECISION.REJECT) return 'This rejects the L2 submission. The workflow terminates here — your remarks will be shown to GT.'
+  if (kind === DECISION.REVERT) return 'GT will be able to edit and resubmit the appraisal. Your remarks below will be shown to them so they know what to fix.'
   if (kind === DECISION.COMMENT) return 'Your comments will be forwarded to the HO Maker for final decision.'
   return 'Recorded in the audit trail.'
 }
@@ -389,6 +489,7 @@ function confirmBodyFor(kind) {
 function confirmActionFor(kind) {
   if (kind === DECISION.APPROVE) return 'Confirm approval'
   if (kind === DECISION.REJECT) return 'Confirm rejection'
+  if (kind === DECISION.REVERT) return 'Send back to GT'
   if (kind === DECISION.COMMENT) return 'Submit comments'
   return 'Confirm'
 }
@@ -401,6 +502,7 @@ function RecordedBanner({ kind, label, comments }) {
   const title =
     kind === DECISION.APPROVE ? 'Approval recorded'
     : kind === DECISION.REJECT ? 'Rejection recorded'
+    : kind === DECISION.REVERT ? 'L2 sent back to GT'
     : kind === DECISION.COMMENT ? 'CE comments submitted'
     : 'Decision recorded'
   return (

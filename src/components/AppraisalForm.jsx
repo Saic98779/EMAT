@@ -19,6 +19,7 @@ import {
   useFilesByRegistration,
 } from '../queries'
 import {
+  buildIaSeed,
   toCreatePayload,
   toUpdatePayload,
   toFormValues,
@@ -309,58 +310,16 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
     if (iaQ.data?.state && !branchesQ.data) return
     const ia = iaQ.data
     const r = ia?.raw || {}
-    const branchName = branchesQ.data?.find((b) => b.id === r.sidbiBranch)?.branchName ?? r.sidbiBranch
-    const yn = (b) => (b === true ? 'yes' : b === false ? 'no' : '')
-    const YN = (b) => (b === true ? 'Yes' : b === false ? 'No' : '')
-    const seed = ia ? {
-      // Non-visible marker used by date validators — CIBIL/SMART report dates
-      // must fall on or after the parent In-Principle's creation timestamp.
-      _ia_created_at: r.createdAt ?? ia?.submitted ?? '',
-      state: r.state ?? '',
-      ia_name: r.industryAssociationName ?? '',
-      year_incorp: r.incorporationDate ? String(new Date(r.incorporationDate).getFullYear()) : '',
-      ia_profit_type: r.iaType ?? '',
-      proof_constitution: r.constitutionType === 'Other'
-        ? `Other — ${r.constitutionOther ?? ''}`
-        : (r.constitutionType ?? ''),
-      district: r.district ?? '',
-      pincode: r.pincode ?? '',
-      apex_name: r.apexHolderName ?? '',
-      apex_designation: r.apexHolderDesignation ?? '',
-      apex_contact: r.apexHolderMobile ?? '',
-      apex_email: r.apexHolderEmail ?? '',
-      nodal_name: r.nodalName ?? '',
-      nodal_designation: r.nodalDesignation ?? '',
-      nodal_contact: r.nodalMobile ?? '',
-      nodal_email: r.nodalEmail ?? '',
-      sidbi_branch: branchName ?? '',
-      cluster_mapped: yn(r.mappedWithCluster),
-      cluster_which: r.clusterName ?? '',
-      district_mapped: yn(r.mappedWithImportantDistrict),
-      msme_count: r.msmeCountWithoutTraders ?? '',
-      members_gt200: YN(r.activeMembersAbove200),
-      active_members: r.activeMembersCount ?? '',
-      members_justification: r.justification ?? '',
-      own_building: r.buildingType ? 'yes' : '',
-      own_building_details: r.buildingType ?? '',
-      it_infra: yn(r.itInfrastructureAvailable),
-      it_infra_details: r.infrastructureType ?? '',
-      secretariat_staff: yn(r.secretariatStaffAvailable),
-      // L1 stores staff as an array of {name, contact, email}. The
-      // appraisal has a single free-text "details" field, so join the
-      // array entries into a readable one-per-line summary. Falls back
-      // to whatever was already saved on the appraisal itself.
-      secretariat_details: seedSecretariatDetails(r.secretariatStaff),
-      website: yn(r.websiteAvailable),
-      paid_services: yn(r.paidServicesAvailable),
-      paid_services_details: r.paidServicesDetails ?? '',
-      basis_of_selection: Array.isArray(r.selectionCriteria) ? r.selectionCriteria : [],
-      grant_proposed: r.grantProposed ?? '',
-      grant_details: r.grantDetails ?? '',
-      envisaged_output: r.envisagedOutput ?? '',
-      envisaged_outcome: r.envisagedOutcome ?? '',
-      envisaged_impact: r.envisagedImpact ?? '',
-    } : {}
+    // Shared IA→appraisal seed. Also flatten the array-shaped L1
+    // secretariat_staff into the free-text `secretariat_details` field
+    // the appraisal uses — that transform is form-specific and lives
+    // here, not in the shared helper.
+    const seed = ia
+      ? {
+          ...buildIaSeed(ia, branchesQ.data),
+          secretariat_details: seedSecretariatDetails(r.secretariatStaff),
+        }
+      : {}
     // Group already-uploaded files under their slot slug so the appraisal
     // form shows chips for what's on the server, not an empty picker.
     const filesBySlot = {}

@@ -28,7 +28,7 @@ import GtCapexReview from './pages/gt/GtCapexReview'
 import IaWorkspaceLayout, { WorkspaceIndexRedirect } from './components/workspace/IaWorkspaceLayout'
 import {
   OverviewTab, EligibilityTab, RegistrationTab, SustainabilityTab,
-  AppraisalTab, DocumentsTab, ActivityTab,
+  ActionPlanTab, AppraisalTab, DocumentsTab, ActivityTab,
 } from './pages/gt/workspace/tabs'
 import SdeCapexReview from './pages/sde/SdeCapexReview'
 
@@ -166,6 +166,7 @@ export default function App() {
           <Route path="eligibility" element={<EligibilityTab />} />
           <Route path="l1" element={<RegistrationTab />} />
           <Route path="sustainability" element={<SustainabilityTab />} />
+          <Route path="action-plan" element={<ActionPlanTab />} />
           <Route path="appraisal" element={<AppraisalTab />} />
           <Route path="documents" element={<DocumentsTab />} />
           <Route path="activity" element={<ActivityTab />} />
@@ -195,6 +196,7 @@ export default function App() {
           <Route path="eligibility" element={<EligibilityTab />} />
           <Route path="l1" element={<RegistrationTab />} />
           <Route path="sustainability" element={<SustainabilityTab />} />
+          <Route path="action-plan" element={<ActionPlanTab />} />
           <Route path="appraisal" element={<AppraisalTab />} />
           <Route path="documents" element={<DocumentsTab />} />
           <Route path="activity" element={<ActivityTab />} />

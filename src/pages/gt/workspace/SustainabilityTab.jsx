@@ -124,9 +124,9 @@ export default function SustainabilityTab() {
 
       setToast({
         severity: 'success',
-        msg: 'Sustainability matrix submitted. Opening Detailed Appraisal…',
+        msg: 'Sustainability matrix submitted. Opening Action Plan…',
       })
-      setTimeout(() => s.navigate(`${s.basePath}/ias/${s.iaId}/workspace/appraisal`), 900)
+      setTimeout(() => s.navigate(`${s.basePath}/ias/${s.iaId}/workspace/action-plan`), 900)
     } catch (err) {
       const label = submitStateRef.current.appraisalId ? 'matrix save' : 'appraisal shell / matrix save'
       setToast({ severity: 'error', msg: err?.message || `Failed during ${label}.` })

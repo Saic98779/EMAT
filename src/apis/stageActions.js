@@ -97,7 +97,10 @@ const TRANSITIONS = [
 // Decisions that don't have a backend endpoint yet — filtered out
 // everywhere until the API lands. Add / remove entries here to gate
 // specific decision kinds without touching the transitions table.
-const UNSUPPORTED_KINDS = new Set([DECISION.REVERT])
+// Revert is fully supported now — same PUT /{id} the approve/reject
+// path uses, just with the revert sub-stage id (5, 9, 13, 17). Verified
+// live 2026-09-10.
+const UNSUPPORTED_KINDS = new Set()
 
 // Returns the decision records available to `viewerRole` when the IA sits
 // at `currentSubStage`. Result is always an array (empty if none).

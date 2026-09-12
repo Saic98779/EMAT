@@ -16,7 +16,6 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
 import { deleteIndustryAssociation } from '../../apis/industryAssociations'
-import { unpackHoDecision } from '../../apis/industryAssociationAppraisals'
 import { useIAs, useBranchesByStates, keys } from '../../queries'
 import { useAuth } from '../../auth'
 
@@ -30,6 +29,45 @@ const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 // a human name — until the name-resolving query hydrates. Show '—' in
 // that intermediate state instead of leaking the raw id into the UI.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Sub-stages where Cluster Expert has a decision affordance — keep in sync
+// with `TRANSITIONS` in `src/apis/stageActions.js`. Anything not in this
+// set is either upstream of CE or already past their turn.
+const CE_ACTIONABLE_STAGES = new Set([
+  'ACTION_PLAN_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
+])
+
+// Timestamp used to sort the list — accept either `raw.createdAt` (backend
+// primary source) or `raw.updatedAt` as a fallback. Returns 0 when parsing
+// fails so the id-based tie-break kicks in.
+function tsFor(ia) {
+  const raw = ia?.raw?.createdAt || ia?.raw?.updatedAt || null
+  if (!raw) return 0
+  const t = Date.parse(raw)
+  return Number.isFinite(t) ? t : 0
+}
+
+// Resolve the branch column value robustly. The IA DTO stores `sidbiBranch`
+// as either a number or a string depending on backend version; the branch
+// dropdown map is keyed off whatever type the /branch/dropdown endpoint
+// emits. Comparing both as strings makes the lookup work either way.
+// Falls back to `raw.sidbiBranchName` (some backend builds include an
+// expanded name), then the id itself when it's a human string, and finally
+// an em-dash when nothing usable is present.
+function branchLabel(ia, byId) {
+  const raw = ia?.raw?.sidbiBranch ?? ia?.branch ?? null
+  if (raw != null && raw !== '' && raw !== '—') {
+    const asStr = String(raw)
+    for (const [key, name] of byId) {
+      if (String(key) === asStr) return name
+    }
+    if (!isLikelyId(raw)) return asStr
+  }
+  const expanded = ia?.raw?.sidbiBranchName
+  if (expanded && typeof expanded === 'string') return expanded
+  return '—'
+}
+
 function isLikelyId(v) {
   if (v == null) return true
   const s = String(v).trim()
@@ -51,12 +89,18 @@ function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
   const ws = (tab) => `${basePath}/${ia.id}/workspace/${tab}`
   const workspaceBase = basePath.startsWith('/gt') ? '/gt' : '/sde'
 
-  // Cluster Expert only ever comments on the appraisal — send them
-  // straight to that tab instead of the generic overview.
-  if (isClusterExpert && ia.appraisal) {
+  // Cluster Expert routing — CE reviews the Action Plan (stage 4) and
+  // adds L2 comments (stage 5). Route to whichever tab owns the CURRENT
+  // sub-stage rather than always sending them to /appraisal; otherwise a
+  // CE with an ACTION_PLAN_SUBMITTED row gets dropped on the appraisal
+  // tab, which is locked until CE approves the plan.
+  if (isClusterExpert) {
+    const ceTab = ia.currentStage === 'ACTION_PLAN_SUBMITTED'
+      ? 'action-plan'
+      : (ia.appraisal ? 'appraisal' : 'overview')
     return (
       <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
-        onClick={go(`${workspaceBase}/ias/${ia.id}/workspace/appraisal`)} sx={ACTION_SX}>
+        onClick={go(`${workspaceBase}/ias/${ia.id}/workspace/${ceTab}`)} sx={ACTION_SX}>
         Review & Comment
       </Button>
     )
@@ -82,12 +126,11 @@ function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
 
   if (!basePath.startsWith('/gt')) return view
 
-  // Reviewer sent it back — GT needs to revise.
+  // Reviewer sent it back — GT needs to revise. Route by the specific
+  // reverted sub-stage: CE reverting the Action Plan gets its own tab now.
   if (cs.endsWith('_REVERTED') || cs.endsWith('_REJECTED') || st === 'Changes Requested') {
-    // Route to the tab that owns the reverted stage so GT lands in the
-    // right form. Fallback: L1.
-    const tab = cs.startsWith('DETAILED_APPRAISAL') ? 'appraisal'
-      : cs.startsWith('ACTION_PLAN') ? 'appraisal'
+    const tab = cs === 'CLUSTER_EXPERT_REVERTED' ? 'action-plan'
+      : cs.startsWith('DETAILED_APPRAISAL') ? 'appraisal'
       : cs.startsWith('SUSTAINABILITY') ? 'sustainability'
       : 'l1'
     return (
@@ -96,15 +139,30 @@ function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
     )
   }
 
-  // L1 done → GT's next step is Sustainability.
-  if (cs === 'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL' || st === 'Detailed Pending')
+  // L1 approved (SDE cleared In-Principle) → GT's next step is Sustainability.
+  if (cs === 'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL')
     return (
       <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
         onClick={go(ws('sustainability'))} sx={ACTION_SX}>Sustainability</Button>
     )
 
-  // Detailed appraisal work is open — GT should keep filling it.
-  if (cs === 'SUSTAINABILITY_MATRIX_SUBMITTED' || cs === 'ACTION_PLAN_SUBMITTED'
+  // Sustainability submitted → GT fills the Action Plan (Annexure IV).
+  if (cs === 'SUSTAINABILITY_MATRIX_SUBMITTED')
+    return (
+      <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
+        onClick={go(ws('action-plan'))} sx={ACTION_SX}>Fill Action Plan</Button>
+    )
+
+  // Action Plan with CE — GT can only wait; landing on action-plan shows
+  // the "Awaiting Cluster Expert" banner + read-only view of what they filed.
+  if (cs === 'ACTION_PLAN_SUBMITTED')
+    return (
+      <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
+        onClick={go(ws('action-plan'))} sx={ACTION_SX}>View Action Plan</Button>
+    )
+
+  // CE approved the Action Plan (or the L2 form is still open for edits).
+  if (cs === 'CLUSTER_EXPERT_APPROVED'
       || (st === 'Final Review (L2)' && ia.appraisal && !ia.appraisal.isSidbeApproved)) {
     return (
       <Button size="small" variant="outlined" color="primary" startIcon={<AssignmentTurnedInIcon />}
@@ -128,16 +186,29 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const { rawRole } = useAuth()
   const { data: iasAll = [], isLoading: iasLoading, isFetching, error: iasErrorObj, refetch } = useIAs()
   const iasError = iasErrorObj?.message || null
-  // Cluster Expert shares the SDE workspace but is only a reviewer on the
-  // appraisal — they don't participate in Eligibility / In-Principle /
-  // Sustainability. Trim the list to rows that have an appraisal record and
-  // haven't yet been decided by HO, so CE isn't distracted by IAs they
-  // can't act on. Everyone else sees the full list.
+  // Cluster Expert has decision affordances at exactly two sub-stages
+  // (see stageActions.js TRANSITIONS):
+  //   • ACTION_PLAN_SUBMITTED               — CE approves / reverts action plan
+  //   • DETAILED_APPRAISAL_APPROVAL_BY_SDE  — CE adds comments before HO Maker
+  // Any other stage is either upstream of CE (nothing to review yet) or
+  // downstream (CE already acted, HO Maker owns the record). Trim the
+  // list to just those two so CE's queue only shows actionable work.
   const isClusterExpert = rawRole === 'CLUSTER_EXPERT'
   const isHoMaker = rawRole === 'SIDBI_HO_MAKER'
-  const ias = isClusterExpert
-    ? iasAll.filter((i) => i.appraisal && !unpackHoDecision(i.appraisal).decision)
+  const iasFiltered = isClusterExpert
+    ? iasAll.filter((i) => CE_ACTIONABLE_STAGES.has(i.currentStage))
     : iasAll
+  // Newest-first ordering. Prefer the backend `createdAt` timestamp; fall
+  // back to the numeric `id` when a row is missing the field so legacy
+  // records still sort deterministically. Sort is stable — do it once
+  // here rather than push it into the query so the SDE / CE variants of
+  // this page share the same reordering.
+  const ias = [...iasFiltered].sort((a, b) => {
+    const at = tsFor(a)
+    const bt = tsFor(b)
+    if (at !== bt) return bt - at
+    return (Number(b.id) || 0) - (Number(a.id) || 0)
+  })
   // Fetch branch dropdowns for every state present in the list, then use the
   // combined map to resolve each row's `sidbiBranch` id → branchName.
   const { byId: branchNameById } = useBranchesByStates(ias.map((i) => i.state))
@@ -243,7 +314,6 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
           <TableHead>
             <TableRow>
               <TableCell>Association</TableCell>
-              <TableCell>Sector</TableCell>
               <TableCell>SIDBI Branch</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="right">Action</TableCell>
@@ -252,7 +322,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
           <TableBody>
             {!iasLoading && ias.length === 0 && !iasError && (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 6 }}>
                   <Typography color="text.secondary">
                     No Industry Associations yet.
                     {canInitiate && ' Click “In-Principle Approval” to add the first one.'}
@@ -266,11 +336,8 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                   <Typography fontWeight={700} fontSize="0.95rem">{ia.name}</Typography>
                   <Mono>{[ia.city, ia.state].filter((x) => x && x !== '—').join(' · ') || '—'}</Mono>
                 </TableCell>
-                <TableCell><Typography variant="body2">{ia.sector}</Typography></TableCell>
                 <TableCell>
-                  <Typography variant="body2">
-                    {branchNameById.get(ia.branch) || (ia.branch && !isLikelyId(ia.branch) ? ia.branch : '—')}
-                  </Typography>
+                  <Typography variant="body2">{branchLabel(ia, branchNameById)}</Typography>
                 </TableCell>
                 <TableCell><StatusChip status={ia.status} /></TableCell>
                 <TableCell align="right">

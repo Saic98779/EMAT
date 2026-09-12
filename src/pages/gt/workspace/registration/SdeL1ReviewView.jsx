@@ -75,6 +75,10 @@ export default function SdeL1ReviewView({
       onDone?.({ severity: 'warning', msg: 'Please add remarks explaining the rejection.' })
       return
     }
+    if (d.kind === DECISION.REVERT && !trimmed) {
+      onDone?.({ severity: 'warning', msg: 'Please add remarks telling GT what needs to change.' })
+      return
+    }
     setPendingDecision(d)
   }
 
@@ -209,14 +213,13 @@ export default function SdeL1ReviewView({
             {decisions.map((d) => {
               const busy = busyKind === d.kind
               const disabled = busyKind !== null
-              const isApprove = d.kind === DECISION.APPROVE
               return (
                 <Button
                   key={d.kind + d.to}
                   onClick={() => requestDecision(d)}
                   disabled={disabled}
-                  variant={isApprove ? 'contained' : 'outlined'}
-                  color={isApprove ? 'success' : 'error'}
+                  variant={buttonVariantFor(d.kind)}
+                  color={buttonColorFor(d.kind)}
                   disableElevation
                   startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}
                   sx={{
@@ -253,18 +256,16 @@ export default function SdeL1ReviewView({
 function ConfirmDecisionDialog({ pending, iaName, comments, busy, onCancel, onConfirm }) {
   const theme = useTheme()
   if (!pending) return null
-  const isApprove = pending.kind === DECISION.APPROVE
-  const tone = isApprove ? theme.palette.success : theme.palette.error
+  const kind = pending.kind
+  const tone = toneForKind(kind, theme)
   return (
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
-        {isApprove ? `Approve L1 for ${iaName || 'this IA'}?` : `Reject L1 for ${iaName || 'this IA'}?`}
+        {confirmTitleFor(kind, iaName)}
       </DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ fontSize: 13.5, color: theme.palette.text.secondary, mb: 1.5 }}>
-          {isApprove
-            ? 'This grants In-Principle Approval and unlocks Sustainability for GT. The decision will be recorded in the audit trail.'
-            : 'This rejects the L1 submission. The workflow will end at this stage. Your remarks below will be shown to GT.'}
+          {confirmBodyFor(kind)}
         </DialogContentText>
         {comments && (
           <Box
@@ -294,12 +295,12 @@ function ConfirmDecisionDialog({ pending, iaName, comments, busy, onCancel, onCo
           onClick={onConfirm}
           disabled={busy}
           variant="contained"
-          color={isApprove ? 'success' : 'error'}
+          color={buttonColorFor(kind)}
           disableElevation
           startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}
           sx={{ textTransform: 'none', fontWeight: 700 }}
         >
-          {busy ? 'Recording…' : (isApprove ? 'Confirm approval' : 'Confirm rejection')}
+          {busy ? 'Recording…' : confirmActionFor(kind)}
         </Button>
       </DialogActions>
     </Dialog>
@@ -310,8 +311,12 @@ function ConfirmDecisionDialog({ pending, iaName, comments, busy, onCancel, onCo
 
 function RecordedBanner({ kind, label, comments }) {
   const theme = useTheme()
-  const isApprove = kind === DECISION.APPROVE
-  const tone = isApprove ? theme.palette.success : theme.palette.error
+  const tone = toneForKind(kind, theme)
+  const title = kind === DECISION.APPROVE
+    ? 'L1 approval recorded'
+    : kind === DECISION.REVERT
+      ? 'L1 sent back to GT'
+      : 'L1 rejection recorded'
   return (
     <Box
       sx={{
@@ -328,7 +333,7 @@ function RecordedBanner({ kind, label, comments }) {
         <CheckCircleRoundedIcon sx={{ color: tone.dark, fontSize: 26 }} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ fontSize: { xs: 17, md: 19 }, fontWeight: 800, color: tone.dark, letterSpacing: '-0.01em' }}>
-            {isApprove ? 'L1 approval recorded' : 'L1 rejection recorded'}
+            {title}
           </Typography>
           <Typography sx={{ mt: 0.25, fontSize: 13, color: theme.palette.text.secondary }}>
             {label} · workflow refreshing…
@@ -342,6 +347,42 @@ function RecordedBanner({ kind, label, comments }) {
       )}
     </Box>
   )
+}
+
+// ── Kind-driven visuals + copy ──────────────────────────────────────────
+
+function toneForKind(kind, theme) {
+  if (kind === DECISION.APPROVE) return theme.palette.success
+  if (kind === DECISION.REVERT) return theme.palette.warning
+  return theme.palette.error
+}
+function buttonColorFor(kind) {
+  if (kind === DECISION.APPROVE) return 'success'
+  if (kind === DECISION.REVERT) return 'warning'
+  return 'error'
+}
+function buttonVariantFor(kind) {
+  return kind === DECISION.APPROVE ? 'contained' : 'outlined'
+}
+function confirmTitleFor(kind, iaName) {
+  const suffix = iaName ? ` for ${iaName}?` : '?'
+  if (kind === DECISION.APPROVE) return `Approve L1${suffix}`
+  if (kind === DECISION.REVERT) return `Send L1 back to GT${suffix}`
+  return `Reject L1${suffix}`
+}
+function confirmBodyFor(kind) {
+  if (kind === DECISION.APPROVE) {
+    return 'This grants In-Principle Approval and unlocks Sustainability for GT. The decision will be recorded in the audit trail.'
+  }
+  if (kind === DECISION.REVERT) {
+    return 'GT will be able to edit and resubmit the L1 form. Your remarks below will be shown to them so they know what to fix.'
+  }
+  return 'This rejects the L1 submission. The workflow will end at this stage. Your remarks below will be shown to GT.'
+}
+function confirmActionFor(kind) {
+  if (kind === DECISION.APPROVE) return 'Confirm approval'
+  if (kind === DECISION.REVERT) return 'Send back to GT'
+  return 'Confirm rejection'
 }
 
 // ── Section (collapsible field list) ────────────────────────────────────

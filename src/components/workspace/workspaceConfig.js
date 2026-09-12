@@ -13,6 +13,7 @@ export const TABS = [
   { key: 'eligibility',    label: 'Eligibility Matrix'},
   { key: 'l1',             label: 'Registration (L1)' },
   { key: 'sustainability', label: 'Sustainability'    },
+  { key: 'action-plan',    label: 'Action Plan'       },
   { key: 'appraisal',      label: 'Detailed Appraisal'},
   { key: 'documents',      label: 'Documents'         },
   { key: 'activity',       label: 'Activity'          },

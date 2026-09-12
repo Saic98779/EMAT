@@ -50,13 +50,17 @@ export function updateAppraisal(id, body, { signal } = {}) {
 // present in the body are preserved (merge, not replace).
 export function approveAppraisal(
   id,
-  { isSidbeApproved = true, stageId = null, stageComments = null } = {},
+  { isSidbeApproved = null, stageId = null, stageComments = null } = {},
   { signal } = {},
 ) {
+  // `isSidbeApproved` is now opt-in — only pass it for approve/reject
+  // decisions. CE comments and reverts must NOT flip the flag, otherwise
+  // e.g. a CE comment after SDE approval would silently clobber the
+  // already-true sidbeApproved back to false and un-approve the L2.
   return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     body: {
-      isSidbeApproved,
+      ...(isSidbeApproved != null ? { isSidbeApproved } : null),
       ...(stageId != null ? { stageId } : null),
       ...(stageComments != null ? { stageComments } : null),
     },
@@ -419,6 +423,79 @@ export function toFormValues(dto = {}) {
   putStr('envisaged_impact', dto.envisagedImpact)
 
   return out
+}
+
+// Build the "IA-mirror" seed used by both the editable AppraisalForm and
+// the read-only AppraisalReviewView. The L2 schema pulls a dozen identity
+// / apex / nodal / infra fields from the parent IA registration ("Section
+// 1–6" plus a few Section 9–10 mirrors). The appraisal DTO doesn't always
+// echo them back on GET — legacy rows and rows saved by CE / HO edits
+// leave those columns null on the appraisal — so we always seed from the
+// IA record first and let the appraisal DTO overlay its own values on top.
+//
+// Params
+//   iaDto        Raw registration DTO (fields under `raw` when going
+//                through the wrapped `useIA` shape, or the bare DTO when
+//                fetching directly). Pass the record as returned by
+//                whichever query you already have on hand.
+//   branchesList Optional [{ id, branchName }] list from
+//                `/branch/dropdown?state=…` — used to resolve the branch
+//                id → readable name for the SIDBI Branch field.
+//
+// Returns a plain values object ready to spread into the form's `values`
+// state: `{ ...buildIaSeed(...), ...toFormValues(appraisalDto) }`.
+export function buildIaSeed(iaDto, branchesList = null) {
+  if (!iaDto || typeof iaDto !== 'object') return {}
+  // Callers pass either the wrapped shape from `useIA` ({ raw, submitted })
+  // or the bare backend DTO. Look at both.
+  const r = iaDto.raw && typeof iaDto.raw === 'object' ? iaDto.raw : iaDto
+  const yn = (b) => (b === true ? 'yes' : b === false ? 'no' : '')
+  const YN = (b) => (b === true ? 'Yes' : b === false ? 'No' : '')
+  const branchName = Array.isArray(branchesList)
+    ? (branchesList.find((b) => String(b.id) === String(r.sidbiBranch))?.branchName ?? r.sidbiBranch ?? '')
+    : (r.sidbiBranch ?? '')
+  return {
+    _ia_created_at: r.createdAt ?? iaDto.submitted ?? '',
+    state: r.state ?? '',
+    ia_name: r.industryAssociationName ?? '',
+    year_incorp: r.incorporationDate ? String(new Date(r.incorporationDate).getFullYear()) : '',
+    ia_profit_type: r.iaType ?? '',
+    proof_constitution: r.constitutionType === 'Other'
+      ? `Other — ${r.constitutionOther ?? ''}`
+      : (r.constitutionType ?? ''),
+    district: r.district ?? '',
+    pincode: r.pincode ?? '',
+    apex_name: r.apexHolderName ?? '',
+    apex_designation: r.apexHolderDesignation ?? '',
+    apex_contact: r.apexHolderMobile ?? '',
+    apex_email: r.apexHolderEmail ?? '',
+    nodal_name: r.nodalName ?? '',
+    nodal_designation: r.nodalDesignation ?? '',
+    nodal_contact: r.nodalMobile ?? '',
+    nodal_email: r.nodalEmail ?? '',
+    sidbi_branch: branchName ?? '',
+    cluster_mapped: yn(r.mappedWithCluster),
+    cluster_which: r.clusterName ?? '',
+    district_mapped: yn(r.mappedWithImportantDistrict),
+    msme_count: r.msmeCountWithoutTraders ?? '',
+    members_gt200: YN(r.activeMembersAbove200),
+    active_members: r.activeMembersCount ?? '',
+    members_justification: r.justification ?? '',
+    own_building: r.buildingType ? 'yes' : '',
+    own_building_details: r.buildingType ?? '',
+    it_infra: yn(r.itInfrastructureAvailable),
+    it_infra_details: r.infrastructureType ?? '',
+    secretariat_staff: yn(r.secretariatStaffAvailable),
+    website: yn(r.websiteAvailable),
+    paid_services: yn(r.paidServicesAvailable),
+    paid_services_details: r.paidServicesDetails ?? '',
+    basis_of_selection: Array.isArray(r.selectionCriteria) ? r.selectionCriteria : [],
+    grant_proposed: r.grantProposed ?? '',
+    grant_details: r.grantDetails ?? '',
+    envisaged_output: r.envisagedOutput ?? '',
+    envisaged_outcome: r.envisagedOutcome ?? '',
+    envisaged_impact: r.envisagedImpact ?? '',
+  }
 }
 
 // Small helpers used by the adapter.

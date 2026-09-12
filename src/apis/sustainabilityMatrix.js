@@ -40,6 +40,62 @@ export function deleteSustainabilityMatrix(id, { signal } = {}) {
   return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
 }
 
+// PUT /sustainability-matrix/{id} — targeted "Action Plan" write.
+//
+// Backend gotcha (verified via curl 2026-09-11): this endpoint has
+// REPLACE semantics, not merge. Sending `{actionPlans, stageId}` alone
+// wipes all 22 sustainability booleans to null — the entire matrix
+// score disappears. To advance the workflow without breaking the
+// upstream matrix data, we have to echo every existing field back.
+//
+// The `dto` param is the current matrix row (from
+// `useSustainabilityMatrixByAppraisal`); the caller decides which action
+// plan fields to overlay:
+//
+//   • GT submit         → { dto, actionPlans, stageId (ACTION_PLAN_SUBMITTED) }
+//   • CE approve/revert → { dto, actionPlanClusterExpertComment, stageId
+//                          (CLUSTER_EXPERT_APPROVED / REVERTED),
+//                          stageComments }
+export function updateSustainabilityActionPlan(
+  id,
+  { dto, actionPlans, actionPlanClusterExpertComment, stageId, stageComments } = {},
+  { signal } = {},
+) {
+  const body = { appraisalId: str(dto?.appraisalId) }
+  // Echo every matrix boolean so the backend's REPLACE doesn't null them.
+  for (const k of PARAM_KEYS) {
+    const v = dto ? dto[k] : null
+    body[k] = v === true ? true : v === false ? false : null
+  }
+  // Preserve the persisted totalScore rather than recomputing — the
+  // score column is authoritative once submitted, and recomputing from
+  // a (possibly nulled) DTO would silently regress it to zero.
+  if (dto?.totalScore != null) body.totalScore = dto.totalScore
+  // Preserve action plan fields already on the row so a CE decide-PUT
+  // doesn't wipe GT's submitted actionPlans, and a GT resubmit-PUT
+  // doesn't drop CE's earlier comment.
+  const preserveActionPlans = Array.isArray(dto?.actionPlans) ? dto.actionPlans : null
+  const preserveComment = dto?.actionPlanClusterExpertComment ?? null
+
+  if (Array.isArray(actionPlans)) {
+    body.actionPlans = actionPlans
+  } else if (preserveActionPlans) {
+    body.actionPlans = preserveActionPlans
+  }
+  if (actionPlanClusterExpertComment != null) {
+    body.actionPlanClusterExpertComment = String(actionPlanClusterExpertComment)
+  } else if (preserveComment) {
+    body.actionPlanClusterExpertComment = preserveComment
+  }
+  if (stageId != null) body.stageId = stageId
+  if (stageComments) body.stageComments = String(stageComments)
+  return apiFetch(`${PATH}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body,
+    signal,
+  })
+}
+
 // ── Spec constants ────────────────────────────────────────────────────────
 // 22 parameters across 7 dimensions; weights sum to 100.
 export const DIMENSIONS = [
@@ -158,3 +214,104 @@ export function toPayload(v = {}) {
 }
 
 const str = (v) => (v == null || v === '' ? null : String(v).trim() || null)
+
+// ── Action Plan (Annexure IV) ──────────────────────────────────────────
+// Piggybacks on the same sustainability-matrix row per Sameer's note —
+// backend added `actionPlans: List<String>` and
+// `actionPlanClusterExpertComment: String` alongside the 22 matrix
+// booleans. GT ticks the checkboxes below; Cluster Expert approves or
+// reverts with a comment.
+//
+// The 8 items are fixed by the spec (Annexure IV of the IA guidelines).
+// We store the user-facing label as the backend string so audit /
+// downstream reports read cleanly without a lookup. The "Others" checkbox
+// carries a free-text detail that we pack into the same array entry
+// as `"Others: <detail>"` — a single `actionPlans` column, no schema
+// change. See packActionPlans / unpackActionPlans below.
+export const ACTION_PLAN_ITEMS = Object.freeze([
+  { key: 'website',            label: 'Website (foundation for IGAs) with or without advertisement/sponsorship' },
+  { key: 'workshops',          label: 'Workshops/Seminars with advertisement/sponsorship' },
+  { key: 'newsletter',         label: 'Newsletter with partial support of IA and with or without advertisement/sponsorship' },
+  { key: 'directory',          label: 'e-directory/physical directory of members with partial support of IA and with or without advertisement/sponsorship' },
+  { key: 'bdsp',               label: 'Engagement of BDSPs with payment from participating units covering part of the cost for skill development of workforce with payment from participating units covering part of the cost.' },
+  { key: 'msme_solution',      label: 'MSME Solution Centre with partial contribution of IAs for a pilot of 4 months and later charging from participants' },
+  { key: 'msme_promotion',     label: 'MSME Promotion Centre with partial contribution of IAs for a pilot of 4 months and later charging from participants' },
+  { key: 'others',             label: 'Others' },
+])
+
+const ACTION_PLAN_LABEL_BY_KEY = new Map(ACTION_PLAN_ITEMS.map((i) => [i.key, i.label]))
+const ACTION_PLAN_KEY_BY_LABEL = new Map(ACTION_PLAN_ITEMS.map((i) => [i.label.toLowerCase(), i.key]))
+const OTHERS_PREFIX = 'Others:'
+
+// packActionPlans
+// ────────────────────────────────────────────────────────────────────────
+// Turn the form state {selected: Set<key>, othersText: string} into the
+// backend's flat `actionPlans: string[]`. "Others" is packed as
+// `"Others: <details>"` so the free text rides with the array entry.
+// Empty details still emit a bare `"Others"` — the checkbox itself is
+// meaningful even without a note.
+export function packActionPlans(selectedKeys = [], othersText = '') {
+  const selected = Array.isArray(selectedKeys) ? selectedKeys : []
+  const out = []
+  for (const item of ACTION_PLAN_ITEMS) {
+    if (!selected.includes(item.key)) continue
+    if (item.key === 'others') {
+      const detail = String(othersText || '').trim()
+      out.push(detail ? `${OTHERS_PREFIX} ${detail}` : 'Others')
+    } else {
+      out.push(item.label)
+    }
+  }
+  return out
+}
+
+// unpackActionPlans
+// ────────────────────────────────────────────────────────────────────────
+// Reverse of packActionPlans — turn a backend array back into the form's
+// { selectedKeys: string[], othersText: string } shape. Tolerant of
+// legacy shapes so switching label wording later doesn't lose data:
+//   • exact label match (canonical)
+//   • prefix match against the item's key (e.g. "website")
+//   • "Others: ..." / "Others - ..." / bare "Others" → sets othersText
+export function unpackActionPlans(raw) {
+  const list = Array.isArray(raw) ? raw : []
+  const selectedKeys = []
+  let othersText = ''
+  for (const entry of list) {
+    if (entry == null) continue
+    const s = String(entry).trim()
+    if (!s) continue
+    const low = s.toLowerCase()
+    // Others (packed): "Others: text" or "Others - text" or bare "Others"
+    if (low === 'others' || low.startsWith('others:') || low.startsWith('others -') || low.startsWith('others-')) {
+      if (!selectedKeys.includes('others')) selectedKeys.push('others')
+      const colonAt = s.indexOf(':')
+      const dashAt = s.indexOf('-')
+      const cut = colonAt >= 0 ? colonAt + 1 : (dashAt >= 0 ? dashAt + 1 : -1)
+      if (cut > 0) othersText = s.slice(cut).trim()
+      continue
+    }
+    // Exact-label match
+    const byLabel = ACTION_PLAN_KEY_BY_LABEL.get(low)
+    if (byLabel) {
+      if (!selectedKeys.includes(byLabel)) selectedKeys.push(byLabel)
+      continue
+    }
+    // Key-prefix match (defensive)
+    const byKey = ACTION_PLAN_ITEMS.find((i) => low.startsWith(i.key.toLowerCase()))?.key
+    if (byKey && !selectedKeys.includes(byKey)) selectedKeys.push(byKey)
+  }
+  return { selectedKeys, othersText }
+}
+
+// Convenience: is the "Others" checkbox part of this selection? Used to
+// gate the details textarea's visibility in the form.
+export function selectionHasOthers(selectedKeys = []) {
+  return Array.isArray(selectedKeys) && selectedKeys.includes('others')
+}
+
+// Public label lookup — used by the read-only view when we want to show
+// the full sentence next to a checkbox key.
+export function actionPlanLabelOf(key) {
+  return ACTION_PLAN_LABEL_BY_KEY.get(key) || key
+}

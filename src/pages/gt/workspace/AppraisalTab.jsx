@@ -28,15 +28,32 @@ export default function AppraisalTab() {
   if (!ws.iaId) {
     return <Notice title="IA not found" body="This IA could not be loaded." />
   }
-  // Gate: Detailed Appraisal opens only once Sustainability Matrix is
-  // submitted. Otherwise a GT user typing the URL could POST an appraisal
-  // shell before the workflow reaches that stage.
+  // Gate: Detailed Appraisal opens only after the Cluster Expert has
+  // approved the Action Plan (stage 4 COMPLETED). Earlier stages have
+  // their own guards too, but this is the one that changed with the
+  // Annexure IV rollout — GT used to jump from Sustainability straight
+  // into L2, and now must clear CE first. A direct-URL bypass would
+  // still submit an appraisal shell against a workflow that isn't there
+  // yet, which the backend rejects; the notice stops the user sooner.
   const sustStage = ws.workflow?.stages?.find((s) => s.key === STAGE.SUSTAINABILITY_MATRIX)
+  const actionPlanStage = ws.workflow?.stages?.find((s) => s.key === STAGE.ACTION_PLAN)
   if (sustStage?.status !== STATUS.COMPLETED) {
     return (
       <Notice
         title="Sustainability Matrix required first"
-        body="Submit the Sustainability Matrix before starting the Detailed Appraisal. The tab unlocks automatically once that step is done."
+        body="Submit the Sustainability Matrix before starting the Detailed Appraisal."
+      />
+    )
+  }
+  if (actionPlanStage?.status !== STATUS.COMPLETED) {
+    const inFlight = actionPlanStage?.status === STATUS.IN_PROGRESS
+      || actionPlanStage?.status === STATUS.REVERTED
+    return (
+      <Notice
+        title={inFlight ? 'Action Plan is still with the Cluster Expert' : 'Submit the Action Plan first'}
+        body={inFlight
+          ? 'Detailed Appraisal opens once the Cluster Expert approves the Action Plan.'
+          : 'Fill and submit the Action Plan tab — Detailed Appraisal opens once the Cluster Expert approves it.'}
       />
     )
   }
@@ -71,7 +88,12 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
   const l2Submitted = submissionSub?.status === STATUS.IN_PROGRESS
     || submissionSub?.status === STATUS.COMPLETED
   const l2Approved = l2Stage?.status === STATUS.COMPLETED
-  const isGtLocked = !isReviewer && !!appraisal?.id && l2Submitted
+  // Revert carve-out: when the SDE or HO Maker sends L2 back to GT, the
+  // stage-level status flips to REVERTED. Unlock the form so GT can
+  // revise and resubmit.
+  const l2Reverted = l2Stage?.status === STATUS.REVERTED
+  const isGtLocked = !isReviewer && !!appraisal?.id && l2Submitted && !l2Reverted
+  const revertRemark = l2Reverted ? l2Stage?.comment : null
 
   if (appraisalQ.isLoading) {
     return (
@@ -99,6 +121,7 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
         // the submit footer. Same visual shell either way.
         <>
           <Header />
+          {l2Reverted && <RevertedBanner remark={revertRemark} />}
           <AppraisalForm
             registrationId={ws.iaId}
             onSaved={onSaved}
@@ -194,6 +217,69 @@ function formatDate(iso) {
   const d = new Date(iso)
   if (Number.isNaN(d.valueOf())) return ''
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// RevertedBanner
+// ────────────────────────────────────────────────────────────────────────
+// Shown above the appraisal form when a reviewer (SDE or HO Maker) has
+// sent L2 back to GT for revisions. Surfaces the reviewer's remarks so
+// GT knows exactly what to fix before resubmitting.
+function RevertedBanner({ remark }) {
+  const theme = useTheme()
+  const tone = theme.palette.warning
+  return (
+    <Box
+      sx={{
+        mt: 1,
+        mb: 2,
+        borderRadius: 2,
+        border: 1,
+        borderColor: alpha(tone.main, 0.4),
+        background: alpha(tone.main, 0.08),
+        px: { xs: 3, md: 4 },
+        py: { xs: 2, md: 2.5 },
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: tone.dark,
+        }}
+      >
+        Sent back for revisions
+      </Typography>
+      <Typography sx={{ mt: 0.5, fontSize: 15, fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '-0.01em' }}>
+        The reviewer has asked for changes before L2 can move forward.
+      </Typography>
+      {remark ? (
+        <Box
+          sx={{
+            mt: 1.5,
+            borderRadius: 1.25,
+            border: 1,
+            borderColor: alpha(tone.main, 0.3),
+            background: '#fff',
+            px: 1.75,
+            py: 1.25,
+          }}
+        >
+          <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: tone.dark, mb: 0.25 }}>
+            Reviewer remarks
+          </Typography>
+          <Typography sx={{ fontSize: 13.5, color: theme.palette.text.primary, whiteSpace: 'pre-wrap' }}>
+            {remark}
+          </Typography>
+        </Box>
+      ) : (
+        <Typography sx={{ mt: 0.75, fontSize: 13, color: theme.palette.text.secondary }}>
+          No specific remarks were left — reach out to the reviewer for guidance.
+        </Typography>
+      )}
+    </Box>
+  )
 }
 
 function Header() {
