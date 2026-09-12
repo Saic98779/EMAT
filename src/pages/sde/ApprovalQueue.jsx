@@ -49,21 +49,21 @@ export default function ApprovalQueue() {
   // matches the same guard used in `industryAssociations.js#fromDto`.
   // Anything without a stamped decision (null OR bare false) → pending.
   const l1Rejected = useMemo(
-    () => (iasQ.data || []).filter((i) =>
-      i.raw?.isSidbeApproved === false && i.raw?.sidbeApprovedByUserId != null),
+    () => sortNewestFirst((iasQ.data || []).filter((i) =>
+      i.raw?.isSidbeApproved === false && i.raw?.sidbeApprovedByUserId != null)),
     [iasQ.data],
   )
   const l1Approved = useMemo(
-    () => (iasQ.data || []).filter((i) => i.raw?.isSidbeApproved === true),
+    () => sortNewestFirst((iasQ.data || []).filter((i) => i.raw?.isSidbeApproved === true)),
     [iasQ.data],
   )
   const l1Pending = useMemo(
-    () => (iasQ.data || []).filter((i) => {
+    () => sortNewestFirst((iasQ.data || []).filter((i) => {
       const v = i.raw?.isSidbeApproved
       if (v === true) return false
       if (v === false && i.raw?.sidbeApprovedByUserId != null) return false
       return true
-    }),
+    })),
     [iasQ.data],
   )
   // Resolve branch ids → branch names across all L1 buckets so any row can
@@ -77,9 +77,18 @@ export default function ApprovalQueue() {
     return m
   }, [iasQ.data])
   const l2Pending = useMemo(
-    () => (apprsQ.data || [])
-      .filter((a) => !a.approved)
-      .map((a) => ({ ...a, iaName: iaNameById.get(a.registrationId) || a.iaName })),
+    () => {
+      const list = (apprsQ.data || [])
+        .filter((a) => !a.approved)
+        .map((a) => ({ ...a, iaName: iaNameById.get(a.registrationId) || a.iaName }))
+      // Appraisal DTOs carry their own createdAt/updatedAt — sort newest-first.
+      return [...list].sort((a, b) => {
+        const at = Date.parse(a?.createdAt || a?.updatedAt || 0) || 0
+        const bt = Date.parse(b?.createdAt || b?.updatedAt || 0) || 0
+        if (at !== bt) return bt - at
+        return (Number(b.id) || 0) - (Number(a.id) || 0)
+      })
+    },
     [apprsQ.data, iaNameById],
   )
   const pmuPending = useMemo(
@@ -319,4 +328,23 @@ function QueueList({ icon: Icon, iconAccent, loading, error, items, emptyMsg, re
       })}
     </Stack>
   )
+}
+
+// Newest-first ordering for any bucket of IA list items. Reads
+// `raw.createdAt` (falls back to `raw.updatedAt`, then numeric id) so
+// records without timestamps still land in a stable order. Same shape as
+// `tsFor` in IndustryAssociations — kept inline to avoid a new util file.
+function sortNewestFirst(items) {
+  const ts = (ia) => {
+    const raw = ia?.raw?.createdAt || ia?.raw?.updatedAt || null
+    if (!raw) return 0
+    const t = Date.parse(raw)
+    return Number.isFinite(t) ? t : 0
+  }
+  return [...items].sort((a, b) => {
+    const at = ts(a)
+    const bt = ts(b)
+    if (at !== bt) return bt - at
+    return (Number(b.id) || 0) - (Number(a.id) || 0)
+  })
 }

@@ -130,14 +130,23 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
       { name: 'apex_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'apex_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
-      { name: '_apex_kyc', label: 'KYC & ID proof', type: 'subheading', span: 12 },
-      { name: 'apex_kyc_doc', label: 'KYC Document (Address Proof)', type: 'select', span: 6, required: true,
+      // KYC block: doc type + number + upload file all on one row (span 4
+      // each = 12) so the reviewer sees a single "KYC triple" instead of
+      // three orphaned inputs scattered across rows.
+      { name: '_apex_kyc', label: 'KYC Document (Address Proof)', type: 'subheading', span: 12 },
+      { name: 'apex_kyc_doc', label: 'KYC Document', type: 'select', span: 4, required: true,
         options: ['Voter ID card', 'Driving licence', 'Passport', 'Telephone bill', 'Electricity bill', 'Water consumption bill', 'Gas receipt / connection card'] },
-      { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 6, required: true,
+      { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter document / bill number',
         showIf: (v) => !!v.apex_kyc_doc },
-      { name: 'apex_id_proof', label: 'ID Proof', type: 'select', span: 6, required: true, options: ['PAN', 'Aadhaar', 'Passport', 'Driving Licence'] },
-      { name: 'apex_id_number', label: 'ID Proof Number', type: 'text', span: 6, required: true,
+      { name: 'apex_kyc_file', label: 'Upload KYC document', type: 'file', span: 4, required: true },
+
+      // ID Proof block: same "one-row triple" layout for the ID document
+      // (type + number + upload). Number field validates PAN / Aadhaar
+      // formats against whichever type is picked in the select above.
+      { name: '_apex_id', label: 'ID Proof', type: 'subheading', span: 12 },
+      { name: 'apex_id_proof', label: 'ID Proof', type: 'select', span: 4, required: true, options: ['PAN', 'Aadhaar', 'Passport', 'Driving Licence'] },
+      { name: 'apex_id_number', label: 'ID Proof Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter unique ID number',
         showIf: (v) => !!v.apex_id_proof,
         validate: (v, values) => {
@@ -147,8 +156,7 @@ export const makeInPrincipleSchema = ({
           if (t === 'Aadhaar' && !/^\d{12}$/.test(String(v))) return '12-digit Aadhaar'
           return ''
         } },
-      { name: 'apex_kyc_file', label: 'Upload KYC document (address proof)', type: 'file', span: 6, required: true },
-      { name: 'apex_id_file', label: 'Upload ID proof document', type: 'file', span: 6, required: true },
+      { name: 'apex_id_file', label: 'Upload ID proof', type: 'file', span: 4, required: true },
     ] },
     { n: 4, title: 'Details of Nodal Contact of IA', fields: [
       { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },

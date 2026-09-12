@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Box, Button, CircularProgress, LinearProgress, Stack, Tooltip, Typography } from '@mui/material'
+import { Box, LinearProgress, Stack, Typography } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 
 // LiveScorePanel
@@ -20,7 +20,6 @@ import { alpha, useTheme } from '@mui/material/styles'
 //   onSubmit         () => void
 function LiveScorePanel({
   score = 0, tier, tiers = [], answered = 0, total = 22,
-  canSubmit = false, submitting = false, onSubmit,
 }) {
   const theme = useTheme()
   const answeredPct = Math.round((answered / total) * 100)
@@ -145,22 +144,10 @@ function LiveScorePanel({
         </Box>
       )}
 
-      <Stack spacing={1.25} sx={{ mt: 2.5 }}>
-        <Tooltip title={!canSubmit ? 'Answer all parameters to submit' : ''} arrow disableHoverListener={canSubmit}>
-          <span>
-            <Button
-              fullWidth
-              variant="contained"
-              disableElevation
-              onClick={onSubmit}
-              disabled={!canSubmit || submitting}
-              startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : null}
-            >
-              {submitting ? 'Submitting…' : 'Submit matrix'}
-            </Button>
-          </span>
-        </Tooltip>
-      </Stack>
+      {/* Submit button removed — the sticky `MatrixSubmitBar` at the
+          bottom of both Eligibility + Sustainability tabs is the single
+          canonical submit affordance. Two side-by-side buttons was
+          confusing users. */}
     </Box>
   )
 }
