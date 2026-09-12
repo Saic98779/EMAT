@@ -103,6 +103,12 @@ function ActionPlanBody({ ws }) {
     (d) => d.kind === DECISION.APPROVE || d.kind === DECISION.REVERT,
   )
   const isCeReviewer = decisions.length > 0
+  // Only GT Field Team ever authors the action plan. Every other role
+  // (SDE, CE, HO Maker, GT PMU) sees the read-only checklist regardless
+  // of stage status — otherwise CE opening the tab before GT submits
+  // would land on an editable form, which they'd then be able to
+  // "submit" against the sustainability endpoint they don't own.
+  const isGtFieldTeam = ws.viewerRole === 'GT_FIELD_TEAM'
 
   // Loading gate — need the matrix row before we can read/write action plans.
   if (apprQ.isLoading || matrixQ.isLoading) {
@@ -125,9 +131,12 @@ function ActionPlanBody({ ws }) {
   const reviewerComment = String(dto.actionPlanClusterExpertComment || '').trim()
 
   // GT editable branch — first-time submit (NOT_STARTED) or revise
-  // after CE revert. Anyone else (CE reviewing at ACTION_PLAN_SUBMITTED,
-  // downstream roles after approval) sees a read-only checklist.
-  const gtCanEdit = !isCeReviewer && (actionPlanStatus === STATUS.NOT_STARTED || isReverted)
+  // after CE revert. Restricted to GT Field Team only; other roles
+  // (including CE at a non-actionable sub-stage) see the read-only
+  // checklist even when the stage happens to be NOT_STARTED / REVERTED.
+  const gtCanEdit = isGtFieldTeam
+    && !isCeReviewer
+    && (actionPlanStatus === STATUS.NOT_STARTED || isReverted)
 
   return (
     <>
@@ -189,7 +198,6 @@ function ActionPlanBody({ ws }) {
 // ── GT editable form ────────────────────────────────────────────────────
 
 function GtEditForm({ matrixId, registrationId, dto, seeded, allStages, submitM }) {
-  const theme = useTheme()
   const [selected, setSelected] = useState(seeded.selectedKeys)
   const [toast, setToast] = useState(null)
   const [dirty, setDirty] = useState(false)
@@ -216,6 +224,30 @@ function GtEditForm({ matrixId, registrationId, dto, seeded, allStages, submitM 
     setSelected((prev) => (
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     ))
+  }, [])
+
+  // Bulk actions — "Select all" ticks every item EXCEPT Others (Others
+  // needs a details textbox, so it's opt-in). Clear resets to empty.
+  // Both keep the Others box's existing text intact — only the checkbox
+  // state changes, and the textbox is hidden if Others isn't checked.
+  const NON_OTHERS_KEYS = useMemo(
+    () => ACTION_PLAN_ITEMS.filter((it) => it.key !== OTHERS_KEY).map((it) => it.key),
+    [],
+  )
+  const allNonOthersSelected = useMemo(
+    () => NON_OTHERS_KEYS.every((k) => selected.includes(k)),
+    [selected, NON_OTHERS_KEYS],
+  )
+  const selectAllExceptOthers = useCallback(() => {
+    setDirty(true)
+    setSelected((prev) => {
+      const othersOn = prev.includes(OTHERS_KEY)
+      return othersOn ? [...NON_OTHERS_KEYS, OTHERS_KEY] : [...NON_OTHERS_KEYS]
+    })
+  }, [NON_OTHERS_KEYS])
+  const clearAll = useCallback(() => {
+    setDirty(true)
+    setSelected([])
   }, [])
 
   // Stable "text changed" callback for the Others row. Setting `dirty`
@@ -267,6 +299,29 @@ function GtEditForm({ matrixId, registrationId, dto, seeded, allStages, submitM 
         title="Suggested Action Plan"
         subtitle="Annexure IV · Income-Generating Activities — tick the plans this IA intends to pursue."
         selectedCount={selected.length}
+        toolbar={
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant={allNonOthersSelected ? 'outlined' : 'contained'}
+              disableElevation
+              onClick={selectAllExceptOthers}
+              sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 1.25 }}
+            >
+              Select all (except Others)
+            </Button>
+            {selected.length > 0 && (
+              <Button
+                size="small"
+                variant="text"
+                onClick={clearAll}
+                sx={{ textTransform: 'none', fontWeight: 600, color: 'text.secondary' }}
+              >
+                Clear
+              </Button>
+            )}
+          </Stack>
+        }
       >
         {ACTION_PLAN_ITEMS.map((item, i) => {
           const checked = selected.includes(item.key)
@@ -315,9 +370,11 @@ function GtEditForm({ matrixId, registrationId, dto, seeded, allStages, submitM 
   )
 }
 
-// Checklist container — subtle card with a header strip that also acts as
-// the selection counter. Rows sit inside with hairline dividers.
-function ChecklistCard({ title, subtitle, selectedCount, children }) {
+// Checklist container — card with a two-line header (title/counter row
+// on top, optional toolbar with bulk-actions on the right). Rows sit
+// inside with hairline dividers. `toolbar` is any React node — kept
+// generic so the read-only variant can pass nothing.
+function ChecklistCard({ title, subtitle, selectedCount, toolbar, children }) {
   const theme = useTheme()
   return (
     <Box
@@ -332,26 +389,44 @@ function ChecklistCard({ title, subtitle, selectedCount, children }) {
     >
       <Box
         sx={{
-          px: { xs: 2.25, md: 3 },
-          py: 2,
+          px: { xs: 2.5, md: 3 },
+          py: 2.25,
           borderBottom: 1,
           borderColor: alpha(theme.palette.text.primary, 0.06),
           background: alpha(theme.palette.text.primary, 0.015),
         }}
       >
-        <Stack direction="row" alignItems="baseline" spacing={1.5} flexWrap="wrap">
-          <Typography sx={{ fontSize: 15.5, fontWeight: 700, letterSpacing: '-0.01em' }}>
-            {title}
-          </Typography>
-          <Typography sx={{ fontSize: 12.5, color: theme.palette.text.disabled, fontWeight: 500 }}>
-            {selectedCount} of {ACTION_PLAN_ITEMS.length} selected
-          </Typography>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1.5, md: 2 }} alignItems={{ md: 'flex-start' }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Stack direction="row" alignItems="baseline" spacing={1.5} flexWrap="wrap">
+              <Typography sx={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em' }}>
+                {title}
+              </Typography>
+              <Box
+                sx={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  letterSpacing: '0.03em',
+                  color: selectedCount > 0 ? theme.palette.primary.dark : theme.palette.text.disabled,
+                  background: selectedCount > 0
+                    ? alpha(theme.palette.primary.main, 0.12)
+                    : alpha(theme.palette.text.primary, 0.05),
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: 0.75,
+                }}
+              >
+                {selectedCount} / {ACTION_PLAN_ITEMS.length}
+              </Box>
+            </Stack>
+            {subtitle && (
+              <Typography sx={{ mt: 0.5, fontSize: 13, color: theme.palette.text.secondary, lineHeight: 1.5 }}>
+                {subtitle}
+              </Typography>
+            )}
+          </Box>
+          {toolbar && <Box sx={{ flexShrink: 0 }}>{toolbar}</Box>}
         </Stack>
-        {subtitle && (
-          <Typography sx={{ mt: 0.5, fontSize: 13, color: theme.palette.text.secondary }}>
-            {subtitle}
-          </Typography>
-        )}
       </Box>
       <Box>{children}</Box>
     </Box>
@@ -363,18 +438,19 @@ function ChecklistCard({ title, subtitle, selectedCount, children }) {
 // get a subtle primary tint + a left-border accent.
 const rowShellSx = (theme, checked) => ({
   display: 'grid',
-  gridTemplateColumns: '44px 1fr',
+  gridTemplateColumns: { xs: '48px 1fr', md: '56px 1fr' },
   alignItems: 'flex-start',
-  columnGap: 1.5,
-  px: { xs: 2, md: 2.5 },
-  py: 1.75,
+  columnGap: { xs: 1.5, md: 2 },
+  px: { xs: 2, md: 3 },
+  py: 2,
   position: 'relative',
-  background: checked ? alpha(theme.palette.primary.main, 0.045) : 'transparent',
-  transition: 'background 120ms ease',
+  cursor: 'pointer',
+  background: checked ? alpha(theme.palette.primary.main, 0.05) : 'transparent',
+  transition: 'background 140ms ease, border-color 140ms ease',
   '&:hover': {
     background: checked
-      ? alpha(theme.palette.primary.main, 0.06)
-      : alpha(theme.palette.text.primary, 0.02),
+      ? alpha(theme.palette.primary.main, 0.08)
+      : alpha(theme.palette.text.primary, 0.025),
   },
   '&::before': checked ? {
     content: '""',
@@ -392,25 +468,29 @@ const rowShellSx = (theme, checked) => ({
 // user is typing in the Others box below.
 const PlainRow = memo(function PlainRow({ index, item, checked, onToggle }) {
   const theme = useTheme()
+  const handleRowClick = () => onToggle(item.key)
   return (
     <>
-      <Box sx={rowShellSx(theme, checked)}>
+      <Box sx={rowShellSx(theme, checked)} onClick={handleRowClick} role="button" tabIndex={0}
+        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleRowClick() } }}>
         <Checkbox
           checked={checked}
-          onChange={() => onToggle(item.key)}
-          size="small"
-          sx={{ p: 0.5, mt: -0.5 }}
+          onChange={handleRowClick}
+          onClick={(e) => e.stopPropagation()}
+          sx={{ p: 0.5, mt: -0.25 }}
         />
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: theme.palette.text.disabled, letterSpacing: '0.03em', mb: 0.25 }}>
-            {String(index).padStart(2, '0')}
-          </Typography>
-          <Typography sx={{ fontSize: 14, lineHeight: 1.5, color: theme.palette.text.primary }}>
+          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 800, color: theme.palette.text.disabled, letterSpacing: '0.04em' }}>
+              {String(index).padStart(2, '0')}
+            </Typography>
+          </Stack>
+          <Typography sx={{ fontSize: 14, lineHeight: 1.55, color: theme.palette.text.primary, fontWeight: checked ? 500 : 400 }}>
             {item.label}
           </Typography>
         </Box>
       </Box>
-      <Divider sx={{ borderColor: alpha(theme.palette.text.primary, 0.06) }} />
+      <Divider sx={{ borderColor: alpha(theme.palette.text.primary, 0.055) }} />
     </>
   )
 })
@@ -438,24 +518,28 @@ const OthersRow = memo(function OthersRow({ index, item, checked, onToggle, init
     onTextChange(v)
   }
 
+  const handleRowClick = () => onToggle(item.key)
   return (
     <>
-      <Box sx={rowShellSx(theme, checked)}>
+      <Box sx={rowShellSx(theme, checked)} onClick={handleRowClick} role="button" tabIndex={0}
+        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleRowClick() } }}>
         <Checkbox
           checked={checked}
-          onChange={() => onToggle(item.key)}
-          size="small"
-          sx={{ p: 0.5, mt: -0.5 }}
+          onChange={handleRowClick}
+          onClick={(e) => e.stopPropagation()}
+          sx={{ p: 0.5, mt: -0.25 }}
         />
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: theme.palette.text.disabled, letterSpacing: '0.03em', mb: 0.25 }}>
-            {String(index).padStart(2, '0')}
-          </Typography>
-          <Typography sx={{ fontSize: 14, lineHeight: 1.5, color: theme.palette.text.primary }}>
+          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 800, color: theme.palette.text.disabled, letterSpacing: '0.04em' }}>
+              {String(index).padStart(2, '0')}
+            </Typography>
+          </Stack>
+          <Typography sx={{ fontSize: 14, lineHeight: 1.55, color: theme.palette.text.primary, fontWeight: checked ? 500 : 400 }}>
             {item.label}
           </Typography>
           {checked && (
-            <Box sx={{ mt: 1.5 }}>
+            <Box sx={{ mt: 1.75 }} onClick={(e) => e.stopPropagation()}>
               <TextField
                 value={text}
                 onChange={onInput}
@@ -464,7 +548,6 @@ const OthersRow = memo(function OthersRow({ index, item, checked, onToggle, init
                 multiline
                 minRows={2}
                 maxRows={6}
-                size="small"
                 slotProps={{
                   input: {
                     sx: {
@@ -479,7 +562,7 @@ const OthersRow = memo(function OthersRow({ index, item, checked, onToggle, init
           )}
         </Box>
       </Box>
-      {!last && <Divider sx={{ borderColor: alpha(theme.palette.text.primary, 0.06) }} />}
+      {!last && <Divider sx={{ borderColor: alpha(theme.palette.text.primary, 0.055) }} />}
     </>
   )
 })
