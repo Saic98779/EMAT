@@ -10,26 +10,55 @@ import { useIAs } from '../../queries'
 import { unpackHoDecision } from '../../apis/industryAssociationAppraisals'
 import { useAuth } from '../../auth'
 
+// Sub-stages the HO Maker cares about. Kept in sync with the transition
+// table in `src/apis/stageActions.js`: HO acts at CE_COMMENTS_SUBMITTED
+// and lands the record at one of the three HO_MAKER sub-stages. Panel
+// submission is downstream of HO's approval and still counts as a
+// "reviewable" row so HO can see decisions they've already made.
+const HO_REVIEWABLE_STAGES = new Set([
+  'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_SUBMITTED_BY_PANEL',
+])
+const HO_DECIDED_STAGES = new Set([
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_SUBMITTED_BY_PANEL',
+])
+
 // SIDBI HO Maker approves/rejects (with remarks) Industry Associations the
-// Cluster Expert has already commented on — CE has no separate approve action,
-// so a non-empty clusterExpertComments is the gate. Structurally mirrors
-// ClusterExpertDashboard: same "queue split by decided/not" landing page.
+// Cluster Expert has already handed off. Drive the "reviewable" list off
+// `currentStage`, not the `clusterExpertComments` text field — the CE
+// step advances the workflow even when the comment column is left blank
+// (backend records the sub-stage without echoing back the string). Using
+// the workflow enum avoids the "workflow says it's yours but list looks
+// empty" mismatch. Structurally mirrors ClusterExpertDashboard: same
+// "queue split by decided / not" landing page.
 export default function HoMakerDashboard() {
   const navigate = useNavigate()
   const { roleInfo } = useAuth()
   const { data: ias = [], isLoading, error } = useIAs()
 
-  const hasComment = (i) => !!String(i.appraisal?.clusterExpertComments || '').trim()
-  const reviewable = ias.filter((i) => !!i.appraisal && hasComment(i))
+  const reviewable = ias.filter((i) => HO_REVIEWABLE_STAGES.has(i.currentStage) && !!i.appraisal)
   const decisionOf = (i) => unpackHoDecision(i.appraisal).decision
-  const pending = reviewable.filter((i) => !decisionOf(i))
-  const decided = reviewable.filter((i) => !!decisionOf(i))
+  // Pending = HO hasn't decided yet AND the workflow is currently at
+  // CE_COMMENTS_SUBMITTED. Decided = HO's remark packet is on record or
+  // the workflow has moved past HO's decision point.
+  const pending = reviewable.filter(
+    (i) => i.currentStage === 'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED' && !decisionOf(i),
+  )
+  const decided = reviewable.filter(
+    (i) => !!decisionOf(i) || HO_DECIDED_STAGES.has(i.currentStage),
+  )
 
   const row = (i) => {
     const decision = decisionOf(i)
     return (
       <Stack key={i.id} direction="row" alignItems="center" spacing={2}
-        onClick={() => navigate(`/sde/ias/${i.id}/ho-review`)}
+        onClick={() => navigate(`/sde/ias/${i.id}/workspace/appraisal`)}
         sx={{ py: 1.5, px: 1, mx: -1, borderRadius: 2, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
         <Avatar variant="rounded" sx={{ bgcolor: 'primary.light', color: 'primary.dark', width: 40, height: 40 }}>
           <FactCheckOutlinedIcon fontSize="small" />

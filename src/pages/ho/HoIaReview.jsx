@@ -23,6 +23,17 @@ import {
 // backend field exists for this, so the decision is packed into
 // recommendationRemarks behind a marker (see unpackHoDecision) — same
 // technique the Cluster Expert's own comments already use.
+
+// Sub-stages HO Maker owns. Mirrors the sets in
+// `src/pages/ho/HoMakerDashboard.jsx` and `HoIaApprovals.jsx` — any new
+// HO sub-stage needs to be added in all three places.
+const HO_REVIEWABLE_STAGES = new Set([
+  'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_SUBMITTED_BY_PANEL',
+])
 export default function HoIaReview() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -35,7 +46,14 @@ export default function HoIaReview() {
 
   const ia = iaQ.data
   const appraisal = ia?.appraisal
+  // Two ways this application is "open" for HO review — either CE left a
+  // comment string, or the workflow itself has advanced to a stage HO
+  // owns (CE_COMMENTS_SUBMITTED and beyond). Backend advances the sub-
+  // stage even when the CE leaves the comment string blank, so gating
+  // solely on the string used to hide legitimately-owed reviews. The
+  // stage-based check covers the same stages surfaced on the dashboard.
   const commented = !!String(appraisal?.clusterExpertComments || '').trim()
+    || HO_REVIEWABLE_STAGES.has(ia?.currentStage)
 
   useEffect(() => {
     if (seeded || !appraisal) return

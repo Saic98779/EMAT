@@ -186,10 +186,15 @@ export default function App() {
         {/* SDE workspace — reuses the same IaWorkspaceLayout as GT. The
             layout reads the URL's basePath (/sde vs /gt) and shows role-
             appropriate affordances (decision buttons for SDE / CE / HO
-            Maker viewers) on the stage-cards grid. */}
+            Maker viewers) on the stage-cards grid. HO Maker used to be
+            denied here and routed to a standalone HoIaReview page; that
+            page only showed the decision form with no context, so HO
+            couldn't see the L1 / Sustainability / Action Plan / L2 data
+            they were about to approve. Opening the workspace to HO gives
+            them the full read-only trail plus the L2 decision bar. */}
         <Route
           path="/sde/ias/:id/workspace"
-          element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><IaWorkspaceLayout /></DenyRawRoles>}
+          element={<IaWorkspaceLayout />}
         >
           <Route index element={<WorkspaceIndexRedirect />} />
           <Route path="overview" element={<OverviewTab />} />

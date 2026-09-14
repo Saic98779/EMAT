@@ -159,8 +159,16 @@ function deriveStage(stageKey, ia, allStages, history, eligibility) {
   )
 
   const currentStage = ia?.currentStage || ''
-  const hasReject = tmpl.rejectionKeys.some((k) => currentStage === k || stageHistoryHas(stageHistory, k))
-  const hasRevert = tmpl.revertKeys.some((k) => currentStage === k || stageHistoryHas(stageHistory, k))
+  // Reject / revert reflect the *current* position, not history — once
+  // the workflow has moved past a revert (GT fixes the form and
+  // resubmits, so currentStage becomes SUBMITTED again), the card must
+  // stop showing "Reverted" or the SDE will think another round-trip
+  // is still owed. Rejections are terminal, but the same test — "are
+  // we sitting at that sub-stage right now" — is the right one either
+  // way. History still drives `latestCommentFor` so the revert remark
+  // remains available when we need it.
+  const hasReject = tmpl.rejectionKeys.some((k) => currentStage === k)
+  const hasRevert = tmpl.revertKeys.some((k) => currentStage === k)
   const inFlight  = currentStage.startsWith(stageKey)
 
   const completed = subStages.filter((s) => s.status === STATUS.COMPLETED).length
@@ -264,10 +272,6 @@ function finaliseRow({ row, index, stageKey, allStages, status, historyEntry, ki
     completedBy: historyEntry?.createdBy ?? null,
     remarks: historyEntry?.comment ?? null,
   }
-}
-
-function stageHistoryHas(history, subStageKey) {
-  return history.some((h) => h.subStage === subStageKey)
 }
 
 function latestCommentFor(history, subStageKeys) {
