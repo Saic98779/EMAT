@@ -253,7 +253,22 @@ function consolidateForGt(sections) {
 //                             viewer's schema only exposes 1–2 sections
 //                             (Cluster Expert), where a single scroll is
 //                             lighter than a stepper.
-export default function AppraisalForm({ registrationId, onSaved, stickyFooter = false, stepper = false, readOnly = false }) {
+export default function AppraisalForm({
+  registrationId, onSaved, stickyFooter = false, stepper = false, readOnly = false,
+  // Optional parent hook: when provided, the current form snapshot
+  // (`{ values, seeded, isValid, collectFiles }`) is written to
+  // `formRef.current` on every render. A wrapper like `SdeL2ReviewEdit`
+  // uses this to compose a decision bar that saves the DD fields + flips
+  // the approval flag in a single PUT — without duplicating any of the
+  // seeding / schema / hydration logic that lives here.
+  formRef,
+  // Optional footer replacement — when provided, StepperLayout renders
+  // this instead of the built-in RegistrationFooter (which carries the
+  // per-role "Save changes" / "Submit for L2 review" button). Callers
+  // provide their own sticky action bar; navigation still happens via
+  // the clickable left-rail SectionStepper.
+  renderFooter,
+}) {
   const { rawRole } = useAuth()
   const isClusterExpert = rawRole === 'CLUSTER_EXPERT'
   const isSde = rawRole === 'SIDBI_SDE'
@@ -357,6 +372,23 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
     }
     return out
   }
+
+  // Expose the live form snapshot to a parent (e.g. SdeL2ReviewEdit) so
+  // it can build a decision bar that atomically saves + advances the
+  // stage. Written to `formRef.current` after every render — the object
+  // reference is stable across renders (parent supplies a stable
+  // `useRef`), only its `.current` payload changes.
+  useEffect(() => {
+    if (!formRef) return
+    formRef.current = {
+      values,
+      seeded,
+      isValid: () => firstProblem(schema, values) == null,
+      firstProblem: () => firstProblem(schema, values),
+      collectFiles,
+      showAllErrors: () => setShowAllErrors(true),
+    }
+  })
 
   const submit = async () => {
     // Bail out if the form hasn't finished hydrating from the parent IA
@@ -506,6 +538,7 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
         existing={existing}
         registrationId={registrationId}
         readOnly={readOnly}
+        renderFooter={renderFooter}
       />
     )
   }
@@ -549,7 +582,7 @@ export default function AppraisalForm({ registrationId, onSaved, stickyFooter = 
 function StepperLayout({
   schema, values, setValue, showAllErrors, submit, busy, canSave, submitLabel,
   viewSustainability, sustainOpen, setSustainOpen, existing, registrationId,
-  readOnly = false,
+  readOnly = false, renderFooter = null,
 }) {
   const theme = useTheme()
   const sections = schema.sections
@@ -644,7 +677,11 @@ function StepperLayout({
         </Box>
       </Box>
 
-      {!readOnly && (
+      {/* Parent-provided decision bar wins when supplied (e.g. SDE
+          reviewer view); otherwise fall back to the built-in save
+          footer. `readOnly` still suppresses everything for GT-locked
+          views. */}
+      {!readOnly && (renderFooter ? renderFooter : (
         <RegistrationFooter
           activeIndex={clampedActive}
           sectionCount={sections.length}
@@ -657,7 +694,7 @@ function StepperLayout({
           onSubmit={onSubmit}
           submitLabel={submitLabel}
         />
-      )}
+      ))}
 
       <SustainabilityMatrixModal
         open={sustainOpen}

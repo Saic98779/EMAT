@@ -13,16 +13,30 @@ import { unpackHoDecision } from '../../apis/industryAssociationAppraisals'
 
 const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 
-// Full list of Industry Associations for the SIDBI HO Maker — only ones the
-// Cluster Expert has commented on (CE has no separate approve action, so a
-// non-empty clusterExpertComments is the gate). The actual decision happens
+// Sub-stages HO Maker owns. Drives the filter that decides which IAs
+// land in the approvals table. Currently kept in sync with
+// `src/pages/ho/HoMakerDashboard.jsx#HO_REVIEWABLE_STAGES` — if you add
+// a new sub-stage there, add it here too.
+const HO_REVIEWABLE_STAGES = new Set([
+  'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_SUBMITTED_BY_PANEL',
+])
+
+// Full list of Industry Associations for the SIDBI HO Maker — filtered
+// on `currentStage`, not the (often-empty) clusterExpertComments text
+// column. The CE step advances the workflow whether or not the CE
+// leaves a comment string, and gating on the string means HO's queue
+// misses IAs the workflow says are theirs. The actual decision happens
 // on HoIaReview (via the row's Review button).
 export default function HoIaApprovals() {
   const navigate = useNavigate()
   const { data: allIas = [], isLoading, isFetching, error, refetch } = useIAs()
   const [q, setQ] = useState('')
 
-  const commented = allIas.filter((i) => !!String(i.appraisal?.clusterExpertComments || '').trim())
+  const commented = allIas.filter((i) => HO_REVIEWABLE_STAGES.has(i.currentStage))
 
   const filtered = q.trim()
     ? commented.filter((i) =>
@@ -81,7 +95,7 @@ export default function HoIaApprovals() {
               {filtered.map((i) => {
                 const decision = unpackHoDecision(i.appraisal).decision
                 return (
-                  <TableRow key={i.id} hover onClick={() => navigate(`/sde/ias/${i.id}/ho-review`)} sx={{ cursor: 'pointer' }}>
+                  <TableRow key={i.id} hover onClick={() => navigate(`/sde/ias/${i.id}/workspace/appraisal`)} sx={{ cursor: 'pointer' }}>
                     <TableCell>
                       <Typography fontWeight={700} fontSize="0.95rem">{i.name}</Typography>
                       <Mono>{[i.city, i.state].filter((x) => x && x !== '—').join(' · ') || '—'}</Mono>
@@ -94,7 +108,7 @@ export default function HoIaApprovals() {
                     </TableCell>
                     <TableCell align="right">
                       <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}
-                        onClick={(e) => { e.stopPropagation(); navigate(`/sde/ias/${i.id}/ho-review`) }} sx={ACTION_SX}>
+                        onClick={(e) => { e.stopPropagation(); navigate(`/sde/ias/${i.id}/workspace/appraisal`) }} sx={ACTION_SX}>
                         Review
                       </Button>
                     </TableCell>

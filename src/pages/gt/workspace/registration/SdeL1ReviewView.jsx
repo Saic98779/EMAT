@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import {
   Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, Divider, IconButton, Stack, TextField,
@@ -44,14 +44,10 @@ export default function SdeL1ReviewView({
   const theme = useTheme()
   const filesQ = useFilesByRegistration(iaId)
   const approve = useApproveIA()
-  const [comments, setComments] = useState('')
-  const [busyKind, setBusyKind] = useState(null)
-  // Two-step decision:
-  //   pendingDecision → confirmation dialog is open, awaiting Confirm
-  //   justRecorded    → last successful decision, shown inline as a
-  //                     bold status card at the top of the view until the
-  //                     workflow refetch flips the SDE out of reviewer mode
-  const [pendingDecision, setPendingDecision] = useState(null)
+  // Only `justRecorded` lives on the parent — the sticky decision bar
+  // owns its own `comments`, `pendingDecision`, and `busyKind` state so
+  // typing in the remarks textarea doesn't re-render the (expensive)
+  // sections tree above it. Same isolation pattern as the L2 view.
   const [justRecorded, setJustRecorded] = useState(null)
 
   // Derive values fresh from `dto` each render — the reviewer surface is
@@ -65,44 +61,28 @@ export default function SdeL1ReviewView({
 
   const files = filesQ.data || []
 
-  function requestDecision(d) {
+  // Ready-to-fire decision handler for the memoized DecisionBar. Stable
+  // via useCallback so the bar's memo shell holds. Throws on failure so
+  // the bar can leave the input intact for a retry.
+  const onDecide = useCallback(async (d, commentsText) => {
     if (!iaId || !d?.stageId) {
       onDone?.({ severity: 'error', msg: 'Missing IA id or destination stage.' })
-      return
+      throw new Error('missing-stage')
     }
-    const trimmed = comments.trim()
-    if (d.kind === DECISION.REJECT && !trimmed) {
-      onDone?.({ severity: 'warning', msg: 'Please add remarks explaining the rejection.' })
-      return
-    }
-    if (d.kind === DECISION.REVERT && !trimmed) {
-      onDone?.({ severity: 'warning', msg: 'Please add remarks telling GT what needs to change.' })
-      return
-    }
-    setPendingDecision(d)
-  }
-
-  async function confirmDecision() {
-    const d = pendingDecision
-    if (!d) return
-    setBusyKind(d.kind)
     try {
       await approve.mutateAsync({
         id: iaId,
         isSidbeApproved: d.kind === DECISION.APPROVE,
         stageId: d.stageId,
-        stageComments: comments.trim() || undefined,
+        stageComments: commentsText || undefined,
       })
-      setJustRecorded({ kind: d.kind, label: d.label, comments: comments.trim() })
-      setComments('')
-      setPendingDecision(null)
+      setJustRecorded({ kind: d.kind, label: d.label, comments: commentsText })
       onDone?.({ severity: 'success', msg: `${d.label} · recorded.` })
     } catch (err) {
       onDone?.({ severity: 'error', msg: err?.message || 'Failed to record decision.' })
-    } finally {
-      setBusyKind(null)
+      throw err
     }
-  }
+  }, [iaId, approve, onDone])
 
   return (
     <>
@@ -151,6 +131,66 @@ export default function SdeL1ReviewView({
       {!justRecorded && <Box sx={{ height: 112 }} />}
 
       {!justRecorded && (
+        <DecisionBar
+          decisions={decisions}
+          iaName={iaName}
+          onDecide={onDecide}
+          onValidationFail={onDone}
+        />
+      )}
+    </>
+  )
+}
+
+// ── Confirmation dialog ─────────────────────────────────────────────────
+
+// ── Sticky decision bar ─────────────────────────────────────────────────
+// Owns the remarks input state locally so typing doesn't force the parent
+// (14 collapsible sections + docs sidebar + hero) to re-render on every
+// keystroke. The parent used to hold this state, which trips the browser's
+// "input handler took >50ms" violation on longer forms.
+//
+// Also encapsulates the confirmation dialog (needs the remark text) so
+// the parent doesn't need to see it either.
+const DecisionBar = memo(function DecisionBar({
+  decisions, iaName, onDecide, onValidationFail,
+}) {
+  const theme = useTheme()
+  const [comments, setComments] = useState('')
+  const [busyKind, setBusyKind] = useState(null)
+  const [pendingDecision, setPendingDecision] = useState(null)
+
+  const requestDecision = useCallback((d) => {
+    const trimmed = comments.trim()
+    if (d.kind === DECISION.REJECT && !trimmed) {
+      onValidationFail?.({ severity: 'warning', msg: 'Please add remarks explaining the rejection.' })
+      return
+    }
+    if (d.kind === DECISION.REVERT && !trimmed) {
+      onValidationFail?.({ severity: 'warning', msg: 'Please add remarks telling GT what needs to change.' })
+      return
+    }
+    setPendingDecision(d)
+  }, [comments, onValidationFail])
+
+  const confirm = useCallback(async () => {
+    const d = pendingDecision
+    if (!d) return
+    setBusyKind(d.kind)
+    try {
+      await onDecide(d, comments.trim())
+      setComments('')
+      setPendingDecision(null)
+    } catch {
+      // parent already surfaced the error toast; keep the input intact
+      // so the reviewer can retry without retyping remarks.
+    } finally {
+      setBusyKind(null)
+    }
+  }, [pendingDecision, comments, onDecide])
+
+  return (
+    <>
       <Box
         sx={{
           position: 'sticky',
@@ -187,7 +227,7 @@ export default function SdeL1ReviewView({
             <TextField
               value={comments}
               onChange={(e) => setComments(e.target.value.slice(0, 500))}
-              placeholder="Optional — required if rejecting"
+              placeholder="Optional — required if rejecting or sending back to GT"
               fullWidth
               size="small"
               multiline
@@ -237,7 +277,6 @@ export default function SdeL1ReviewView({
           </Stack>
         </Stack>
       </Box>
-      )}
 
       <ConfirmDecisionDialog
         pending={pendingDecision}
@@ -245,13 +284,11 @@ export default function SdeL1ReviewView({
         comments={comments}
         busy={busyKind !== null}
         onCancel={() => (busyKind === null ? setPendingDecision(null) : null)}
-        onConfirm={confirmDecision}
+        onConfirm={confirm}
       />
     </>
   )
-}
-
-// ── Confirmation dialog ─────────────────────────────────────────────────
+})
 
 function ConfirmDecisionDialog({ pending, iaName, comments, busy, onCancel, onConfirm }) {
   const theme = useTheme()

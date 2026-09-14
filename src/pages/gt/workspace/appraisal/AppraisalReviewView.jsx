@@ -22,7 +22,10 @@ import {
   useBranchesByState,
   useFilesByRegistration,
   useIA,
+  keys,
 } from '../../../../queries'
+import { updateAppraisal } from '../../../../apis/industryAssociationAppraisals'
+import { useQueryClient } from '@tanstack/react-query'
 
 // AppraisalReviewView
 // ────────────────────────────────────────────────────────────────────────
@@ -58,6 +61,7 @@ export default function AppraisalReviewView({
   const iaQ = useIA(iaId)
   const branchesQ = useBranchesByState(iaQ.data?.raw?.state || iaQ.data?.state)
   const approve = useApproveAppraisal()
+  const qc = useQueryClient()
   const [justRecorded, setJustRecorded] = useState(null)
 
   // Values map is derived fresh each render — the reviewer surface is
@@ -125,21 +129,48 @@ export default function AppraisalReviewView({
       d.kind === DECISION.APPROVE ? true
       : d.kind === DECISION.REJECT ? false
       : null
+
+    // CE's COMMENT decision must also persist the typed remark to the
+    // `clusterExpertComments` column so HO Maker sees it on the review
+    // page. Without this, `stageComments` alone would land in the audit
+    // trail but the DTO column stays null (that's exactly what HO
+    // Maker was hitting — an empty CE comment on IA 141).
+    const isCeComment = d.kind === DECISION.COMMENT && viewerRole === REVIEWER_ROLES.CLUSTER_EXPERT
     try {
-      await approve.mutateAsync({
-        id: appraisal.id,
-        registrationId: iaId,
-        isSidbeApproved,
-        stageId: d.stageId,
-        stageComments: commentsText || undefined,
-      })
+      if (isCeComment) {
+        // Direct PUT that carries both the DTO field AND the workflow
+        // keys in one body, so the CE comment + stage advance land
+        // atomically. `useApproveAppraisal` only knows about the three
+        // workflow keys, so we bypass it for this path.
+        await updateAppraisal(appraisal.id, {
+          registrationId: iaId,
+          clusterExpertComments: commentsText || '',
+          stageId: d.stageId,
+          ...(commentsText ? { stageComments: commentsText } : null),
+        })
+        // Same invalidation set the mutation hook would have fired.
+        qc.invalidateQueries({ queryKey: keys.appraisals.detail(appraisal.id), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(iaId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.detail(iaId), refetchType: 'all' })
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(iaId) })
+        qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
+      } else {
+        await approve.mutateAsync({
+          id: appraisal.id,
+          registrationId: iaId,
+          isSidbeApproved,
+          stageId: d.stageId,
+          stageComments: commentsText || undefined,
+        })
+      }
       setJustRecorded({ kind: d.kind, label: d.label, comments: commentsText })
       onDone?.({ severity: 'success', msg: `${d.label} · recorded.` })
     } catch (err) {
       onDone?.({ severity: 'error', msg: err?.message || 'Failed to record decision.' })
       throw err
     }
-  }, [iaId, appraisal?.id, approve, onDone])
+  }, [iaId, appraisal?.id, approve, onDone, viewerRole, qc])
 
   return (
     <>

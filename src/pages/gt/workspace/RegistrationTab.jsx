@@ -11,6 +11,7 @@ import { downloadFile } from '../../../apis/files'
 import { decodeFilename } from '../../../fileFieldLabels'
 import { STAGE } from '../../../apis/registrationStages'
 import { STATUS } from '../../../apis/workflow'
+import { FILE_FIELD_LABELS, FILE_FIELD_SEP } from '../../../fileFieldLabels'
 import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
 import { stackedLabelSx } from '../../../components/workspace/formStyles'
 import SectionStepper from './registration/SectionStepper'
@@ -80,15 +81,42 @@ export default function RegistrationTab() {
 function RegistrationForm({ ws }) {
   const dto = ws.ia.raw
 
+  // ── Uploaded-file lookup ─────────────────────────────────────────────
+  // Files land on the backend keyed only by registrationId — the slot they
+  // belong to is encoded into the filename prefix (`<slug><SEP><orig>`).
+  // Group by slot so the seed can pre-fill each file field with the
+  // previously uploaded filename. Otherwise GT sees empty "Upload"
+  // buttons after SDE reverts — the docs *are* on record, just not in
+  // the form. Same approach AppraisalForm already uses on the L2 side.
+  const filesQ = useFilesByRegistration(ws.iaId)
+  const filesBySlot = useMemo(() => {
+    const out = {}
+    for (const f of filesQ.data || []) {
+      const fname = f?.filename
+      if (typeof fname !== 'string') continue
+      const idx = fname.indexOf(FILE_FIELD_SEP)
+      if (idx <= 0) continue
+      const slug = fname.slice(0, idx)
+      if (!(slug in FILE_FIELD_LABELS)) continue
+      if (!out[slug]) out[slug] = []
+      out[slug].push(fname)
+    }
+    return out
+  }, [filesQ.data])
+
   // ── Seed the form once, then track edits locally ─────────────────────
+  // Seed defers to the moment the files list arrives — otherwise the file
+  // fields land empty on first render and we clobber them by never
+  // re-seeding (seededRef pins them at that empty snapshot).
   const [values, setValues] = useState(() => iaToFormValues(dto))
-  const seededRef = useRef(!!dto)
+  const seededRef = useRef(false)
   useEffect(() => {
     if (seededRef.current) return
     if (!dto) return
-    setValues(iaToFormValues(dto))
+    if (filesQ.isLoading) return
+    setValues({ ...iaToFormValues(dto), ...filesBySlot })
     seededRef.current = true
-  }, [dto])
+  }, [dto, filesQ.isLoading, filesBySlot])
 
   const setValue = useCallback((name, next) => {
     // Header fields are read-only in the workspace — silently drop writes.
@@ -143,6 +171,11 @@ function RegistrationForm({ ws }) {
   // COMPLETED (backend keeps the earlier submit in history). GT needs
   // the form editable again to fix things and resubmit — so bypass the
   // lock whenever the parent stage is in the REVERTED state.
+  //
+  // Role gate: only GT Field Team ever authors L1. If the SDE (or any
+  // non-GT viewer) opens the tab while the record is REVERTED, they
+  // should still see a read-only form + the reverted banner — not an
+  // editable form that lets them "resubmit" as themselves.
   const l1Stage = ws.workflow?.stages?.find((s) => s.key === STAGE.IN_PRINCIPLE_APPROVAL_OF_IA)
   const l1Status = l1Stage?.status
   const l1Reverted = l1Status === STATUS.REVERTED
@@ -151,7 +184,8 @@ function RegistrationForm({ ws }) {
     if (label === 'In Principle Registration') return false // derived-existence row
     return s.status === STATUS.COMPLETED || s.status === STATUS.IN_PROGRESS
   })
-  const isLocked = submissionDone && !l1Reverted
+  const isGtFieldTeam = ws.viewerRole === 'GT_FIELD_TEAM'
+  const isLocked = submissionDone && !(l1Reverted && isGtFieldTeam)
   // Latest reviewer remark to show GT what needs fixing (populated by
   // deriveWorkflow when it saw a REVERTED sub-stage in history).
   const revertRemark = l1Reverted ? l1Stage?.comment : null
