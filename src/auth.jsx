@@ -2,6 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from './api'
 import { ROLES } from './data'
+import { clearPublicKey, rsaEncryptToBase64 } from './apis/publicKey'
+import {
+  clearKey as clearPiiKey,
+  decryptString,
+  ensureKey as ensurePiiKey,
+  setKeyFromBase64,
+} from './apis/pii'
 
 const AuthContext = createContext(null)
 const STORAGE_KEY = 'emat.session'
@@ -80,15 +87,59 @@ export function AuthProvider({ children }) {
     else localStorage.removeItem(STORAGE_KEY)
   }, [session])
 
-  // POST /users/login { username, password } → { token, role, firstName, lastName, ... }
-  const login = useCallback(async (username, password) => {
+  // POST /users/login { username, password, captchaId, captchaAnswer }
+  //   → { token, piiKey, role, userId (ENC:...), email (ENC:...), ... }
+  //
+  // Two crypto layers wrapped around this call:
+  //   • Password is RSA-OAEP-SHA256 encrypted with the backend's public
+  //     key (fetched from GET /auth/public-key) and sent as raw standard
+  //     base64 — no prefix. Backend RSA-decrypts using the Vault-held
+  //     private key. This is only for the login bootstrap; no other
+  //     endpoint uses RSA.
+  //   • Response carries `piiKey` (base64 AES-256) alongside the JWT.
+  //     We import it into Web Crypto and cache in memory. From this
+  //     point on every PII field in every request/response uses AES-GCM
+  //     with that key (see apis/pii.js).
+  //
+  // `userId` and `email` come back as `ENC:...` strings — decrypt with
+  // the freshly-cached AES key before storing on the session object.
+  const login = useCallback(async (username, password, captcha = {}) => {
+    // 1. RSA-encrypt the password with the backend's public key.
+    const encryptedPassword = await rsaEncryptToBase64(password)
+
+    // 2. POST /users/login — username stays plaintext (it's an
+    //    identifier, not PII). Password is the RSA base64 blob.
     const data = await apiFetch('/users/login', {
       method: 'POST',
-      body: { username, password },
+      body: {
+        username,
+        password: encryptedPassword,
+        captchaId: captcha.id || '',
+        captchaAnswer: captcha.answer || '',
+      },
     })
+
+    // 3. Prime the AES cache. Preferred path is the `piiKey` field on
+    //    the login response — one round trip, atomic with the JWT.
+    //    Fallback (current backend state): fetch it separately from
+    //    /pii-encryption-key, passing the fresh JWT explicitly since
+    //    the session hasn't been persisted yet.
+    if (data?.piiKey) {
+      await setKeyFromBase64(data.piiKey)
+    } else if (data?.token) {
+      await ensurePiiKey({ token: data.token })
+    } else {
+      throw new Error('Login response missing both token and piiKey — cannot proceed.')
+    }
+
+    // 4. Decrypt the two encrypted response fields the doc mandates.
+    //    Everything else on the response is plaintext (role, names, etc.).
+    const decryptedEmail = data.email ? await decryptString(data.email) : ''
+    const decryptedUserId = data.userId != null ? await decryptString(String(data.userId)) : null
+
     const role = normalizeRole(data?.role)
     if (!role) throw new Error(`Role “${data?.role}” is not configured in this app.`)
-    const user = buildUser(data)
+    const user = buildUser({ ...data, email: decryptedEmail, userId: decryptedUserId })
     // Nuke the react-query cache before the new session starts. Prevents
     // the classic "logged out as GT, logged back in as SDE, still see
     // GT's IA list until I hit refresh" bug — every query was cached in
@@ -106,9 +157,12 @@ export function AuthProvider({ children }) {
   }, [qc])
 
   // Same cache reset on logout so nothing from the previous session
-  // lingers into the next login attempt.
+  // lingers into the next login attempt. Also wipes the in-memory RSA
+  // + AES keys so a follow-up login re-fetches fresh material.
   const logout = useCallback(() => {
     qc.clear()
+    clearPiiKey()
+    clearPublicKey()
     setSession(null)
   }, [qc])
 
