@@ -179,8 +179,13 @@ function ActionPlanBody({ ws }) {
         />
       )}
 
-      {/* If GT is here after CE-approval, offer a shortcut into Appraisal. */}
-      {isApproved && !isCeReviewer && (
+      {/* Shortcut into Detailed Appraisal after CE-approval — GT only.
+          CE / SDE / HO Maker viewing an already-approved Action Plan
+          don't need this: CE is done with the record, and SDE / HO have
+          their own entry points into the L2 review surface. Gating on
+          `isGtFieldTeam` prevents the button from bleeding into every
+          reviewer role once the stage clears. */}
+      {isApproved && isGtFieldTeam && (
         <Box sx={{ mt: 3 }}>
           <Button
             variant="contained"
@@ -437,20 +442,19 @@ function ChecklistCard({ title, subtitle, selectedCount, toolbar, children }) {
 // (fixed width) + label column (fluid). No third column. Selected rows
 // get a subtle primary tint + a left-border accent.
 const rowShellSx = (theme, checked) => ({
-  display: 'grid',
-  gridTemplateColumns: { xs: '48px 1fr', md: '56px 1fr' },
+  display: 'flex',
   alignItems: 'flex-start',
-  columnGap: { xs: 1.5, md: 2 },
+  gap: { xs: 1.75, md: 2.25 },
   px: { xs: 2, md: 3 },
   py: 2,
   position: 'relative',
   cursor: 'pointer',
-  background: checked ? alpha(theme.palette.primary.main, 0.05) : 'transparent',
-  transition: 'background 140ms ease, border-color 140ms ease',
+  background: checked ? alpha(theme.palette.primary.main, 0.06) : 'transparent',
+  transition: 'background 140ms ease',
   '&:hover': {
     background: checked
-      ? alpha(theme.palette.primary.main, 0.08)
-      : alpha(theme.palette.text.primary, 0.025),
+      ? alpha(theme.palette.primary.main, 0.09)
+      : alpha(theme.palette.text.primary, 0.03),
   },
   '&::before': checked ? {
     content: '""',
@@ -471,24 +475,23 @@ const PlainRow = memo(function PlainRow({ index, item, checked, onToggle }) {
   const handleRowClick = () => onToggle(item.key)
   return (
     <>
-      <Box sx={rowShellSx(theme, checked)} onClick={handleRowClick} role="button" tabIndex={0}
-        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleRowClick() } }}>
+      <Box
+        sx={rowShellSx(theme, checked)}
+        onClick={handleRowClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleRowClick() } }}
+      >
         <Checkbox
           checked={checked}
           onChange={handleRowClick}
           onClick={(e) => e.stopPropagation()}
-          sx={{ p: 0.5, mt: -0.25 }}
+          size="medium"
+          sx={{ p: 0.25, mt: -0.25, flexShrink: 0 }}
         />
-        <Box sx={{ minWidth: 0 }}>
-          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
-            <Typography sx={{ fontSize: 11, fontWeight: 800, color: theme.palette.text.disabled, letterSpacing: '0.04em' }}>
-              {String(index).padStart(2, '0')}
-            </Typography>
-          </Stack>
-          <Typography sx={{ fontSize: 14, lineHeight: 1.55, color: theme.palette.text.primary, fontWeight: checked ? 500 : 400 }}>
-            {item.label}
-          </Typography>
-        </Box>
+        <Typography sx={{ flex: 1, fontSize: 14.5, lineHeight: 1.55, color: theme.palette.text.primary, fontWeight: checked ? 500 : 400 }}>
+          {item.label}
+        </Typography>
       </Box>
       <Divider sx={{ borderColor: alpha(theme.palette.text.primary, 0.055) }} />
     </>
@@ -521,25 +524,35 @@ const OthersRow = memo(function OthersRow({ index, item, checked, onToggle, init
   const handleRowClick = () => onToggle(item.key)
   return (
     <>
-      <Box sx={rowShellSx(theme, checked)} onClick={handleRowClick} role="button" tabIndex={0}
-        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleRowClick() } }}>
+      <Box
+        sx={rowShellSx(theme, checked)}
+        onClick={handleRowClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleRowClick() } }}
+      >
         <Checkbox
           checked={checked}
           onChange={handleRowClick}
           onClick={(e) => e.stopPropagation()}
-          sx={{ p: 0.5, mt: -0.25 }}
+          size="medium"
+          sx={{ p: 0.25, mt: -0.25, flexShrink: 0 }}
         />
-        <Box sx={{ minWidth: 0 }}>
-          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.5 }}>
-            <Typography sx={{ fontSize: 11, fontWeight: 800, color: theme.palette.text.disabled, letterSpacing: '0.04em' }}>
-              {String(index).padStart(2, '0')}
-            </Typography>
-          </Stack>
-          <Typography sx={{ fontSize: 14, lineHeight: 1.55, color: theme.palette.text.primary, fontWeight: checked ? 500 : 400 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontSize: 14.5, lineHeight: 1.55, color: theme.palette.text.primary, fontWeight: checked ? 500 : 400 }}>
             {item.label}
           </Typography>
           {checked && (
-            <Box sx={{ mt: 1.75 }} onClick={(e) => e.stopPropagation()}>
+            <Box
+              sx={{ mt: 1.75 }}
+              onClick={(e) => e.stopPropagation()}
+              // Space + Enter in the textarea bubble up to the row's
+              // onKeyDown, which calls preventDefault() to toggle the
+              // checkbox — that silently swallowed every space + newline
+              // the user typed. Stop propagation at the wrapper so the
+              // row shortcut only fires when the row itself has focus.
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               <TextField
                 value={text}
                 onChange={onInput}

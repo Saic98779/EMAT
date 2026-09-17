@@ -97,9 +97,23 @@ const CRYPTO_SKIP_PATHS = new Set([
   '/captcha',
 ])
 
+// Path prefixes that skip crypto entirely. The `/files/*` endpoint
+// family uses multipart uploads (POST/DELETE go through bare `fetch`,
+// not apiFetch anyway) and the LIST endpoint (`GET /files/{regId}`)
+// returns raw file metadata whose IDs backend serves in plain form —
+// applying the "encrypt numeric path segments" rule made every list
+// request 404. Skip both directions for safety.
+const CRYPTO_SKIP_PREFIXES = [
+  '/files',
+]
+
 function shouldSkipCrypto(path) {
   const base = String(path).split('?')[0]
-  return CRYPTO_SKIP_PATHS.has(base)
+  if (CRYPTO_SKIP_PATHS.has(base)) return true
+  for (const prefix of CRYPTO_SKIP_PREFIXES) {
+    if (base === prefix || base.startsWith(prefix + '/')) return true
+  }
+  return false
 }
 
 // Per-endpoint request-body PII field lists. Matches
