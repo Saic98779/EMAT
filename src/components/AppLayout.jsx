@@ -86,6 +86,15 @@ export const NAV = {
   pmu: [
     { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'GT PMU' },
     { icon: 'inbox', label: 'PMU Queue', path: '/gt/pmu/queue', overline: 'Approvals', title: 'BSE PMU Queue' },
+    { icon: 'doc', label: '3C Info-Series', path: '/gt/pmu/3c-info-series', overline: 'Content · DIA', title: 'DIA 3C Info-Series' },
+    { icon: 'doc', label: 'Survey', path: '/gt/pmu/survey', overline: 'Content · DIA', title: 'DIA Survey' },
+    { icon: 'personAdd', label: 'BDSP Onboarding', path: '/gt/pmu/bdsp', overline: 'Content · DIA', title: 'BDSP Onboarding' },
+    { icon: 'doc', label: 'E-learning Module', path: '/gt/pmu/e-learning', overline: 'Content · DIA', title: 'E-learning Module' },
+    { icon: 'personAdd', label: 'PBSP Onboarding', path: '/gt/pmu/pbsp', overline: 'Content · DIA', title: 'Panel BDS Provider (PBSP) Onboarding' },
+    { icon: 'inbox', label: 'Bulk Broadcast', path: '/gt/pmu/broadcast', overline: 'Content · DIA', title: 'Bulk Broadcast' },
+    { icon: 'groups', label: 'Discussion Forum', path: '/gt/pmu/discussion', overline: 'Content · DIA', title: 'Discussion Forum' },
+    { icon: 'doc', label: 'Latest Developments', path: '/gt/pmu/latest-developments', overline: 'Content · DIA', title: 'Latest Developments' },
+    { icon: 'doc', label: 'Pop-Ups', path: '/gt/pmu/pop-ups', overline: 'Content · DIA', title: 'Pop-Ups' },
   ],
   ia: [
     { icon: 'home', label: 'Dashboard', path: '/ia', overline: 'Overview', title: 'Dashboard' },

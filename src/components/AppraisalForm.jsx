@@ -16,7 +16,7 @@ import {
   useBranchesByState,
   useCreateAppraisal,
   useUpdateAppraisal,
-  useFilesByRegistration,
+  useFilesByIa,
 } from '../queries'
 import {
   buildIaSeed,
@@ -291,7 +291,7 @@ export default function AppraisalForm({
   const iaQ = useIA(registrationId)
   const apprQ = useAppraisalByRegistration(registrationId)
   const branchesQ = useBranchesByState(iaQ.data?.state)
-  const filesQ = useFilesByRegistration(registrationId)
+  const filesQ = useFilesByIa(registrationId)
   const createM = useCreateAppraisal()
   const updateM = useUpdateAppraisal()
   // Master stage list — used to resolve the numeric `stageId` we stamp
@@ -448,7 +448,7 @@ export default function AppraisalForm({
       if (files.length) {
         const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
         try {
-          await uploadFilesBatch(registrationId, tagged)
+          await uploadFilesBatch(registrationId, 'registration', registrationId, tagged)
         } catch (err) {
           uploadFailure = `${files.length} file${files.length === 1 ? '' : 's'} failed to upload (${err.message || 'unknown error'})`
         }

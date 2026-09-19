@@ -8,7 +8,7 @@ import EligibilityMatrixModal from '../../components/EligibilityMatrixModal'
 import FormRenderer, { fieldError } from '../../components/FormRenderer'
 import { makeInPrincipleSchema } from '../../formSchemas'
 import { toFormValues } from '../../apis/industryAssociations'
-import { useIA, useUpdateIA, useBranchesByState, useSdesByBranch, useFilesByRegistration } from '../../queries'
+import { useIA, useUpdateIA, useBranchesByState, useSdesByBranch, useFilesByIa } from '../../queries'
 import { FILE_FIELD_LABELS, FILE_FIELD_SEP } from '../../fileFieldLabels'
 import { useAuth } from '../../auth'
 
@@ -36,7 +36,7 @@ export default function IaEdit() {
 
   const iaQ = useIA(id)
   const updateM = useUpdateIA()
-  const filesQ = useFilesByRegistration(id)
+  const filesQ = useFilesByIa(id)
 
   const [values, setValues] = useState({})
   const [toast, setToast] = useState({ severity: '', msg: '' })

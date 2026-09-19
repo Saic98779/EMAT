@@ -138,7 +138,7 @@ export default function HoBseReview() {
             {/* Files uploaded during BSE create are keyed by the BSE
                 record's own id, so scope the panel to `dto.id`. HO can
                 also attach the Committee MoM here. */}
-            <DocUpload registrationId={dto.id} />
+            <DocUpload registrationId={dto.id} stage="bse" />
           </Stack>
         </Grid>
       </Grid>

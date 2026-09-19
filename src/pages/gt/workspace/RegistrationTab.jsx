@@ -5,7 +5,7 @@ import {
 import { alpha, useTheme } from '@mui/material/styles'
 import { makeInPrincipleSchema } from '../../../formSchemas'
 import FormRenderer, { fieldError } from '../../../components/FormRenderer'
-import { useBranchesByState, useFilesByRegistration, useSdesByBranch } from '../../../queries'
+import { useBranchesByState, useFilesByIa, useSdesByBranch } from '../../../queries'
 import { toFormValues as iaToFormValues } from '../../../apis/industryAssociations'
 import { downloadFile } from '../../../apis/files'
 import { decodeFilename } from '../../../fileFieldLabels'
@@ -88,7 +88,7 @@ function RegistrationForm({ ws }) {
   // previously uploaded filename. Otherwise GT sees empty "Upload"
   // buttons after SDE reverts — the docs *are* on record, just not in
   // the form. Same approach AppraisalForm already uses on the L2 side.
-  const filesQ = useFilesByRegistration(ws.iaId)
+  const filesQ = useFilesByIa(ws.iaId)
   const filesBySlot = useMemo(() => {
     const out = {}
     for (const f of filesQ.data || []) {
@@ -609,14 +609,14 @@ function NoticeBox({ severity, title, body }) {
 // every file uploaded against this IA (grouped by original slot label)
 // with a click-to-download action.
 function UploadedDocumentsPanel({ iaId }) {
-  const filesQ = useFilesByRegistration(iaId)
+  const filesQ = useFilesByIa(iaId)
   const files = filesQ.data || []
   const [busy, setBusy] = useState(null)
   const theme = useTheme()
 
   const onDownload = async (filename) => {
     setBusy(filename)
-    try { await downloadFile(iaId, filename) } finally { setBusy(null) }
+    try { await downloadFile(iaId, 'registration', iaId, filename) } finally { setBusy(null) }
   }
 
   return (

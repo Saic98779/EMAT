@@ -55,6 +55,15 @@ import HoBseReview from './pages/ho/HoBseReview'
 import PmuDashboard from './pages/pmu/PmuDashboard'
 import PmuQueue from './pages/pmu/PmuQueue'
 import PmuReview from './pages/pmu/PmuReview'
+import Dia3cInfoSeries from './pages/pmu/Dia3cInfoSeries'
+import DiaSurvey from './pages/pmu/DiaSurvey'
+import DiaBdspOnboarding from './pages/pmu/DiaBdspOnboarding'
+import DiaElearningModule from './pages/pmu/DiaElearningModule'
+import DiaPbspOnboarding from './pages/pmu/DiaPbspOnboarding'
+import DiaBulkBroadcast from './pages/pmu/DiaBulkBroadcast'
+import DiaDiscussionForum from './pages/pmu/DiaDiscussionForum'
+import DiaLatestDevelopments from './pages/pmu/DiaLatestDevelopments'
+import DiaPopUps from './pages/pmu/DiaPopUps'
 
 function Protected({ role, children }) {
   const { role: current } = useAuth()
@@ -172,6 +181,15 @@ export default function App() {
           <Route path="activity" element={<ActivityTab />} />
         </Route>
         <Route path="/gt/pmu/queue" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuQueue /></DenyRawRoles>} />
+        <Route path="/gt/pmu/3c-info-series" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><Dia3cInfoSeries /></DenyRawRoles>} />
+        <Route path="/gt/pmu/survey" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaSurvey /></DenyRawRoles>} />
+        <Route path="/gt/pmu/bdsp" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaBdspOnboarding /></DenyRawRoles>} />
+        <Route path="/gt/pmu/e-learning" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaElearningModule /></DenyRawRoles>} />
+        <Route path="/gt/pmu/pbsp" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaPbspOnboarding /></DenyRawRoles>} />
+        <Route path="/gt/pmu/broadcast" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaBulkBroadcast /></DenyRawRoles>} />
+        <Route path="/gt/pmu/discussion" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaDiscussionForum /></DenyRawRoles>} />
+        <Route path="/gt/pmu/latest-developments" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaLatestDevelopments /></DenyRawRoles>} />
+        <Route path="/gt/pmu/pop-ups" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaPopUps /></DenyRawRoles>} />
         <Route path="/gt/pmu/:uuid" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuReview /></DenyRawRoles>} />
       </Route>
 

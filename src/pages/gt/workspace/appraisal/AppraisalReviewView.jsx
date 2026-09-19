@@ -20,7 +20,7 @@ import { appraisalSchema } from '../../../../formSchemas'
 import {
   useApproveAppraisal,
   useBranchesByState,
-  useFilesByRegistration,
+  useFilesByIa,
   useIA,
   keys,
 } from '../../../../queries'
@@ -52,7 +52,7 @@ export default function AppraisalReviewView({
   iaId, iaName, appraisal, viewerRole, decisions = [], onDone,
 }) {
   const theme = useTheme()
-  const filesQ = useFilesByRegistration(iaId)
+  const filesQ = useFilesByIa(iaId)
   // Reviewer sections use identity fields (state, ia_name, apex, nodal,
   // district, pincode, sidbi_branch, etc.) that live on the parent IA
   // registration — the appraisal DTO doesn't always echo them back on GET.
@@ -832,7 +832,7 @@ function FileRow({ iaId, file }) {
 
   async function onDownload() {
     setBusy(true)
-    try { await downloadFile(iaId, filename) } finally { setBusy(false) }
+    try { await downloadFile(iaId, 'registration', iaId, filename) } finally { setBusy(false) }
   }
 
   return (

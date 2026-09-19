@@ -95,7 +95,7 @@ export function useRegistrationSubmit({ iaId, basePath = '/gt' }) {
       if (files.length) {
         const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
         try {
-          await uploadFilesBatch(iaId, tagged)
+          await uploadFilesBatch(iaId, 'registration', iaId, tagged)
           setToast({
             severity: 'success',
             msg: `Saved — ${files.length} file${files.length === 1 ? '' : 's'} uploaded${autoApproved ? ' and auto-approved' : ''}.`,
