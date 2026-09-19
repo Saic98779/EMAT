@@ -45,8 +45,20 @@ export async function apiFetch(path, { method = 'GET', body, token, headers = {}
   // `CRYPTO_SKIP_PATHS` bypasses this middleware — that covers the
   // login handshake (RSA on password), the public-key fetch, captcha,
   // and the AES key fetch itself. Everything else goes through.
-  const finalPath = skipCrypto ? path : await encryptPath(path)
-  const finalBody = skipCrypto ? body : await encryptRequestBody(body, bodyFieldsForPath(path, method))
+  // `/files/*` is a special case introduced by commit 20c952b:
+  //   • Path encryption is still skipped — file-controller has no
+  //     `EncryptedIdConverter`, so `ENC:...` path segments 404.
+  //   • Body encryption stays skipped — uploads go via bare `fetch` +
+  //     multipart, and metadata endpoints carry no PII body fields.
+  //   • Response decryption MUST run — `UploadedFileResponse.id` is
+  //     now returned as `ENC:...` and needs to be decrypted for the
+  //     UI to display the numeric id.
+  const isFiles = !skipCrypto && isFilesPath(path)
+  const skipPath = skipCrypto || isFiles
+  const skipRequestBody = skipCrypto || isFiles
+  const skipResponseDecrypt = skipCrypto // /files responses still decrypt
+  const finalPath = skipPath ? path : await encryptPath(path)
+  const finalBody = skipRequestBody ? body : await encryptRequestBody(body, bodyFieldsForPath(path, method))
 
   const res = await fetch(`${API_BASE}${finalPath}`, {
     method,
@@ -78,7 +90,7 @@ export async function apiFetch(path, { method = 'GET', body, token, headers = {}
   // plaintext never starts with that prefix). Idempotent for non-ENC
   // strings so keys that weren't in the encrypted set on the DTO get
   // passed through untouched.
-  return skipCrypto ? payload : await decryptResponseBody(payload)
+  return skipResponseDecrypt ? payload : await decryptResponseBody(payload)
 }
 
 // ── PII middleware helpers ─────────────────────────────────────────
@@ -97,23 +109,20 @@ const CRYPTO_SKIP_PATHS = new Set([
   '/captcha',
 ])
 
-// Path prefixes that skip crypto entirely. The `/files/*` endpoint
-// family uses multipart uploads (POST/DELETE go through bare `fetch`,
-// not apiFetch anyway) and the LIST endpoint (`GET /files/{regId}`)
-// returns raw file metadata whose IDs backend serves in plain form —
-// applying the "encrypt numeric path segments" rule made every list
-// request 404. Skip both directions for safety.
-const CRYPTO_SKIP_PREFIXES = [
-  '/files',
-]
-
 function shouldSkipCrypto(path) {
   const base = String(path).split('?')[0]
-  if (CRYPTO_SKIP_PATHS.has(base)) return true
-  for (const prefix of CRYPTO_SKIP_PREFIXES) {
-    if (base === prefix || base.startsWith(prefix + '/')) return true
-  }
-  return false
+  return CRYPTO_SKIP_PATHS.has(base)
+}
+
+// `/files/*` is a partial-skip family — path encryption + body encryption
+// are skipped (backend file-controller has no EncryptedIdConverter and
+// uploads use multipart via bare fetch), but response decryption is NOT
+// skipped, because commit 20c952b started encrypting
+// `UploadedFileResponse.id`. See the branching in `apiFetch` for the
+// exact flag combination this triggers.
+function isFilesPath(path) {
+  const base = String(path).split('?')[0]
+  return base === '/files' || base.startsWith('/files/')
 }
 
 // Per-endpoint request-body PII field lists. Matches
@@ -177,15 +186,24 @@ const ENDPOINT_PII_MAP = [
   { matchPath: (p) => p.startsWith('/vendor'),
     fields: ['spocMobileNo', 'email', 'mobileNo'] },
 
-  // 10. ActivityRequest — POST (submit)
+  // 10. ActivityRequest — POST (submit). Commit 20c952b added
+  //     `followUpId` + `createdUserId` alongside `bseId`, `gtId`.
   { method: 'POST', matchPath: (p) => p === '/activity' || p === '/activities',
-    fields: ['bseId', 'gtId'] },
+    fields: ['bseId', 'gtId', 'followUpId', 'createdUserId'] },
   // 11. ActivityStatusUpdateRequest — PATCH (status change)
   { method: 'PATCH', matchPath: (p) => p.startsWith('/activity'),
     fields: ['followupActivityId'] },
 
-  // 12. BseAttendanceManualRequestDTO
+  // 12. BseAttendanceManualRequestDTO. Commit 20c952b added `approvedBy`.
   { matchPath: (p) => p.startsWith('/bse-attendance-manual-request'),
+    fields: ['id', 'bseRecommendationId', 'approvedBy'] },
+
+  // 12a. BseAttendanceDTO — commit 20c952b enabled decrypt-on-input so
+  //      `id` and `bseRecommendationId` must be encrypted going up too
+  //      (was encrypted on output only). Sits AFTER the manual-request
+  //      entry so the more specific `/bse-attendance-manual-request`
+  //      prefix wins the first-match rule.
+  { matchPath: (p) => p.startsWith('/bse-attendance'),
     fields: ['id', 'bseRecommendationId'] },
 
   // 13. BseSalaryUpdateRequest — PUT only
@@ -196,9 +214,10 @@ const ENDPOINT_PII_MAP = [
   { matchPath: (p) => p.startsWith('/disbursement-capex'),
     fields: ['id', 'registrationId'] },
 
-  // 15. EligibilityMatrixDto — ONLY registrationId, `stageId` is plain
+  // 15. EligibilityMatrixDto — doc lists only `registrationId`, but per
+  //     the "stageId encrypted everywhere" rule we also encrypt `stageId`.
   { matchPath: (p) => p.startsWith('/eligibility-matrix'),
-    fields: ['registrationId'] },
+    fields: ['registrationId', 'stageId'] },
 
   // 16. MonthlySalaryDetailsRequest — POST
   { method: 'POST', matchPath: (p) => p.startsWith('/monthly-salary-details'),
@@ -222,9 +241,10 @@ const ENDPOINT_PII_MAP = [
   { method: 'PUT', matchPath: (p) => p.startsWith('/sidbi-sde'),
     fields: ['email', 'mobileNo', 'regionalOfficeId'] },
 
-  // 22. SustainabilityMatrixRequest — ONLY appraisalId, `stageId` is plain
+  // 22. SustainabilityMatrixRequest — doc lists only `appraisalId`, but per
+  //     the "stageId encrypted everywhere" rule we also encrypt `stageId`.
   { matchPath: (p) => p.startsWith('/sustainability-matrix'),
-    fields: ['appraisalId'] },
+    fields: ['appraisalId', 'stageId'] },
 ]
 
 function bodyFieldsForPath(rawPath, method) {
