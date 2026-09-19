@@ -24,13 +24,17 @@ import BseAttendance from './pages/bse/BseAttendance'
 import BseDisbursals from './pages/bse/BseDisbursals'
 import RaiseDisbursal from './pages/bse/RaiseDisbursal'
 import BseCapexReimbursement from './pages/bse/BseCapexReimbursement'
+import BseCapacityBuilding from './pages/bse/BseCapacityBuilding'
 import GtCapexReview from './pages/gt/GtCapexReview'
+import GtCapacityBuildingReview from './pages/gt/GtCapacityBuildingReview'
+import ActionPlan from './pages/gt/ActionPlan'
 import IaWorkspaceLayout, { WorkspaceIndexRedirect } from './components/workspace/IaWorkspaceLayout'
 import {
   OverviewTab, EligibilityTab, RegistrationTab, SustainabilityTab,
   ActionPlanTab, AppraisalTab, DocumentsTab, ActivityTab,
 } from './pages/gt/workspace/tabs'
 import SdeCapexReview from './pages/sde/SdeCapexReview'
+import SdeCapacityBuildingReview from './pages/sde/SdeCapacityBuildingReview'
 
 import IaDashboard from './pages/ia/IaDashboard'
 import IaRequests from './pages/ia/IaRequests'
@@ -41,6 +45,7 @@ import MpaMyResources from './pages/mpa/MyResources'
 import MpaAttendance from './pages/mpa/MyResourcesAttendance'
 import MpaProfile from './pages/mpa/Profile'
 import MpaMyDisbursements from './pages/mpa/MyDisbursements'
+import MpaCapacityBuildingOfficials from './pages/mpa/MpaCapacityBuildingOfficials'
 
 import ClusterExpertDashboard from './pages/ce/ClusterExpertDashboard'
 
@@ -51,10 +56,12 @@ import HoDisbursementApprovals from './pages/ho/HoDisbursementApprovals'
 import HoDisbursementReview from './pages/ho/HoDisbursementReview'
 import HoBseApprovals from './pages/ho/HoBseApprovals'
 import HoBseReview from './pages/ho/HoBseReview'
+import HoCapacityBuildingReview from './pages/ho/HoCapacityBuildingReview'
 
 import PmuDashboard from './pages/pmu/PmuDashboard'
 import PmuQueue from './pages/pmu/PmuQueue'
 import PmuReview from './pages/pmu/PmuReview'
+import PmuCapacityBuildingReview from './pages/pmu/PmuCapacityBuildingReview'
 
 function Protected({ role, children }) {
   const { role: current } = useAuth()
@@ -150,6 +157,8 @@ export default function App() {
         <Route path="/gt/attendance" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Attendance /></DenyRawRoles>} />
         <Route path="/gt/disbursals" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Disbursals /></DenyRawRoles>} />
         <Route path="/gt/capex" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtCapexReview /></DenyRawRoles>} />
+        <Route path="/gt/capacity-building" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtCapacityBuildingReview /></DenyRawRoles>} />
+        <Route path="/gt/action-plan" element={<ActionPlan />} />
         {/* Legacy standalone Eligibility Matrix → workspace draft mode. */}
         <Route path="/gt/eligibility/new" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Navigate to="/gt/ias/new/workspace/eligibility" replace /></DenyRawRoles>} />
         {/* IA Workspace — the new anchor pattern. Every stage of an IA
@@ -173,6 +182,7 @@ export default function App() {
         </Route>
         <Route path="/gt/pmu/queue" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuQueue /></DenyRawRoles>} />
         <Route path="/gt/pmu/:uuid" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuReview /></DenyRawRoles>} />
+        <Route path="/gt/pmu/capacity-building" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuCapacityBuildingReview /></DenyRawRoles>} />
       </Route>
 
       {/* SDE — SIDBI appraisal */}
@@ -223,6 +233,9 @@ export default function App() {
         <Route path="/sde/vendor-disbursements" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoDisbursementApprovals /></DenyRawRoles>} />
         <Route path="/sde/vendor-disbursements/:id" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoDisbursementReview /></DenyRawRoles>} />
         <Route path="/sde/capex" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><SdeCapexReview /></DenyRawRoles>} />
+        <Route path="/sde/capacity-building" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><SdeCapacityBuildingReview /></DenyRawRoles>} />
+        <Route path="/sde/capacity-building-officials" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoCapacityBuildingReview /></DenyRawRoles>} />
+        <Route path="/sde/action-plan" element={<DenyRawRoles roles={['CLUSTER_EXPERT']}><ActionPlan /></DenyRawRoles>} />
         <Route path="/sde/bse/:uuid/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseReview /></DenyRawRoles>} />
       </Route>
 
@@ -234,6 +247,7 @@ export default function App() {
         <Route path="/bse/disbursals" element={<BseDisbursals />} />
         <Route path="/bse/disbursals/new" element={<RaiseDisbursal />} />
         <Route path="/bse/capex/new" element={<BseCapexReimbursement />} />
+        <Route path="/bse/capacity-building/new" element={<BseCapacityBuilding />} />
       </Route>
 
       {/* IA — Industry Association */}
@@ -250,6 +264,7 @@ export default function App() {
         <Route path="/mpa" element={<Navigate to="/mpa/disburse" replace />} />
         <Route path="/mpa/disburse" element={<MpaRaiseDisbursement />} />
         <Route path="/mpa/disbursements" element={<MpaMyDisbursements />} />
+        <Route path="/mpa/capacity-building/new" element={<MpaCapacityBuildingOfficials />} />
         <Route path="/mpa/resources" element={<MpaMyResources />} />
         <Route path="/mpa/attendance" element={<MpaAttendance />} />
         <Route path="/mpa/profile" element={<MpaProfile />} />

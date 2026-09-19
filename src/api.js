@@ -196,6 +196,17 @@ const ENDPOINT_PII_MAP = [
   { matchPath: (p) => p.startsWith('/disbursement-capex'),
     fields: ['id', 'registrationId'] },
 
+  // 14b. DisbursementNoteCapacityBuildingIa{,Officials}Request — Create +
+  //      Update share one DTO each. The prefix deliberately covers both the
+  //      `-ia` and `-ia-officials` collections; they take the same PII fields.
+  { matchPath: (p) => p.startsWith('/disbursement-note-capacity-building-ia'),
+    fields: ['id', 'registrationId'] },
+
+  // 14c. Create/UpdateActionPlanRequest — registrationId is PII-protected,
+  //      same as every other registration-keyed collection.
+  { matchPath: (p) => p.startsWith('/action-plans'),
+    fields: ['id', 'registrationId'] },
+
   // 15. EligibilityMatrixDto — ONLY registrationId, `stageId` is plain
   { matchPath: (p) => p.startsWith('/eligibility-matrix'),
     fields: ['registrationId'] },

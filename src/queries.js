@@ -79,6 +79,22 @@ import {
   createDisbursementCapex, updateDisbursementCapex, deleteDisbursementCapex,
 } from './apis/disbursementCapex'
 import {
+  listDisbursementCapacityBuilding, getDisbursementCapacityBuilding,
+  listDisbursementCapacityBuildingByRegistration,
+  createDisbursementCapacityBuilding, updateDisbursementCapacityBuilding,
+  deleteDisbursementCapacityBuilding,
+} from './apis/disbursementCapacityBuilding'
+import {
+  listCapacityBuildingOfficials, getCapacityBuildingOfficials,
+  listCapacityBuildingOfficialsByRegistration,
+  createCapacityBuildingOfficials, updateCapacityBuildingOfficials,
+  deleteCapacityBuildingOfficials,
+} from './apis/disbursementCapacityBuildingOfficials'
+import {
+  listActionPlans, getActionPlan,
+  createActionPlan, updateActionPlan, deleteActionPlan,
+} from './apis/actionPlans'
+import {
   listEligibilityMatrix, getEligibilityMatrix,
   listEligibilityMatrixRegistrationsDropdown,
   getEligibilityMatrixByRegistration,
@@ -156,6 +172,23 @@ export const keys = {
     lists: () => ['capex', 'list'],
     detail: (id) => ['capex', 'detail', id],
     byRegistration: (regId) => ['capex', 'byRegistration', regId],
+  },
+  capacityBuilding: {
+    all: ['capacity-building'],
+    lists: () => ['capacity-building', 'list'],
+    detail: (id) => ['capacity-building', 'detail', id],
+    byRegistration: (regId) => ['capacity-building', 'byRegistration', regId],
+  },
+  capacityBuildingOfficials: {
+    all: ['capacity-building-officials'],
+    lists: () => ['capacity-building-officials', 'list'],
+    detail: (id) => ['capacity-building-officials', 'detail', id],
+    byRegistration: (regId) => ['capacity-building-officials', 'byRegistration', regId],
+  },
+  actionPlans: {
+    all: ['action-plans'],
+    lists: () => ['action-plans', 'list'],
+    detail: (id) => ['action-plans', 'detail', String(id)],
   },
   eligibility: {
     all: ['eligibility'],
@@ -813,6 +846,159 @@ export function useDeleteDisbursementCapex() {
   return useMutation({
     mutationFn: (id) => deleteDisbursementCapex(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.capex.all }),
+  })
+}
+
+// ── Capacity building disbursements (BSE raise → GT comment → SDE recommend) ──
+
+export function useDisbursementCapacityBuilding() {
+  return useQuery({
+    queryKey: keys.capacityBuilding.lists(),
+    queryFn: ({ signal }) => listDisbursementCapacityBuilding({ signal }).then(unwrapList),
+  })
+}
+
+export function useDisbursementCapacityBuildingOne(id) {
+  return useQuery({
+    queryKey: keys.capacityBuilding.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getDisbursementCapacityBuilding(id, { signal }),
+  })
+}
+
+// Same single-object-vs-list caveat as the CAPEX equivalent above — no
+// `unwrapList` here; the component coerces whichever shape comes back.
+export function useDisbursementCapacityBuildingByRegistration(registrationId) {
+  return useQuery({
+    queryKey: keys.capacityBuilding.byRegistration(registrationId),
+    enabled: !!registrationId,
+    queryFn: ({ signal }) => listDisbursementCapacityBuildingByRegistration(registrationId, { signal }),
+  })
+}
+
+export function useCreateDisbursementCapacityBuilding() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createDisbursementCapacityBuilding(values),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.capacityBuilding.all }),
+  })
+}
+
+export function useUpdateDisbursementCapacityBuilding() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }) => updateDisbursementCapacityBuilding(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.capacityBuilding.detail(id), updated)
+      qc.invalidateQueries({ queryKey: keys.capacityBuilding.all })
+    },
+  })
+}
+
+export function useDeleteDisbursementCapacityBuilding() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => deleteDisbursementCapacityBuilding(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.capacityBuilding.all }),
+  })
+}
+
+// ── Capacity building, IA officials (Agency raise → PMU comment → HO recommend) ──
+
+export function useCapacityBuildingOfficials() {
+  return useQuery({
+    queryKey: keys.capacityBuildingOfficials.lists(),
+    queryFn: ({ signal }) => listCapacityBuildingOfficials({ signal }).then(unwrapList),
+  })
+}
+
+export function useCapacityBuildingOfficialsOne(id) {
+  return useQuery({
+    queryKey: keys.capacityBuildingOfficials.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getCapacityBuildingOfficials(id, { signal }),
+  })
+}
+
+// Same single-object-vs-list caveat as the other disbursement endpoints — no
+// `unwrapList` here; the component coerces whichever shape comes back.
+export function useCapacityBuildingOfficialsByRegistration(registrationId) {
+  return useQuery({
+    queryKey: keys.capacityBuildingOfficials.byRegistration(registrationId),
+    enabled: !!registrationId,
+    queryFn: ({ signal }) => listCapacityBuildingOfficialsByRegistration(registrationId, { signal }),
+  })
+}
+
+export function useCreateCapacityBuildingOfficials() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createCapacityBuildingOfficials(values),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.all }),
+  })
+}
+
+export function useUpdateCapacityBuildingOfficials() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }) => updateCapacityBuildingOfficials(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.capacityBuildingOfficials.detail(id), updated)
+      qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.all })
+    },
+  })
+}
+
+export function useDeleteCapacityBuildingOfficials() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => deleteCapacityBuildingOfficials(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.all }),
+  })
+}
+
+// ── Action Plan (Year-1 activities per IA) ────────────────────────────────
+
+export function useActionPlans({ enabled = true } = {}) {
+  return useQuery({
+    queryKey: keys.actionPlans.lists(),
+    enabled,
+    queryFn: ({ signal }) => listActionPlans({ signal }).then(unwrapList),
+  })
+}
+
+export function useActionPlan(id) {
+  return useQuery({
+    queryKey: keys.actionPlans.detail(id),
+    enabled: !!id,
+    queryFn: ({ signal }) => getActionPlan(id, { signal }),
+  })
+}
+
+export function useCreateActionPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values) => createActionPlan(values),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.actionPlans.all }),
+  })
+}
+
+export function useUpdateActionPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, values }) => updateActionPlan(id, values),
+    onSuccess: (updated, { id }) => {
+      if (updated) qc.setQueryData(keys.actionPlans.detail(id), updated)
+      qc.invalidateQueries({ queryKey: keys.actionPlans.all })
+    },
+  })
+}
+
+export function useDeleteActionPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => deleteActionPlan(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.actionPlans.all }),
   })
 }
 

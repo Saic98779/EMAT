@@ -43,6 +43,8 @@ export const NAV = {
     { icon: 'calendar', label: 'Attendance', path: '/gt/attendance', overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/gt/disbursals', badge: 2, overline: 'Field ops', title: 'Disbursals' },
     { icon: 'doc', label: 'CAPEX Verification', path: '/gt/capex', overline: 'Field ops', title: 'CAPEX — Field Verification' },
+    { icon: 'doc', label: 'Capacity Building', path: '/gt/capacity-building', overline: 'Field ops', title: 'Capacity Building — Event Review' },
+    { icon: 'doc', label: 'Action Plan', path: '/gt/action-plan', overline: 'Industry Association', title: 'Action Plan' },
     // Eligibility Matrix intentionally not in the sidebar — it's opened
     // as a read-only modal via the "View Eligibility Matrix" button inside
     // the In-Principle Approval form (see InPrincipleApproval.jsx). The
@@ -57,6 +59,8 @@ export const NAV = {
     { icon: 'personAdd', label: 'Vendors', path: '/sde/vendors', overline: 'Vendors', title: 'Vendor Management' },
     { icon: 'payments', label: 'Disbursals', path: '/sde/disbursals', overline: 'Field ops', title: 'Disbursals' },
     { icon: 'doc', label: 'CAPEX Approvals', path: '/sde/capex', overline: 'Approvals', title: 'CAPEX Approvals' },
+    { icon: 'doc', label: 'Capacity Building', path: '/sde/capacity-building', overline: 'Approvals', title: 'Capacity Building Approvals' },
+    { icon: 'doc', label: 'Action Plan', path: '/sde/action-plan', overline: 'Industry Association', title: 'Action Plan' },
   ],
   bse: [
     { icon: 'home', label: 'Dashboard', path: '/bse', overline: 'Overview', title: 'Dashboard' },
@@ -64,6 +68,7 @@ export const NAV = {
     { icon: 'calendar', label: 'Attendance', path: '/bse/attendance', overline: 'Field ops', title: 'Attendance' },
     { icon: 'payments', label: 'Disbursals', path: '/bse/disbursals', overline: 'Field ops', title: 'Disbursals' },
     { icon: 'doc', label: 'CAPEX Reimbursement', path: '/bse/capex/new', overline: 'Disbursement', title: 'Reimbursement of CAPEX to IA' },
+    { icon: 'doc', label: 'Capacity Building', path: '/bse/capacity-building/new', overline: 'Disbursement', title: 'Capacity Building of IA Members' },
   ],
   // CLUSTER_EXPERT rides the SDE routes (same read paths) but its job is only
   // to review applications and leave comments — no approval queue, no
@@ -81,11 +86,14 @@ export const NAV = {
     { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
     { icon: 'groups', label: 'BSE Approvals', path: '/sde/bse-approvals', overline: 'Approvals', title: 'BSE Approvals' },
     { icon: 'payments', label: 'Vendor Disbursements', path: '/sde/vendor-disbursements', overline: 'Approvals', title: 'Vendor Disbursements' },
+    { icon: 'doc', label: 'Capacity Building', path: '/sde/capacity-building-officials', overline: 'Approvals', title: 'Capacity Building (IA Officials) Approvals' },
   ],
   // GT_PMU rides the /gt workspace but only sees the PMU review screens.
   pmu: [
     { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'GT PMU' },
     { icon: 'inbox', label: 'PMU Queue', path: '/gt/pmu/queue', overline: 'Approvals', title: 'BSE PMU Queue' },
+    { icon: 'doc', label: 'Capacity Building', path: '/gt/pmu/capacity-building', overline: 'Approvals', title: 'Capacity Building (IA Officials) — Event Review' },
+    { icon: 'doc', label: 'Action Plan', path: '/gt/action-plan', overline: 'Industry Association', title: 'Action Plan' },
   ],
   ia: [
     { icon: 'home', label: 'Dashboard', path: '/ia', overline: 'Overview', title: 'Dashboard' },
@@ -94,6 +102,7 @@ export const NAV = {
   mpa: [
     { icon: 'payments', label: 'Raise Disbursement Note', path: '/mpa/disburse', overline: 'Disbursement', title: 'Salary Disbursement Request' },
     { icon: 'inbox', label: 'Disbursement Notes', path: '/mpa/disbursements', overline: 'Disbursement', title: 'My Disbursement Notes' },
+    { icon: 'doc', label: 'Capacity Building', path: '/mpa/capacity-building/new', overline: 'Disbursement', title: 'Capacity Building of IA Officials' },
     { icon: 'groups', label: 'View My Resources', path: '/mpa/resources', overline: 'Resources', title: 'My Resources' },
     { icon: 'calendar', label: 'View Attendance', path: '/mpa/attendance', overline: 'Resources', title: 'Attendance of My Resources' },
     { icon: 'personAdd', label: 'Profile', path: '/mpa/profile', overline: 'Account', title: 'Vendor Profile' },
