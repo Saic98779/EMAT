@@ -182,7 +182,7 @@ const SdeDecisionBar = memo(function SdeDecisionBar({
       if (pending.length) {
         const tagged = pending.map(({ file, slug }) => encodeFilename(file, slug))
         try {
-          await uploadFilesBatch(iaId, tagged)
+          await uploadFilesBatch(iaId, 'registration', iaId, tagged)
         } catch (err) {
           onDone?.({
             severity: 'warning',

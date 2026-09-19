@@ -5,7 +5,7 @@ import {
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
 import InsertDriveFileRoundedIcon from '@mui/icons-material/InsertDriveFileRounded'
 import { alpha, useTheme } from '@mui/material/styles'
-import { useFilesByRegistration } from '../../../queries'
+import { useFilesByIa } from '../../../queries'
 import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
 import { downloadFile } from '../../../apis/files'
 import { FILE_FIELD_LABELS, decodeFilename } from '../../../fileFieldLabels'
@@ -19,14 +19,14 @@ import { FILE_FIELD_LABELS, decodeFilename } from '../../../fileFieldLabels'
 // under "Other".
 export default function DocumentsTab() {
   const ws = useIaWorkspace()
-  const filesQ = useFilesByRegistration(ws.iaId)
+  const filesQ = useFilesByIa(ws.iaId)
   const [toast, setToast] = useState(null)
 
   const groups = useMemo(() => groupBySlot(filesQ.data || []), [filesQ.data])
 
   const onDownload = async (filename) => {
     try {
-      await downloadFile(ws.iaId, filename)
+      await downloadFile(ws.iaId, 'registration', ws.iaId, filename)
     } catch (err) {
       setToast({ severity: 'error', msg: err?.message || 'Download failed.' })
     }

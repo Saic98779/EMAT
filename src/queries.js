@@ -203,7 +203,12 @@ export const keys = {
     byAppraisal: (appraisalId) => ['sustainability', 'byAppraisal', appraisalId],
   },
   files: {
-    byRegistration: (regId) => ['files', 'byRegistration', regId],
+    // Now keyed by (registrationId, stage, stageId) since the backend path
+    // changed to `/files/{registrationId}/{stage}/{stageId}`. Old callers
+    // that only knew registrationId collide across entity types (IA 21 vs
+    // BSE 21); the stage tag disambiguates them.
+    byScope: (regId, stage, stageId) =>
+      ['files', 'byScope', String(regId), String(stage), String(stageId)],
   },
   bseAttendance: {
     all: ['bse-attendance'],
@@ -712,15 +717,24 @@ export function useDeleteVendor() {
 }
 
 // ── Files ─────────────────────────────────────────────────────────────────
-// All files attached to a registration (IA / BSE / etc.). Returns the raw
-// UploadedFileResponse[] from the backend — callers decode the slug-prefixed
-// filenames via decodeFilename() from fileFieldLabels.js.
-export function useFilesByRegistration(regId) {
+// All files attached to an entity (IA / BSE / etc.). The backend path is
+// `/files/{registrationId}/{stage}/{stageId}` — for top-level entities
+// like IA and BSE, `registrationId` and `stageId` are the entity's own
+// id, and `stage` is a lowercase tag ("ia", "bse"). Returns the raw
+// UploadedFileResponse[]; callers decode slug-prefixed filenames via
+// decodeFilename() from fileFieldLabels.js.
+export function useFilesByScope(registrationId, stage, stageId) {
   return useQuery({
-    queryKey: keys.files.byRegistration(regId),
-    enabled: !!regId,
-    queryFn: ({ signal }) => listFiles(regId, { signal }),
+    queryKey: keys.files.byScope(registrationId, stage, stageId),
+    enabled: !!registrationId && !!stage && !!stageId,
+    queryFn: ({ signal }) => listFiles(registrationId, stage, stageId, { signal }),
   })
+}
+
+// Convenience for IA-scoped file lists — the common case. `stage="ia"`,
+// both id slots take the IA id.
+export function useFilesByIa(iaId) {
+  return useFilesByScope(iaId, 'ia', iaId)
 }
 
 // ── Vendor disbursements (HO Maker review) ────────────────────────────────

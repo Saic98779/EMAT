@@ -67,4 +67,15 @@ export const stackedLabelSx = {
   // ── FormControlLabel + non-outlined bits stay untouched ─────────────
   // (Only the outlined text/select inputs get the treatment; radio /
   // checkbox / yesno components already render labels externally.)
+
+  // ── Reserve helper-text room so errors don't shove the layout ───────
+  // Without this, the first character typed into a required field
+  // toggles helperText from a "Required." error to '' (or vice versa)
+  // and every row beneath jumps by ~18px. That layout thrash showed up
+  // as multi-hundred-millisecond input handlers on the DIA content
+  // forms.
+  '& .MuiFormHelperText-root': {
+    minHeight: '1em',
+    marginTop: '4px',
+  },
 }

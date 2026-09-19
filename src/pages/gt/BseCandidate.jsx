@@ -114,7 +114,7 @@ export default function BseCandidate() {
       if (bseId && files.length) {
         try {
           const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
-          await uploadFilesBatch(bseId, tagged)
+          await uploadFilesBatch(bseId, 'bse', bseId, tagged)
         } catch (fileErr) {
           setToast({
             severity: 'warning',

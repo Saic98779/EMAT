@@ -1,6 +1,7 @@
 import {
   Card, CardContent, Chip, Box, Typography, Stack, LinearProgress, Avatar,
 } from '@mui/material'
+
 import { alpha } from '@mui/material/styles'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'

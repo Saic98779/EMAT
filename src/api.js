@@ -186,6 +186,14 @@ const ENDPOINT_PII_MAP = [
   { matchPath: (p) => p.startsWith('/vendor'),
     fields: ['spocMobileNo', 'email', 'mobileNo'] },
 
+  // 9a. BDSP onboarding (DIA content) — verified via curl 2026-09-19:
+  //     backend enforces PII only on `email` ("expected an encrypted
+  //     ENC:... value"). `contact` accepted as plaintext, so we do NOT
+  //     encrypt it — otherwise the DB stores an opaque ENC:... string
+  //     that server-side lookups can never match on.
+  { matchPath: (p) => p === '/bdsp' || /^\/bdsp\/.+$/.test(p),
+    fields: ['email'] },
+
   // 10. ActivityRequest — POST (submit). Commit 20c952b added
   //     `followUpId` + `createdUserId` alongside `bseId`, `gtId`.
   { method: 'POST', matchPath: (p) => p === '/activity' || p === '/activities',

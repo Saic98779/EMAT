@@ -13,7 +13,7 @@ import { DECISION } from '../../../../apis/stageActions'
 import { downloadFile } from '../../../../apis/files'
 import { decodeFilename } from '../../../../fileFieldLabels'
 import { toFormValues as iaToFormValues } from '../../../../apis/industryAssociations'
-import { useApproveIA, useFilesByRegistration } from '../../../../queries'
+import { useApproveIA, useFilesByIa } from '../../../../queries'
 
 // SdeL1ReviewView
 // ────────────────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ export default function SdeL1ReviewView({
   iaId, iaName, dto, schema, decisions = [], onDone,
 }) {
   const theme = useTheme()
-  const filesQ = useFilesByRegistration(iaId)
+  const filesQ = useFilesByIa(iaId)
   const approve = useApproveIA()
   // Only `justRecorded` lives on the parent — the sticky decision bar
   // owns its own `comments`, `pendingDecision`, and `busyKind` state so
@@ -698,7 +698,7 @@ function FileRow({ iaId, file }) {
 
   async function onDownload() {
     setBusy(true)
-    try { await downloadFile(iaId, filename) } finally { setBusy(false) }
+    try { await downloadFile(iaId, 'registration', iaId, filename) } finally { setBusy(false) }
   }
 
   return (

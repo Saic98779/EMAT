@@ -223,7 +223,7 @@ export default function InPrincipleApproval() {
       if (regId && files.length) {
         const tagged = files.map(({ file, slug }) => encodeFilename(file, slug))
         try {
-          await uploadFilesBatch(regId, tagged)
+          await uploadFilesBatch(regId, 'registration', regId, tagged)
           setToast({ severity: 'success', msg: `${values.ia_name || 'IA'} saved — ${files.length} file${files.length === 1 ? '' : 's'} uploaded${autoApproved ? ' and auto-approved' : ''}.` })
         } catch (err) {
           setToast({

@@ -27,12 +27,21 @@ function DocUpload({
   docs,
   setDocs,
   registrationId = null,
+  // Entity-type tag used in the file API path (Sep '26 change).
+  // Default "ia" covers every IA-workspace caller; BSE / CAPEX pages
+  // pass their own tag.
+  stage = 'ia',
+  // Sub-entity id, if the file scope is different from `registrationId`
+  // (e.g. an appraisal record under an IA). Defaults to `registrationId`
+  // since the vast majority of callers use the same id in both slots.
+  stageId = null,
   accent = 'primary',
   // Review-only roles (e.g. CLUSTER_EXPERT) may open/download the documents
   // but must not attach new ones or delete what others uploaded.
   readOnly = false,
 }) {
   const apiMode = Boolean(registrationId)
+  const scopeId = stageId ?? registrationId
 
   // ── API-mode state ────────────────────────────────────────────────────────
   const [files, setFiles] = useState([])   // UploadedFileResponse[]
@@ -45,7 +54,7 @@ function DocUpload({
     setLoading(true)
     setError('')
     try {
-      const data = await listFiles(registrationId, { signal })
+      const data = await listFiles(registrationId, stage, scopeId, { signal })
       // Backend response is *usually* a bare `UploadedFileResponse[]`, but
       // Spring Page (`{content: [...]}`) or `{items: []}` / `{files: []}`
       // shapes have shown up too — accept all of them.
@@ -60,7 +69,7 @@ function DocUpload({
     } finally {
       setLoading(false)
     }
-  }, [apiMode, registrationId])
+  }, [apiMode, registrationId, stage, scopeId])
 
   useEffect(() => {
     if (!apiMode) return
@@ -86,7 +95,7 @@ function DocUpload({
       // One batch POST for all picked files — replaces the previous per-file
       // loop. Backend writes them transactionally, so a duplicate/oversize in
       // the batch fails the whole set (surfaced via the catch below).
-      const uploaded = await uploadFilesBatch(registrationId, picked)
+      const uploaded = await uploadFilesBatch(registrationId, stage, scopeId, picked)
       if (uploaded.length) setFiles((prev) => mergeByFilename(prev, uploaded))
       // Re-fetch to stay canonical (batch response might omit fields the
       // list endpoint returns).
@@ -106,7 +115,7 @@ function DocUpload({
     setBusy(true)
     setError('')
     try {
-      await deleteFile(registrationId, item.filename)
+      await deleteFile(registrationId, stage, scopeId, item.filename)
       setFiles((prev) => prev.filter((f) => f.filename !== item.filename))
     } catch (err) {
       setError(err.message || 'Delete failed')
@@ -117,7 +126,7 @@ function DocUpload({
 
   const download = async (item) => {
     try {
-      await downloadFile(registrationId, item.filename)
+      await downloadFile(registrationId, stage, scopeId, item.filename)
     } catch (err) {
       setError(err.message || 'Download failed')
     }
