@@ -36,6 +36,13 @@ export const ROLES = {
     short: 'MPA',
     user: { name: 'Ramesh Sharma', initials: 'RS', title: 'Manpower Agency · Salary Disbursement', email: 'mpa@sidbi.in' },
   },
+  checker: {
+    key: 'checker',
+    label: 'SIDBI HO Checker',
+    tag: 'CHECKER',
+    short: 'HO Checker',
+    user: { name: 'Meera Jain', initials: 'MJ', title: 'SIDBI HO · Content Approvals', email: 'checker@sidbi.in' },
+  },
 }
 
 // Autofilled BSE profile — the IA this BSE is deployed to, sanction status, TDS.

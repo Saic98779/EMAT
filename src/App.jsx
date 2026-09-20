@@ -47,6 +47,9 @@ import MpaProfile from './pages/mpa/Profile'
 import MpaMyDisbursements from './pages/mpa/MyDisbursements'
 import MpaCapacityBuildingOfficials from './pages/mpa/MpaCapacityBuildingOfficials'
 
+import CheckerQueue from './pages/checker/CheckerQueue'
+import CheckerReview from './pages/checker/CheckerReview'
+
 import ClusterExpertDashboard from './pages/ce/ClusterExpertDashboard'
 
 import HoMakerDashboard from './pages/ho/HoMakerDashboard'
@@ -286,6 +289,13 @@ export default function App() {
         <Route path="/mpa/resources" element={<MpaMyResources />} />
         <Route path="/mpa/attendance" element={<MpaAttendance />} />
         <Route path="/mpa/profile" element={<MpaProfile />} />
+      </Route>
+
+      {/* SIDBI HO Checker — DIA content approvals workspace. Tabbed queue
+          at /checker, review detail at /checker/:type/:id. */}
+      <Route element={<Protected role="checker"><AppLayout /></Protected>}>
+        <Route path="/checker" element={<CheckerQueue />} />
+        <Route path="/checker/:type/:id" element={<CheckerReview />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

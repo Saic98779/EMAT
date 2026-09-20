@@ -116,6 +116,10 @@ export const NAV = {
     { icon: 'calendar', label: 'View Attendance', path: '/mpa/attendance', overline: 'Resources', title: 'Attendance of My Resources' },
     { icon: 'personAdd', label: 'Profile', path: '/mpa/profile', overline: 'Account', title: 'Vendor Profile' },
   ],
+  // SIDBI HO Checker — DIA content approvals workspace.
+  checker: [
+    { icon: 'inbox', label: 'Content Approvals', path: '/checker', overline: 'Approvals', title: 'Content Approvals' },
+  ],
 }
 
 export default function AppLayout() {

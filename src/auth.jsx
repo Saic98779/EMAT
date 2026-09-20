@@ -26,12 +26,13 @@ const ROLE_MAP = {
   GT_FIELD_TEAM: 'gt',
   GT_PMU: 'gt',
   // SIDBI appraisal / disbursement chain — all land on the SDE workspace
-  // for now (HO_MAKER / HO_CHECKER / RO don't yet have dedicated screens).
+  // for now (HO_MAKER / RO don't yet have dedicated screens).
   SDE: 'sde',
   SIDBI_SDE: 'sde',
   SIDBI_RO: 'sde',
   SIDBI_HO_MAKER: 'sde',
-  SIDBI_HO_CHECKER: 'sde',
+  // SIDBI HO Checker owns the DIA content approval workspace.
+  SIDBI_HO_CHECKER: 'checker',
   // Field officer
   BSE: 'bse',
   // Industry Association nodal user

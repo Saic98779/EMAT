@@ -106,6 +106,9 @@ import {
   createSustainabilityMatrix, updateSustainabilityMatrix, deleteSustainabilityMatrix,
   updateSustainabilityActionPlan,
 } from './apis/sustainabilityMatrix'
+import {
+  updateContentStatus, listContent, getContent,
+} from './apis/contentStatus'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -1379,5 +1382,47 @@ export function useRejectBseAttendanceManualRequest() {
   return useMutation({
     mutationFn: ({ id, approvedBy }) => rejectBseAttendanceManualRequest(id, { approvedBy }),
     onSuccess: (_data, { recommendationId }) => invalidateManualRequests(qc, recommendationId),
+  })
+}
+
+// ── DIA content approvals (SIDBI HO Checker) ──────────────────────────────
+// Twelve endpoints, uniform shape. The `path` is the endpoint slug
+// (e.g. `dia-3c-info-series`); see apis/contentStatus.js CONTENT_TYPES.
+//
+// `list` and `detail` share a cache namespace per path so the review
+// mutation can invalidate the exact tab that changed.
+const contentKey = {
+  list:   (path) => ['content', path, 'list'],
+  detail: (path, id) => ['content', path, 'detail', String(id)],
+}
+
+export function useContentList(path, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: contentKey.list(path),
+    enabled: !!path && enabled,
+    queryFn: ({ signal }) => listContent(path, { signal }).then(unwrapList),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useContentRecord(path, id) {
+  return useQuery({
+    queryKey: contentKey.detail(path, id),
+    enabled: !!path && !!id,
+    queryFn: ({ signal }) => getContent(path, id, { signal }),
+  })
+}
+
+// PATCH /<path>/{id}/status. Passes through `remarks` for forward
+// compatibility — backend is adding the column; today it ignores it.
+export function useUpdateContentStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ path, id, status, remarks }) =>
+      updateContentStatus(path, id, { status, remarks }),
+    onSuccess: (_data, { path, id }) => {
+      qc.invalidateQueries({ queryKey: contentKey.list(path), refetchType: 'all' })
+      if (id) qc.invalidateQueries({ queryKey: contentKey.detail(path, id) })
+    },
   })
 }
