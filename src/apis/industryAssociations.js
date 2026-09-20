@@ -7,6 +7,21 @@ export function listIndustryAssociations({ signal } = {}) {
   return apiFetch(PATH, { signal })
 }
 
+// Lightweight dropdown endpoint — returns `[{ id, name, state, ... }]`
+// filtered by any combination of state / createdBy / district / stageId.
+// Use this for IA pickers where the full DTO isn't needed (e.g. GT PMU's
+// Action Plan page). Small payload + backend-side filter avoids the
+// 403s that hit the full list endpoint for GT_PMU.
+export function listIndustryAssociationsDropdown({ state, district, createdBy, stageId, signal } = {}) {
+  const q = new URLSearchParams()
+  if (state)     q.set('state', state)
+  if (district)  q.set('district', district)
+  if (createdBy) q.set('createdBy', createdBy)
+  if (stageId)   q.set('stageId', stageId)
+  const qs = q.toString()
+  return apiFetch(`${PATH}/dropdown${qs ? `?${qs}` : ''}`, { signal })
+}
+
 export function getIndustryAssociation(id, { signal } = {}) {
   return apiFetch(`${PATH}/${encodeURIComponent(id)}`, { signal })
 }

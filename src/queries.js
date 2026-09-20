@@ -15,6 +15,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import { useMemo } from 'react'
 import {
   listIndustryAssociations,
+  listIndustryAssociationsDropdown,
   getIndustryAssociation,
   approveIndustryAssociation,
   updateIndustryAssociation,
@@ -1038,6 +1039,20 @@ export function useEligibilityRegistrationsDropdown({ enabled = true } = {}) {
     enabled,
     staleTime: 60 * 1000,
     queryFn: ({ signal }) => listEligibilityMatrixRegistrationsDropdown({ signal }).then(unwrapList),
+  })
+}
+
+// GT PMU's Action Plan and other pages that need "which IAs can I pick?"
+// filtered by the caller's state. Hits the lightweight
+// `/industry-association-registrations/dropdown` endpoint with query
+// filters — server-side filter beats client-side because we don't need
+// the full IA DTOs and it dodges the 403 GT_PMU gets on the raw list.
+export function useIndustryAssociationsDropdown({ state, district, createdBy, stageId, enabled = true } = {}) {
+  return useQuery({
+    queryKey: ['ias', 'dropdown', { state: state || null, district: district || null, createdBy: createdBy || null, stageId: stageId || null }],
+    enabled,
+    staleTime: 60 * 1000,
+    queryFn: ({ signal }) => listIndustryAssociationsDropdown({ state, district, createdBy, stageId, signal }).then(unwrapList),
   })
 }
 

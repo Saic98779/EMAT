@@ -28,6 +28,8 @@ import BseCapacityBuilding from './pages/bse/BseCapacityBuilding'
 import GtCapexReview from './pages/gt/GtCapexReview'
 import GtCapacityBuildingReview from './pages/gt/GtCapacityBuildingReview'
 import ActionPlan from './pages/gt/ActionPlan'
+import ActionPlansList from './pages/gt/ActionPlansList'
+import ActionPlanView from './pages/gt/ActionPlanView'
 import IaWorkspaceLayout, { WorkspaceIndexRedirect } from './components/workspace/IaWorkspaceLayout'
 import {
   OverviewTab, EligibilityTab, RegistrationTab, SustainabilityTab,
@@ -74,6 +76,8 @@ import DiaBulkBroadcast from './pages/pmu/DiaBulkBroadcast'
 import DiaDiscussionForum from './pages/pmu/DiaDiscussionForum'
 import DiaLatestDevelopments from './pages/pmu/DiaLatestDevelopments'
 import DiaPopUps from './pages/pmu/DiaPopUps'
+import PmuSubmissionView from './pages/pmu/PmuSubmissionView'
+import ContentTypeList from './pages/pmu/ContentTypeList'
 
 function Protected({ role, children }) {
   const { role: current } = useAuth()
@@ -171,6 +175,8 @@ export default function App() {
         <Route path="/gt/capex" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtCapexReview /></DenyRawRoles>} />
         <Route path="/gt/capacity-building" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><GtCapacityBuildingReview /></DenyRawRoles>} />
         <Route path="/gt/action-plan" element={<ActionPlan />} />
+        <Route path="/gt/action-plans" element={<ActionPlansList />} />
+        <Route path="/gt/action-plans/:id" element={<ActionPlanView />} />
         {/* Legacy standalone Eligibility Matrix → workspace draft mode. */}
         <Route path="/gt/eligibility/new" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Navigate to="/gt/ias/new/workspace/eligibility" replace /></DenyRawRoles>} />
         {/* IA Workspace — the new anchor pattern. Every stage of an IA
@@ -202,6 +208,8 @@ export default function App() {
         <Route path="/gt/pmu/discussion" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaDiscussionForum /></DenyRawRoles>} />
         <Route path="/gt/pmu/latest-developments" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaLatestDevelopments /></DenyRawRoles>} />
         <Route path="/gt/pmu/pop-ups" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaPopUps /></DenyRawRoles>} />
+        <Route path="/gt/pmu/list/:type" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><ContentTypeList /></DenyRawRoles>} />
+        <Route path="/gt/pmu/list/:type/:id" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuSubmissionView /></DenyRawRoles>} />
         <Route path="/gt/pmu/:uuid" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuReview /></DenyRawRoles>} />
         <Route path="/gt/pmu/capacity-building" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuCapacityBuildingReview /></DenyRawRoles>} />
       </Route>

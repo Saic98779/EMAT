@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Alert, Box, Button, Chip, CircularProgress, Divider, IconButton,
@@ -14,7 +14,6 @@ import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined'
 import EmojiObjectsOutlinedIcon from '@mui/icons-material/EmojiObjectsOutlined'
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined'
-import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import { PageHeader } from '../../components/shared'
 import {
@@ -23,10 +22,10 @@ import {
 } from '../pmu/_shared'
 import { useAuth } from '../../auth'
 import {
-  useIAs, useActionPlans, useCreateActionPlan, useUpdateActionPlan,
+  useIndustryAssociationsDropdown, useCreateActionPlan,
 } from '../../queries'
 import {
-  toFormValues, blankActivity, MIN_ACTIVITIES, MAX_ACTIVITIES,
+  blankActivity, MIN_ACTIVITIES, MAX_ACTIVITIES,
 } from '../../apis/actionPlans'
 
 // Action Plan (Annexure) — Year-1 activity plan for one Industry Association.
@@ -59,10 +58,12 @@ const PERCENT_ADORNMENT = {
   endAdornment: <InputAdornment position="end">%</InputAdornment>,
 }
 
+// Start with a single blank activity — 4 empty cards on mount instantiate
+// ~48 RHF Controllers before the user has even seen the page, which is
+// what made clicking "New Action Plan" feel slow. The "Add activity"
+// button + submit validation still enforce ≥ MIN_ACTIVITIES.
 function makeDefaults(activities) {
-  const rows = activities?.length
-    ? activities
-    : Array.from({ length: MIN_ACTIVITIES }, blankActivity)
+  const rows = activities?.length ? activities : [blankActivity()]
   return { registrationId: '', activities: rows }
 }
 
@@ -72,10 +73,11 @@ export default function ActionPlan() {
   const { user } = useAuth()
   const state = user?.state || ''
 
-  const iasQ = useIAs()
-  const plansQ = useActionPlans()
+  // One tiny call: `/industry-association-registrations/dropdown?state=<X>`
+  // returns just what the picker needs. No `useIAs`, no `useActionPlans` —
+  // this page is submit-only.
+  const iasQ = useIndustryAssociationsDropdown({ state, enabled: !!state })
   const create = useCreateActionPlan()
-  const update = useUpdateActionPlan()
 
   const methods = useForm({
     mode: 'onSubmit',
@@ -86,36 +88,17 @@ export default function ActionPlan() {
 
   const iaOptions = useMemo(() => {
     const rows = iasQ.data || []
-    const mine = state
-      ? rows.filter((r) => String(r.state || '').toLowerCase() === state.toLowerCase())
-      : rows
-    return mine
-      .map((r) => ({ value: r.id, label: r.name || String(r.id) }))
+    return rows
+      .map((r) => ({ value: r.id, label: r.name || r.industryAssociationName || String(r.id) }))
       .filter((o) => o.value != null)
       .sort((a, b) => String(a.label).localeCompare(String(b.label)))
-  }, [iasQ.data, state])
-
-  const existing = useMemo(() => (plansQ.data || [])
-    .find((p) => String(p.registrationId) === String(registrationId)) || null,
-  [plansQ.data, registrationId])
-
-  // Hydrate the form when the picked IA has an existing plan.
-  const hydratedForRef = useRef(null)
-  useEffect(() => {
-    if (!registrationId) return
-    if (plansQ.isLoading) return
-    if (hydratedForRef.current === String(registrationId)) return
-    const loaded = existing ? toFormValues(existing).activities : []
-    const padded = loaded.length ? padTo(loaded, MIN_ACTIVITIES) : Array.from({ length: MIN_ACTIVITIES }, blankActivity)
-    reset({ registrationId, activities: padded })
-    hydratedForRef.current = String(registrationId)
-  }, [registrationId, plansQ.isLoading, existing, reset])
+  }, [iasQ.data])
 
   const { fields, append, remove } = useFieldArray({ control, name: 'activities' })
 
   const [toast, setToast] = useState(null)
   const [problem, setProblem] = useState(null)
-  const busy = create.isPending || update.isPending
+  const busy = create.isPending
 
   const onSubmit = handleSubmit(async (values) => {
     const err = validateWhole({ state, registrationId: values.registrationId, activities: values.activities })
@@ -123,13 +106,9 @@ export default function ActionPlan() {
     setProblem(null)
     const payload = { state, registrationId: values.registrationId, activities: values.activities }
     try {
-      if (existing?.id) {
-        await update.mutateAsync({ id: existing.id, values: payload })
-        setToast({ kind: 'success', msg: 'Action plan updated.' })
-      } else {
-        await create.mutateAsync(payload)
-        setToast({ kind: 'success', msg: 'Action plan saved.' })
-      }
+      await create.mutateAsync(payload)
+      setToast({ kind: 'success', msg: 'Action plan saved.' })
+      reset(makeDefaults())
     } catch (e) {
       setToast({ kind: 'error', msg: e?.message || 'Failed to save the action plan.' })
     }
@@ -160,7 +139,6 @@ export default function ActionPlan() {
           iaOptions={iaOptions}
           iasLoading={iasQ.isLoading}
           activeIaLabel={activeIa?.label}
-          existing={existing}
         />
 
         {/* ─── Activities list ─── */}
@@ -193,7 +171,6 @@ export default function ActionPlan() {
         <StickyFooter
           theme={theme}
           problem={problem}
-          existing={existing}
           busy={busy}
           onCancel={() => navigate(-1)}
         />
@@ -232,7 +209,7 @@ function RhfProvider({ methods, onSubmit, children }) {
 // Compact prominent bar: state chip + IA selector + create/update hint.
 // Sits above the activities so the reader always knows which IA they're
 // planning for even as they scroll.
-function PlanForBanner({ state, iaOptions, iasLoading, activeIaLabel, existing }) {
+function PlanForBanner({ state, iaOptions, iasLoading, activeIaLabel }) {
   const theme = useTheme()
   return (
     <Box
@@ -298,27 +275,12 @@ function PlanForBanner({ state, iaOptions, iasLoading, activeIaLabel, existing }
           direction="row"
           spacing={1}
           alignItems="center"
-          sx={{
-            mt: 1.5,
-            fontSize: 13,
-            color: existing ? theme.palette.info.dark : theme.palette.success.dark,
-          }}
+          sx={{ mt: 1.5, color: theme.palette.success.dark }}
         >
-          {existing ? (
-            <>
-              <ArrowForwardRoundedIcon sx={{ fontSize: 16 }} />
-              <Typography sx={{ fontSize: 13 }}>
-                <strong>{activeIaLabel}</strong> already has a saved plan — saving now will replace the activities below.
-              </Typography>
-            </>
-          ) : (
-            <>
-              <CheckCircleRoundedIcon sx={{ fontSize: 16 }} />
-              <Typography sx={{ fontSize: 13 }}>
-                New action plan for <strong>{activeIaLabel}</strong>.
-              </Typography>
-            </>
-          )}
+          <CheckCircleRoundedIcon sx={{ fontSize: 16 }} />
+          <Typography sx={{ fontSize: 13 }}>
+            New action plan for <strong>{activeIaLabel}</strong>.
+          </Typography>
         </Stack>
       )}
     </Box>
@@ -623,7 +585,7 @@ const SplitBar = memo(function SplitBar({ sidbi, others, ia, total, off }) {
 })
 
 // ─── Sticky footer ────────────────────────────────────────────────────────
-function StickyFooter({ theme, problem, existing, busy, onCancel }) {
+function StickyFooter({ theme, problem, busy, onCancel }) {
   return (
     <Box
       sx={{
@@ -658,7 +620,7 @@ function StickyFooter({ theme, problem, existing, busy, onCancel }) {
         color={problem ? 'warning.main' : 'text.secondary'}
         sx={{ flexGrow: 1 }}
       >
-        {problem || (existing ? 'Ready to update the saved plan.' : 'Ready to save this action plan.')}
+        {problem || 'Ready to save this action plan.'}
       </Typography>
       <Button color="inherit" onClick={onCancel} sx={{ textTransform: 'none' }}>
         Cancel
@@ -671,7 +633,7 @@ function StickyFooter({ theme, problem, existing, busy, onCancel }) {
         disabled={busy}
         sx={{ textTransform: 'none', px: 3, fontWeight: 600 }}
       >
-        {busy ? 'Saving…' : existing ? 'Update Action Plan' : 'Save Action Plan'}
+        {busy ? 'Saving…' : 'Save Action Plan'}
       </Button>
     </Box>
   )
@@ -699,12 +661,6 @@ function validateWhole({ state, registrationId, activities }) {
     }
   }
   return null
-}
-
-function padTo(rows, n) {
-  const out = rows.slice()
-  while (out.length < n) out.push(blankActivity())
-  return out
 }
 
 function num(v) {

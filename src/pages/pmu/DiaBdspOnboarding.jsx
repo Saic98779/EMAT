@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useFormContext } from 'react-hook-form'
 import {
   Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogContentText,
-  DialogTitle, Divider, Stack,
+  DialogTitle, Divider, MenuItem, Stack,
 } from '@mui/material'
 import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined'
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined'
@@ -9,8 +10,9 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell,
   formatFileSize, EMAIL_RE, PHONE_RE,
-  RhfTextField, useForm,
+  RhfTextField, useForm, useWatch,
 } from './_shared'
+import { STATES, districtsOf } from '../../geo'
 import {
   createContent, downloadBdspTemplate, importBdspRows, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
@@ -149,10 +151,10 @@ export default function DiaBdspOnboarding() {
         <PmuSection title="Location">
           <FieldRow>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <RhfTextField name="state" fullWidth required label="State" rules={REQUIRED_TEXT} />
+              <StateSelect />
             </FieldCell>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <RhfTextField name="district" fullWidth required label="District" rules={REQUIRED_TEXT} />
+              <DistrictSelect />
             </FieldCell>
           </FieldRow>
         </PmuSection>
@@ -239,3 +241,49 @@ export default function DiaBdspOnboarding() {
 }
 
 const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }
+
+// ─── State + district cascade ─────────────────────────────────────────────
+// Matches the IA registration form: State drives the District options,
+// and picking a new state clears the previously-selected district so a
+// stale value can't sneak through submit.
+//
+// Both selects subscribe only to their own field paths — `useWatch({ name: 'state' })`
+// inside DistrictSelect is a single-value subscription, so typing in an
+// unrelated field never re-renders either dropdown.
+function StateSelect() {
+  return (
+    <RhfTextField name="state" select fullWidth required label="State" rules={REQUIRED_TEXT}>
+      <MenuItem value=""><em>— Select —</em></MenuItem>
+      {STATES.map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+    </RhfTextField>
+  )
+}
+
+function DistrictSelect() {
+  const state = useWatch({ name: 'state' })
+  const { setValue } = useFormContext()
+  const districts = useMemo(() => districtsOf(state), [state])
+
+  // If the current state's district list no longer contains the picked
+  // district (e.g. after switching states), reset it. `shouldValidate:
+  // false` so we don't fire an error immediately on reset.
+  const districtValue = useWatch({ name: 'district' })
+  const stale = districtValue && !districts.includes(districtValue)
+  useEffect(() => {
+    if (stale) setValue('district', '', { shouldValidate: false, shouldDirty: false })
+  }, [stale, setValue])
+
+  return (
+    <RhfTextField
+      name="district"
+      select fullWidth required
+      label="District"
+      rules={REQUIRED_TEXT}
+      disabled={!state}
+      helperText={!state ? 'Pick a state first' : undefined}
+    >
+      <MenuItem value=""><em>— Select —</em></MenuItem>
+      {districts.map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+    </RhfTextField>
+  )
+}

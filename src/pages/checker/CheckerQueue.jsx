@@ -18,9 +18,7 @@ import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined'
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
-import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
-import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded'
 import { PageHeader } from '../../components/shared'
 import { useContentList } from '../../queries'
 import { CONTENT_REVIEW_TYPES, CONTENT_REVIEW_ORDER } from './contentReviewConfig'
@@ -166,12 +164,9 @@ function QueueBody({ type, cfg }) {
   }, [rows, filter, q, cfg.columns])
 
   return (
-    <Box sx={{ pt: 3 }}>
-      {/* Summary strip */}
-      <SummaryStrip counts={counts} />
-
+    <Box sx={{ pt: 2.5 }}>
       {/* Filter toolbar */}
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} sx={{ mt: 2.5, mb: 2 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
         <ToggleButtonGroup
           exclusive
           size="small"
@@ -248,55 +243,12 @@ function QueueBody({ type, cfg }) {
   )
 }
 
-// ─── Summary strip: at-a-glance status counts ──────────────────────────
-function SummaryStrip({ counts }) {
-  const theme = useTheme()
-  const cells = [
-    { key: 'pending',  label: 'Pending',  value: counts.pending,  color: theme.palette.info,    icon: <InboxOutlinedIcon sx={{ fontSize: 18 }} /> },
-    { key: 'reverted', label: 'Reverted', value: counts.reverted, color: theme.palette.warning, icon: <HistoryRoundedIcon sx={{ fontSize: 18 }} /> },
-    { key: 'approved', label: 'Approved', value: counts.approved, color: theme.palette.success, icon: <CheckCircleOutlineRoundedIcon sx={{ fontSize: 18 }} /> },
-    { key: 'rejected', label: 'Rejected', value: counts.rejected, color: theme.palette.error,   icon: null },
-  ]
-  return (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
-        gap: 1.5,
-      }}
-    >
-      {cells.map((c) => (
-        <Box
-          key={c.key}
-          sx={{
-            border: 1, borderColor: alpha(c.color.main, 0.24),
-            borderRadius: 2,
-            bgcolor: alpha(c.color.main, 0.05),
-            px: 2, py: 1.5,
-          }}
-        >
-          <Stack direction="row" alignItems="center" spacing={1}>
-            {c.icon && <Box sx={{ color: c.color.dark }}>{c.icon}</Box>}
-            <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: c.color.dark }}>
-              {c.label}
-            </Typography>
-          </Stack>
-          <Typography sx={{ mt: 0.5, fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: theme.palette.text.primary }}>
-            {c.value}
-          </Typography>
-        </Box>
-      ))}
-    </Box>
-  )
-}
-
 // ─── One queue row (inbox card) ────────────────────────────────────────
 function QueueRow({ cfg, row }) {
   const theme = useTheme()
   const status = row.status || null
   const primaryKey = cfg.columns[0]?.key
   const secondaryCols = cfg.columns.slice(1)
-  const stripe = statusStripe(status, theme)
 
   return (
     <Box
@@ -304,7 +256,6 @@ function QueueRow({ cfg, row }) {
       to={cfg.detailRoute(encodeURIComponent(row.id))}
       sx={{
         display: 'block',
-        position: 'relative',
         textDecoration: 'none',
         color: 'inherit',
         borderRadius: 2,
@@ -312,7 +263,6 @@ function QueueRow({ cfg, row }) {
         borderColor: alpha(theme.palette.text.primary, 0.09),
         bgcolor: '#fff',
         px: 2.25, py: 1.75,
-        pl: 2.75, // room for the stripe
         transition: 'transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease',
         '&:hover': {
           borderColor: alpha(theme.palette.primary.main, 0.35),
@@ -321,17 +271,6 @@ function QueueRow({ cfg, row }) {
         },
       }}
     >
-      {/* Status stripe */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 0, bottom: 0, left: 0,
-          width: 4,
-          bgcolor: stripe,
-          borderRadius: '2px 0 0 2px',
-        }}
-      />
-
       <Stack direction="row" spacing={2} alignItems="center">
         {/* Primary field + secondary chips */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -447,15 +386,6 @@ function isPending(row) {
   // we're stricter: only untouched items. This helper is used for the
   // tab-label badge (the "there's still work" signal).
   return !row.status || row.status === 'REVERT'
-}
-
-function statusStripe(status, theme) {
-  switch (status) {
-    case 'APPROVED': return theme.palette.success.main
-    case 'REJECT':   return theme.palette.error.main
-    case 'REVERT':   return theme.palette.warning.main
-    default:         return alpha(theme.palette.info.main, 0.55)
-  }
 }
 
 function formatCellValue(col, v) {

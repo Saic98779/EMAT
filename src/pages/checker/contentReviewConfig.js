@@ -26,6 +26,7 @@ export const CONTENT_REVIEW_TYPES = {
   'dia-3c-info-series': {
     label:    '3C Info-Series',
     overline: 'DIA · 3C Info-Series',
+    createRoute: '/gt/pmu/3c-info-series',
     detailRoute: (id) => `/checker/dia-3c-info-series/${id}`,
     columns: [
       { key: 'topic',       label: 'Topic' },
@@ -59,6 +60,7 @@ export const CONTENT_REVIEW_TYPES = {
   'elearning-module-content': {
     label:    'E-learning Module',
     overline: 'DIA · E-learning Module',
+    createRoute: '/gt/pmu/e-learning',
     detailRoute: (id) => `/checker/elearning-module-content/${id}`,
     columns: [
       { key: 'topic',      label: 'Topic' },
@@ -91,6 +93,7 @@ export const CONTENT_REVIEW_TYPES = {
   'bulk-broadcast': {
     label:    'Bulk Broadcast',
     overline: 'DIA · Bulk Broadcast',
+    createRoute: '/gt/pmu/broadcast',
     detailRoute: (id) => `/checker/bulk-broadcast/${id}`,
     columns: [
       { key: 'topic',             label: 'Topic' },
@@ -124,6 +127,7 @@ export const CONTENT_REVIEW_TYPES = {
   'discussion-forum': {
     label:    'Discussion Forum',
     overline: 'DIA · Discussion Forum',
+    createRoute: '/gt/pmu/discussion',
     detailRoute: (id) => `/checker/discussion-forum/${id}`,
     columns: [
       { key: 'topic',      label: 'Topic' },
@@ -155,6 +159,7 @@ export const CONTENT_REVIEW_TYPES = {
   'latest-developments': {
     label:    'Latest Developments',
     overline: 'DIA · Latest Developments',
+    createRoute: '/gt/pmu/latest-developments',
     detailRoute: (id) => `/checker/latest-developments/${id}`,
     columns: [
       { key: 'topic',     label: 'Topic' },
@@ -178,6 +183,7 @@ export const CONTENT_REVIEW_TYPES = {
   'pop-ups': {
     label:    'Pop-Ups',
     overline: 'DIA · Pop-Ups',
+    createRoute: '/gt/pmu/pop-ups',
     detailRoute: (id) => `/checker/pop-ups/${id}`,
     columns: [
       { key: 'topic',     label: 'Topic' },
@@ -202,6 +208,7 @@ export const CONTENT_REVIEW_TYPES = {
   'surveys': {
     label:    'Survey',
     overline: 'DIA · Survey',
+    createRoute: '/gt/pmu/survey',
     detailRoute: (id) => `/checker/surveys/${id}`,
     columns: [
       { key: 'topic',     label: 'Topic' },
@@ -238,6 +245,7 @@ export const CONTENT_REVIEW_TYPES = {
   'bdsp': {
     label:    'BDSP Onboarding',
     overline: 'DIA · BDSP Onboarding',
+    createRoute: '/gt/pmu/bdsp',
     detailRoute: (id) => `/checker/bdsp/${id}`,
     columns: [
       { key: 'nameOfBdsp', label: 'Name' },
@@ -271,6 +279,7 @@ export const CONTENT_REVIEW_TYPES = {
   'bds-service-providers-onboarding': {
     label:    'PBSP Onboarding',
     overline: 'DIA · Panel BDS Provider',
+    createRoute: '/gt/pmu/pbsp',
     detailRoute: (id) => `/checker/bds-service-providers-onboarding/${id}`,
     columns: [
       { key: 'bdsProviderName', label: 'Provider' },
