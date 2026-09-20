@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogContentText,
   DialogTitle, Divider, Stack,
@@ -9,7 +9,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell,
   formatFileSize, EMAIL_RE, PHONE_RE,
-  FormTextField, useFieldHandlers,
+  RhfTextField, useForm,
 } from './_shared'
 import {
   createContent, downloadBdspTemplate, importBdspRows, DIA_ENDPOINTS,
@@ -24,8 +24,6 @@ const CSV_TEMPLATE_HEADERS = [
   'Area of Service / Expertise', 'State', 'District', 'Contact', 'Email', 'KYC',
 ]
 
-const REQUIRED = ['name', 'rationale', 'theme', 'area', 'state', 'district', 'contact', 'email', 'kyc']
-
 const INITIAL = {
   name: '', rationale: '', theme: '', area: '',
   state: '', district: '',
@@ -33,11 +31,8 @@ const INITIAL = {
 }
 
 export default function DiaBdspOnboarding() {
-  const [values, setValues] = useState(INITIAL)
-  const [touched, setTouched] = useState({})
-  const [showAllErrors, setShowAllErrors] = useState(false)
+  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
   const [toast, setToast] = useState(null)
-
   const [submitting, setSubmitting] = useState(false)
 
   const [importOpen, setImportOpen] = useState(false)
@@ -45,21 +40,7 @@ export default function DiaBdspOnboarding() {
   const [importing, setImporting] = useState(false)
   const importRef = useRef(null)
 
-  const { set, blur } = useFieldHandlers(setValues, setTouched)
-  // Defer validation so keystrokes stay snappy — see 3C form for rationale.
-  const deferredValues = useDeferredValue(values)
-  const errors = useMemo(() => validate(deferredValues), [deferredValues])
-  const errFor = (name) => (showAllErrors || touched[name]) ? errors[name] : ''
-
-  const reset = () => { setValues(INITIAL); setTouched({}); setShowAllErrors(false) }
-
-  const submit = async (e) => {
-    e.preventDefault()
-    setShowAllErrors(true)
-    if (Object.keys(errors).length > 0) {
-      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
-      return
-    }
+  const submit = async (values) => {
     setSubmitting(true)
     try {
       await createContent(DIA_ENDPOINTS.BDSP, {
@@ -74,13 +55,15 @@ export default function DiaBdspOnboarding() {
         kyc: values.kyc.trim(),
       })
       setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      reset()
+      methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
       setSubmitting(false)
     }
   }
+
+  const reset = () => methods.reset(INITIAL)
 
   const onPickImport = (e) => {
     const file = e.target.files?.[0]
@@ -108,8 +91,6 @@ export default function DiaBdspOnboarding() {
     try {
       await downloadBdspTemplate()
     } catch (err) {
-      // Fallback: generate the CSV client-side if the backend template
-      // endpoint hasn't been implemented yet or returned an error.
       setToast({ severity: 'warning', msg: `Backend template unavailable (${err.message || 'error'}); generated locally.` })
       const csv = CSV_TEMPLATE_HEADERS.join(',') + '\n'
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -135,39 +116,31 @@ export default function DiaBdspOnboarding() {
             Import from CSV / Excel
           </Button>
         }
-        onSubmit={submit} onReset={reset}
+        methods={methods}
+        onSubmit={submit}
+        onReset={reset}
         submitting={submitting}
         toast={toast} onToastClose={() => setToast(null)}
       >
         <PmuSection first title="BDSP identity">
           <FieldRow>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <FormTextField
-                fullWidth required label="Name of BDSP"
-                value={values.name} onChange={set('name')} onBlur={blur('name')}
-                error={!!errFor('name')} helperText={errFor('name')}
-              />
+              <RhfTextField name="name" fullWidth required label="Name of BDSP" rules={REQUIRED_TEXT} />
             </FieldCell>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <FormTextField
-                fullWidth required label="Theme"
-                value={values.theme} onChange={set('theme')} onBlur={blur('theme')}
-                error={!!errFor('theme')} helperText={errFor('theme')}
-              />
+              <RhfTextField name="theme" fullWidth required label="Theme" rules={REQUIRED_TEXT} />
             </FieldCell>
             <FieldCell>
-              <FormTextField
-                fullWidth required multiline minRows={2}
+              <RhfTextField
+                name="rationale" fullWidth required multiline minRows={2}
                 label="Rationale for onboarding BDSP"
-                value={values.rationale} onChange={set('rationale')} onBlur={blur('rationale')}
-                error={!!errFor('rationale')} helperText={errFor('rationale')}
+                rules={REQUIRED_TEXT}
               />
             </FieldCell>
             <FieldCell>
-              <FormTextField
-                fullWidth required label="Area of service / expertise"
-                value={values.area} onChange={set('area')} onBlur={blur('area')}
-                error={!!errFor('area')} helperText={errFor('area')}
+              <RhfTextField
+                name="area" fullWidth required label="Area of service / expertise"
+                rules={REQUIRED_TEXT}
               />
             </FieldCell>
           </FieldRow>
@@ -176,18 +149,10 @@ export default function DiaBdspOnboarding() {
         <PmuSection title="Location">
           <FieldRow>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <FormTextField
-                fullWidth required label="State"
-                value={values.state} onChange={set('state')} onBlur={blur('state')}
-                error={!!errFor('state')} helperText={errFor('state')}
-              />
+              <RhfTextField name="state" fullWidth required label="State" rules={REQUIRED_TEXT} />
             </FieldCell>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <FormTextField
-                fullWidth required label="District"
-                value={values.district} onChange={set('district')} onBlur={blur('district')}
-                error={!!errFor('district')} helperText={errFor('district')}
-              />
+              <RhfTextField name="district" fullWidth required label="District" rules={REQUIRED_TEXT} />
             </FieldCell>
           </FieldRow>
         </PmuSection>
@@ -195,27 +160,38 @@ export default function DiaBdspOnboarding() {
         <PmuSection title="Contact & KYC">
           <FieldRow>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <FormTextField
-                fullWidth required label="Contact"
+              <RhfTextField
+                name="contact" fullWidth required label="Contact"
                 placeholder="+91 98xxxxxxxx"
-                value={values.contact} onChange={set('contact')} onBlur={blur('contact')}
-                error={!!errFor('contact')} helperText={errFor('contact')}
+                rules={{
+                  validate: (v) => {
+                    const s = String(v || '').trim()
+                    if (!s) return 'Required.'
+                    if (!PHONE_RE.test(s)) return 'Enter a valid phone number.'
+                    return true
+                  },
+                }}
               />
             </FieldCell>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <FormTextField
-                fullWidth required type="email" label="Email"
+              <RhfTextField
+                name="email" fullWidth required type="email" label="Email"
                 placeholder="bdsp@example.com"
-                value={values.email} onChange={set('email')} onBlur={blur('email')}
-                error={!!errFor('email')} helperText={errFor('email')}
+                rules={{
+                  validate: (v) => {
+                    const s = String(v || '').trim()
+                    if (!s) return 'Required.'
+                    if (!EMAIL_RE.test(s)) return 'Enter a valid email address.'
+                    return true
+                  },
+                }}
               />
             </FieldCell>
             <FieldCell>
-              <FormTextField
-                fullWidth required multiline minRows={2} label="KYC"
+              <RhfTextField
+                name="kyc" fullWidth required multiline minRows={2} label="KYC"
                 placeholder="PAN / Aadhaar / GSTIN, or any KYC identifier"
-                value={values.kyc} onChange={set('kyc')} onBlur={blur('kyc')}
-                error={!!errFor('kyc')} helperText={errFor('kyc')}
+                rules={REQUIRED_TEXT}
               />
             </FieldCell>
           </FieldRow>
@@ -262,10 +238,4 @@ export default function DiaBdspOnboarding() {
   )
 }
 
-function validate(v) {
-  const errs = {}
-  for (const k of REQUIRED) if (!String(v[k] || '').trim()) errs[k] = 'Required.'
-  if (v.email && !EMAIL_RE.test(v.email.trim())) errs.email = 'Enter a valid email address.'
-  if (v.contact && !PHONE_RE.test(v.contact.trim())) errs.contact = 'Enter a valid phone number.'
-  return errs
-}
+const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }

@@ -1,20 +1,26 @@
-import { useCallback, useDeferredValue, useMemo, useState } from 'react'
-import {
-  FormControl, FormHelperText, InputAdornment, InputLabel, MenuItem,
-  OutlinedInput, Select,
-} from '@mui/material'
+import { useMemo, useState } from 'react'
+import { InputAdornment } from '@mui/material'
 import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined'
 import {
-  PmuFormShell, PmuSection, FieldRow, FieldCell, FileDropField, todayIso, URL_RE,
-  FormTextField, SHRINK_LABEL, useFieldHandlers, CHIP_RENDER_VALUE,
+  PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso, URL_RE,
+  RhfTextField, RhfSelectField, RhfFileField, SHRINK_LABEL, CHIP_RENDER_VALUE,
+  useForm, useWatch,
 } from './_shared'
 import {
   createContent, updateContent, uploadContentAttachments,
   toBackendChannels, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
-// Stable prop objects for FormTextField — kept at module scope so memoized
-// TextFields don't get busted by fresh object literals every render.
+// DIA — Bulk Broadcast
+// GT_PMU raises; SIDBI HO Checker approves.
+
+const CHANNELS = [
+  { value: 'SMS', label: 'SMS' },
+  { value: 'WhatsApp', label: 'WhatsApp' },
+]
+const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp'
+const MAIN_CONTENT_MAX = 5000
+
 const LINK_ADORNMENT = {
   startAdornment: (
     <InputAdornment position="start">
@@ -22,15 +28,7 @@ const LINK_ADORNMENT = {
     </InputAdornment>
   ),
 }
-
-// DIA — Bulk Broadcast
-// GT_PMU raises; SIDBI HO Checker approves.
-
-const CHANNELS = ['SMS', 'WhatsApp']
-const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp'
-const MAIN_CONTENT_MAX = 5000
-
-const REQUIRED_TEXT = ['topic', 'subject', 'relevance', 'sample', 'mainContent']
+const MAIN_INPUT_PROPS = { maxLength: MAIN_CONTENT_MAX }
 
 const INITIAL = {
   topic: '', subject: '',
@@ -39,45 +37,17 @@ const INITIAL = {
   mainContent: '',
   channels: [],
   link: '',
+  attachment: null,
 }
 
 export default function DiaBulkBroadcast() {
-  const [values, setValues] = useState(INITIAL)
-  const [attachment, setAttachment] = useState(null)
-  const [touched, setTouched] = useState({})
-  const [showAllErrors, setShowAllErrors] = useState(false)
+  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const { set, blur } = useFieldHandlers(setValues, setTouched)
-  const setMainContent = useCallback(
-    (e) => setValues((p) => ({ ...p, mainContent: e.target.value.slice(0, MAIN_CONTENT_MAX) })),
-    [],
-  )
-  const handleChannelsChange = useCallback((e) => {
-    setValues((p) => ({ ...p, channels: e.target.value }))
-    setTouched((p) => (p.channels ? p : { ...p, channels: true }))
-  }, [])
-
-  // Defer validation so keystrokes stay snappy — see 3C form for rationale.
-  const deferredValues = useDeferredValue(values)
-  const errors = useMemo(() => validate(deferredValues), [deferredValues])
-  const errFor = (name) => (showAllErrors || touched[name]) ? errors[name] : ''
-
   const broadcastMin = useMemo(() => ({ min: todayIso() }), [])
-  const mainContentInputProps = useMemo(() => ({ maxLength: MAIN_CONTENT_MAX }), [])
 
-  const reset = () => {
-    setValues(INITIAL); setAttachment(null); setTouched({}); setShowAllErrors(false)
-  }
-
-  const submit = async (e) => {
-    e.preventDefault()
-    setShowAllErrors(true)
-    if (Object.keys(errors).length > 0) {
-      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
-      return
-    }
+  const submit = async (values) => {
     setSubmitting(true)
     try {
       const dto = {
@@ -89,26 +59,26 @@ export default function DiaBulkBroadcast() {
         mainContent: values.mainContent.trim(),
         // Backend still types `broadcastThrough` as `String` (not List) as of
         // 2026-09-19; send the first selected channel. Switch back to
-        // `toBackendChannels(values.channels)` once Sameer changes the column.
+        // `toBackendChannels(values.channels)` once backend changes column.
         broadcastThrough: toBackendChannels(values.channels)[0] || null,
         link: values.link.trim() || null,
         attachment: null,
       }
       const created = await createContent(DIA_ENDPOINTS.BROADCAST, dto)
-      if (attachment && created?.id) {
+      if (values.attachment && created?.id) {
         try {
-          const urls = await uploadContentAttachments(DIA_ENDPOINTS.BROADCAST, created.id, [attachment])
+          const urls = await uploadContentAttachments(DIA_ENDPOINTS.BROADCAST, created.id, [values.attachment])
           if (urls[0]) {
             await updateContent(DIA_ENDPOINTS.BROADCAST, created.id, { ...dto, attachment: urls[0] })
           }
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
-          reset()
+          methods.reset(INITIAL)
           return
         }
       }
       setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      reset()
+      methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -116,49 +86,40 @@ export default function DiaBulkBroadcast() {
     }
   }
 
-  const chars = values.mainContent.length
-  const contentErr = errFor('mainContent')
+  const reset = () => methods.reset(INITIAL)
 
   return (
     <PmuFormShell
       title="Bulk Broadcast"
       subtitle="Draft a SMS / WhatsApp broadcast — submits to SIDBI HO Checker for approval."
       approvalNote="Once submitted, this broadcast goes to the SIDBI HO Checker for approval. Recipients receive it only after approval."
-      onSubmit={submit} onReset={reset}
+      methods={methods}
+      onSubmit={submit}
+      onReset={reset}
       submitting={submitting}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Broadcast details">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth required label="Topic"
-              value={values.topic} onChange={set('topic')} onBlur={blur('topic')}
-              error={!!errFor('topic')} helperText={errFor('topic')}
-            />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth required label="Subject line"
-              value={values.subject} onChange={set('subject')} onBlur={blur('subject')}
-              error={!!errFor('subject')} helperText={errFor('subject')}
-            />
+            <RhfTextField name="subject" fullWidth required label="Subject line" rules={REQUIRED_TEXT} />
           </FieldCell>
           <FieldCell>
-            <FormTextField
-              fullWidth required multiline minRows={2}
+            <RhfTextField
+              name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              value={values.relevance} onChange={set('relevance')} onBlur={blur('relevance')}
-              error={!!errFor('relevance')} helperText={errFor('relevance')}
+              rules={REQUIRED_TEXT}
             />
           </FieldCell>
           <FieldCell>
-            <FormTextField
-              fullWidth required multiline minRows={2}
+            <RhfTextField
+              name="sample" fullWidth required multiline minRows={2}
               label="Sample for the bulk broadcast"
               placeholder="Who receives this — audience, filters, sample size…"
-              value={values.sample} onChange={set('sample')} onBlur={blur('sample')}
-              error={!!errFor('sample')} helperText={errFor('sample')}
+              rules={REQUIRED_TEXT}
             />
           </FieldCell>
         </FieldRow>
@@ -167,28 +128,25 @@ export default function DiaBulkBroadcast() {
       <PmuSection title="Delivery">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth type="date" required label="Date of broadcast"
+            <RhfTextField
+              name="broadcastDate" fullWidth type="date" required label="Date of broadcast"
               InputLabelProps={SHRINK_LABEL}
               inputProps={broadcastMin}
-              value={values.broadcastDate} onChange={set('broadcastDate')} onBlur={blur('broadcastDate')}
-              error={!!errFor('broadcastDate')} helperText={errFor('broadcastDate')}
+              rules={{
+                required: 'Required.',
+                validate: (v) => (v && v >= todayIso()) ? true : 'Broadcast date must be today or later.',
+              }}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormControl fullWidth required error={!!errFor('channels')}>
-              <InputLabel id="channels-label">Broadcast through</InputLabel>
-              <Select
-                labelId="channels-label" multiple
-                value={values.channels}
-                onChange={handleChannelsChange}
-                input={<OutlinedInput label="Broadcast through" />}
-                renderValue={CHIP_RENDER_VALUE}
-              >
-                {CHANNELS.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-              </Select>
-              {errFor('channels') && <FormHelperText>{errFor('channels')}</FormHelperText>}
-            </FormControl>
+            <RhfSelectField
+              name="channels"
+              label="Broadcast through"
+              multiple required
+              options={CHANNELS}
+              renderValue={CHIP_RENDER_VALUE}
+              rules={{ validate: (v) => (Array.isArray(v) && v.length) ? true : 'Pick at least one channel.' }}
+            />
           </FieldCell>
         </FieldRow>
       </PmuSection>
@@ -196,29 +154,24 @@ export default function DiaBulkBroadcast() {
       <PmuSection title="Message body">
         <FieldRow>
           <FieldCell>
-            <FormTextField
-              fullWidth required multiline minRows={6}
-              label="Main content"
-              value={values.mainContent} onChange={setMainContent} onBlur={blur('mainContent')}
-              error={!!contentErr} helperText={contentErr || `${chars} / ${MAIN_CONTENT_MAX} characters`}
-              inputProps={mainContentInputProps}
-            />
+            <MainContentField />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
+            <RhfTextField
+              name="link"
               fullWidth label="Link" placeholder="https://…"
-              value={values.link} onChange={set('link')} onBlur={blur('link')}
-              error={!!errFor('link')} helperText={errFor('link')}
               InputProps={LINK_ADORNMENT}
+              rules={{
+                validate: (v) => (!v || URL_RE.test(String(v).trim())) ? true : 'Enter a valid URL.',
+              }}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FileDropField
+            <RhfFileField
+              name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
               helperText="PDF, Word, PPT or image. Optional."
-              files={attachment}
-              onChange={setAttachment}
             />
           </FieldCell>
         </FieldRow>
@@ -227,13 +180,28 @@ export default function DiaBulkBroadcast() {
   )
 }
 
-function validate(v) {
-  const errs = {}
-  for (const k of REQUIRED_TEXT) if (!String(v[k] || '').trim()) errs[k] = 'Required.'
-  if (!v.broadcastDate) errs.broadcastDate = 'Required.'
-  else if (v.broadcastDate < todayIso()) errs.broadcastDate = 'Broadcast date must be today or later.'
-  if (!v.channels?.length) errs.channels = 'Pick at least one channel.'
-  if (v.link && !URL_RE.test(v.link.trim())) errs.link = 'Enter a valid URL.'
-  if (v.mainContent.length > MAIN_CONTENT_MAX) errs.mainContent = `Keep the main content under ${MAIN_CONTENT_MAX} characters.`
-  return errs
+// Live character counter uses `useWatch` — the surrounding form doesn't
+// re-render on keystrokes, only this leaf does.
+function MainContentField() {
+  const value = useWatch({ name: 'mainContent' }) || ''
+  const helper = `${value.length} / ${MAIN_CONTENT_MAX} characters`
+  return (
+    <RhfTextField
+      name="mainContent"
+      fullWidth required multiline minRows={6}
+      label="Main content"
+      inputProps={MAIN_INPUT_PROPS}
+      helperText={helper}
+      rules={{
+        validate: (v) => {
+          const s = String(v || '').trim()
+          if (!s) return 'Required.'
+          if (s.length > MAIN_CONTENT_MAX) return `Keep the main content under ${MAIN_CONTENT_MAX} characters.`
+          return true
+        },
+      }}
+    />
+  )
 }
+
+const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }

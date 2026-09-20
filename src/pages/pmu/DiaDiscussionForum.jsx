@@ -1,11 +1,11 @@
-import { useDeferredValue, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   FormControlLabel, Radio, RadioGroup, Typography,
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
-  FormTextField, SHRINK_LABEL, useFieldHandlers,
+  RhfTextField, SHRINK_LABEL, useForm, useWatch, Controller,
 } from './_shared'
 import { createContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
@@ -17,8 +17,6 @@ const VISIBILITY_OPTIONS = [
   { value: 'members', label: 'Only Members' },
 ]
 
-const REQUIRED_TEXT = ['topic', 'theme', 'relevance']
-
 const INITIAL = {
   topic: '', theme: '',
   relevance: '',
@@ -27,31 +25,13 @@ const INITIAL = {
 }
 
 export default function DiaDiscussionForum() {
-  const theme = useTheme()
-  const [values, setValues] = useState(INITIAL)
-  const [touched, setTouched] = useState({})
-  const [showAllErrors, setShowAllErrors] = useState(false)
+  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const { set, blur } = useFieldHandlers(setValues, setTouched)
-  // Defer validation so keystrokes stay snappy — see 3C form for rationale.
-  const deferredValues = useDeferredValue(values)
-  const errors = useMemo(() => validate(deferredValues), [deferredValues])
-  const errFor = (name) => (showAllErrors || touched[name]) ? errors[name] : ''
-
   const startMin = useMemo(() => ({ min: todayIso() }), [])
-  const endMin = useMemo(() => ({ min: values.startDate || todayIso() }), [values.startDate])
 
-  const reset = () => { setValues(INITIAL); setTouched({}); setShowAllErrors(false) }
-
-  const submit = async (e) => {
-    e.preventDefault()
-    setShowAllErrors(true)
-    if (Object.keys(errors).length > 0) {
-      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
-      return
-    }
+  const submit = async (values) => {
     setSubmitting(true)
     try {
       await createContent(DIA_ENDPOINTS.FORUM, {
@@ -63,7 +43,7 @@ export default function DiaDiscussionForum() {
         globalOrOnlyMembers: values.visibility === 'members' ? 'MEMBERS' : 'GLOBAL',
       })
       setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      reset()
+      methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -71,37 +51,33 @@ export default function DiaDiscussionForum() {
     }
   }
 
+  const reset = () => methods.reset(INITIAL)
+
   return (
     <PmuFormShell
       title="Discussion Forum"
       subtitle="Open a forum thread — submits to SIDBI HO Checker for approval."
       approvalNote="Once submitted, this thread goes to the SIDBI HO Checker for approval. It becomes visible to participants only after approval."
-      onSubmit={submit} onReset={reset}
+      methods={methods}
+      onSubmit={submit}
+      onReset={reset}
       submitting={submitting}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Thread details">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth required label="Topic"
-              value={values.topic} onChange={set('topic')} onBlur={blur('topic')}
-              error={!!errFor('topic')} helperText={errFor('topic')}
-            />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth required label="Theme"
-              value={values.theme} onChange={set('theme')} onBlur={blur('theme')}
-              error={!!errFor('theme')} helperText={errFor('theme')}
-            />
+            <RhfTextField name="theme" fullWidth required label="Theme" rules={REQUIRED_TEXT} />
           </FieldCell>
           <FieldCell>
-            <FormTextField
+            <RhfTextField
+              name="relevance"
               fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              value={values.relevance} onChange={set('relevance')} onBlur={blur('relevance')}
-              error={!!errFor('relevance')} helperText={errFor('relevance')}
+              rules={REQUIRED_TEXT}
             />
           </FieldCell>
         </FieldRow>
@@ -110,42 +86,18 @@ export default function DiaDiscussionForum() {
       <PmuSection title="Schedule & visibility">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth type="date" required label="Start date"
+            <RhfTextField
+              name="startDate" fullWidth type="date" required label="Start date"
               InputLabelProps={SHRINK_LABEL}
               inputProps={startMin}
-              value={values.startDate} onChange={set('startDate')} onBlur={blur('startDate')}
-              error={!!errFor('startDate')} helperText={errFor('startDate')}
+              rules={REQUIRED_DATE}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth type="date" required label="End date"
-              InputLabelProps={SHRINK_LABEL}
-              inputProps={endMin}
-              value={values.endDate} onChange={set('endDate')} onBlur={blur('endDate')}
-              error={!!errFor('endDate')} helperText={errFor('endDate')}
-            />
+            <EndDateField />
           </FieldCell>
           <FieldCell>
-            <Typography
-              sx={{
-                fontSize: 12.5, fontWeight: 500,
-                color: theme.palette.text.secondary, mb: '6px',
-              }}
-            >
-              Visibility
-            </Typography>
-            <RadioGroup row value={values.visibility} onChange={set('visibility')}>
-              {VISIBILITY_OPTIONS.map((o) => (
-                <FormControlLabel
-                  key={o.value} value={o.value}
-                  control={<Radio />}
-                  label={o.label}
-                  sx={{ mr: 4 }}
-                />
-              ))}
-            </RadioGroup>
+            <VisibilityRadio />
           </FieldCell>
         </FieldRow>
       </PmuSection>
@@ -153,11 +105,54 @@ export default function DiaDiscussionForum() {
   )
 }
 
-function validate(v) {
-  const errs = {}
-  for (const k of REQUIRED_TEXT) if (!String(v[k] || '').trim()) errs[k] = 'Required.'
-  if (!v.startDate) errs.startDate = 'Required.'
-  if (!v.endDate) errs.endDate = 'Required.'
-  if (v.startDate && v.endDate && v.endDate < v.startDate) errs.endDate = 'End date must be on or after the start date.'
-  return errs
+const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }
+const REQUIRED_DATE = { required: 'Required.' }
+
+function EndDateField() {
+  const startDate = useWatch({ name: 'startDate' })
+  const inputProps = useMemo(() => ({ min: startDate || todayIso() }), [startDate])
+  return (
+    <RhfTextField
+      name="endDate" fullWidth type="date" required label="End date"
+      InputLabelProps={SHRINK_LABEL}
+      inputProps={inputProps}
+      rules={{
+        required: 'Required.',
+        validate: (v, all) => (v && all.startDate && v < all.startDate)
+          ? 'End date must be on or after the start date.'
+          : true,
+      }}
+    />
+  )
+}
+
+function VisibilityRadio() {
+  const theme = useTheme()
+  return (
+    <>
+      <Typography
+        sx={{
+          fontSize: 12.5, fontWeight: 500,
+          color: theme.palette.text.secondary, mb: '6px',
+        }}
+      >
+        Visibility
+      </Typography>
+      <Controller
+        name="visibility"
+        render={({ field }) => (
+          <RadioGroup row {...field}>
+            {VISIBILITY_OPTIONS.map((o) => (
+              <FormControlLabel
+                key={o.value} value={o.value}
+                control={<Radio />}
+                label={o.label}
+                sx={{ mr: 4 }}
+              />
+            ))}
+          </RadioGroup>
+        )}
+      />
+    </>
+  )
 }

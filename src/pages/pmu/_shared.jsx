@@ -1,6 +1,10 @@
 import { memo, useCallback, useRef } from 'react'
 import {
-  Alert, Box, Button, Chip, CircularProgress, Snackbar, Stack, TextField, Typography,
+  Controller, FormProvider, useFormContext,
+} from 'react-hook-form'
+import {
+  Alert, Box, Button, Chip, CircularProgress, FormControl, FormHelperText,
+  InputLabel, MenuItem, OutlinedInput, Select, Snackbar, Stack, TextField, Typography,
 } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined'
@@ -30,8 +34,59 @@ export function PmuFormShell({
   submitting = false,
   toast,
   onToastClose,
+  // When provided, the shell installs an RHF FormProvider around
+  // `children` and treats onSubmit as the naked async handler. Callers
+  // typically pass `methods` from `useForm(...)` and an async
+  // `(values) => …` handler; the shell will `handleSubmit`-wrap it.
+  methods = null,
 }) {
   const theme = useTheme()
+  const submitProp = methods && typeof onSubmit === 'function'
+    ? methods.handleSubmit(onSubmit)
+    : onSubmit
+  const body = (
+    <Box
+      component="form"
+      onSubmit={submitProp}
+      noValidate
+      sx={stackedLabelSx}
+    >
+      {children}
+
+      <Stack
+        direction="row"
+        spacing={1.25}
+        justifyContent="flex-end"
+        sx={{
+          mt: 5,
+          pt: 3,
+          borderTop: 1,
+          borderColor: alpha(theme.palette.text.primary, 0.08),
+        }}
+      >
+        {onReset && (
+          <Button
+            variant="text"
+            onClick={onReset}
+            disabled={submitting}
+            sx={{ textTransform: 'none', color: theme.palette.text.secondary }}
+          >
+            Reset
+          </Button>
+        )}
+        <Button
+          type="submit"
+          variant="contained"
+          disableElevation
+          disabled={submitting}
+          startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : null}
+          sx={{ textTransform: 'none', px: 3, fontWeight: 600 }}
+        >
+          {submitting ? 'Submitting…' : submitLabel}
+        </Button>
+      </Stack>
+    </Box>
+  )
   return (
     <Box sx={{ maxWidth: 940, mx: 'auto' }}>
       <PageHeader
@@ -54,47 +109,7 @@ export function PmuFormShell({
         </Typography>
       )}
 
-      <Box
-        component="form"
-        onSubmit={onSubmit}
-        noValidate
-        sx={stackedLabelSx}
-      >
-        {children}
-
-        <Stack
-          direction="row"
-          spacing={1.25}
-          justifyContent="flex-end"
-          sx={{
-            mt: 5,
-            pt: 3,
-            borderTop: 1,
-            borderColor: alpha(theme.palette.text.primary, 0.08),
-          }}
-        >
-          {onReset && (
-            <Button
-              variant="text"
-              onClick={onReset}
-              disabled={submitting}
-              sx={{ textTransform: 'none', color: theme.palette.text.secondary }}
-            >
-              Reset
-            </Button>
-          )}
-          <Button
-            type="submit"
-            variant="contained"
-            disableElevation
-            disabled={submitting}
-            startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : null}
-            sx={{ textTransform: 'none', px: 3, fontWeight: 600 }}
-          >
-            {submitting ? 'Submitting…' : submitLabel}
-          </Button>
-        </Stack>
-      </Box>
+      {methods ? <FormProvider {...methods}>{body}</FormProvider> : body}
 
       <Snackbar
         open={!!toast}
@@ -396,4 +411,142 @@ function shallowEqObj(a, b) {
   if (ak.length !== bk.length) return false
   for (const k of ak) if (a[k] !== b[k]) return false
   return true
+}
+
+// ─── React Hook Form primitives ───────────────────────────────────────────
+//
+// Why: our forms were controlled-state per keystroke, which made every
+// keystroke re-render every field via the top-of-tree `values` object.
+// Memo, useDeferredValue, and per-field handler caches all helped but
+// couldn't fix the underlying "one keystroke → whole tree walks"
+// architecture. RHF stores values in a ref-backed store; each `Controller`
+// subscribes only to its own field, so typing in field A doesn't touch
+// fields B..Z at all. Memoization is basically free once you're on RHF.
+//
+// Usage in a form:
+//
+//   const methods = useForm({ defaultValues: INITIAL })
+//   const onSubmit = methods.handleSubmit(async (values) => { ... })
+//   return (
+//     <RhfProvider methods={methods} onSubmit={onSubmit}>
+//       <RhfTextField name="topic" label="Topic" required />
+//       <RhfTextField name="content" label="Main content" multiline minRows={4} />
+//       <RhfSelect name="visibility" label="Visibility" options={[...]}/>
+//       …
+//     </RhfProvider>
+//   )
+//
+// Re-export bits so pages only import from './_shared'.
+export { useForm, useFieldArray, useWatch, Controller, FormProvider } from 'react-hook-form'
+
+// Thin provider — pages don't reach into RHF's plumbing directly.
+export function RhfProvider({ methods, onSubmit, children }) {
+  return (
+    <FormProvider {...methods}>
+      <Box component="form" onSubmit={onSubmit} noValidate sx={stackedLabelSx}>
+        {children}
+      </Box>
+    </FormProvider>
+  )
+}
+
+// RhfTextField — the workhorse. Wraps FormTextField in a Controller so
+// only this field re-renders on its own keystrokes.
+//
+// Props:
+//   name         (required) form field path — dot notation for arrays,
+//                e.g. `activities.0.nameOfActivity`.
+//   rules        RHF validation rules (see hookform docs). Optional.
+//   defaultValue Falls back to '' if you skip it. RHF requires a value at
+//                mount for controlled inputs — otherwise you'd see the
+//                console warning about switching from uncontrolled → controlled.
+//   Everything else is forwarded to <FormTextField> unchanged.
+export function RhfTextField({
+  name, rules, defaultValue = '', helperText, ...rest
+}) {
+  const { control } = useFormContext()
+  return (
+    <Controller
+      name={name}
+      control={control}
+      rules={rules}
+      defaultValue={defaultValue}
+      render={({ field, fieldState }) => (
+        <FormTextField
+          {...rest}
+          {...field}
+          value={field.value ?? ''}
+          error={!!fieldState.error}
+          helperText={fieldState.error?.message || helperText}
+        />
+      )}
+    />
+  )
+}
+
+// RhfSelectField — dropdown / multi-select. For multi-select pass the
+// `multiple` boolean. `renderValue` is optional (defaults to comma-join).
+// Options: [{ value, label }] or bare strings (label = value).
+export function RhfSelectField({
+  name, rules, defaultValue, label, options = [], multiple = false,
+  renderValue, helperText, required, ...rest
+}) {
+  const { control } = useFormContext()
+  const initial = defaultValue !== undefined ? defaultValue : (multiple ? [] : '')
+  const opts = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o))
+  return (
+    <Controller
+      name={name}
+      control={control}
+      rules={rules}
+      defaultValue={initial}
+      render={({ field, fieldState }) => (
+        <FormControl fullWidth required={required} error={!!fieldState.error} {...rest}>
+          <InputLabel id={`${name}-label`}>{label}</InputLabel>
+          <Select
+            labelId={`${name}-label`}
+            multiple={multiple}
+            value={field.value ?? initial}
+            onChange={(e) => field.onChange(e.target.value)}
+            onBlur={field.onBlur}
+            input={<OutlinedInput label={label} />}
+            renderValue={renderValue}
+          >
+            {opts.map((o) => (
+              <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+            ))}
+          </Select>
+          <FormHelperText>{fieldState.error?.message || helperText || ' '}</FormHelperText>
+        </FormControl>
+      )}
+    />
+  )
+}
+
+// RhfFileField — dashed drop-zone that stores a File (or File[]) in the
+// form state. Wraps `FileDropField` in a Controller.
+export function RhfFileField({
+  name, rules, multiple = false, label, accept, helperText,
+}) {
+  const { control } = useFormContext()
+  return (
+    <Controller
+      name={name}
+      control={control}
+      rules={rules}
+      defaultValue={multiple ? [] : null}
+      render={({ field, fieldState }) => (
+        <Box>
+          <FileDropField
+            label={label}
+            accept={accept}
+            helperText={fieldState.error?.message || helperText}
+            multiple={multiple}
+            files={field.value}
+            onChange={field.onChange}
+          />
+        </Box>
+      )}
+    />
+  )
 }

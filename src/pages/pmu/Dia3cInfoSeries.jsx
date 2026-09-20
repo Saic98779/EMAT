@@ -1,10 +1,8 @@
-import { useCallback, useDeferredValue, useMemo, useState } from 'react'
-import {
-  FormControl, InputLabel, MenuItem, OutlinedInput, Select,
-} from '@mui/material'
+import { useMemo, useState } from 'react'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, FileDropField, todayIso,
-  FormTextField, SHRINK_LABEL, useFieldHandlers, CHIP_RENDER_VALUE,
+  RhfTextField, RhfSelectField, RhfFileField, SHRINK_LABEL, CHIP_RENDER_VALUE,
+  useForm,
 } from './_shared'
 import {
   createContent, updateContent, uploadContentAttachments,
@@ -14,54 +12,28 @@ import {
 // DIA — 3C Info-Series
 // GT_PMU raises; SIDBI HO Checker approves.
 
-const CHANNELS = ['Email', 'SMS', 'WhatsApp']
+const CHANNELS = [
+  { value: 'Email', label: 'Email' },
+  { value: 'SMS', label: 'SMS' },
+  { value: 'WhatsApp', label: 'WhatsApp' },
+]
 const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp'
-
-const REQUIRED = ['topic', 'chapterNo', 'subjectLine', 'relevance', 'brief', 'mainContent']
 
 const INITIAL = {
   topic: '', chapterNo: '', subjectLine: '',
   relevance: '', brief: '', mainContent: '',
   channels: [], publishDate: '',
+  attachment: null,
 }
 
 export default function Dia3cInfoSeries() {
-  const [values, setValues] = useState(INITIAL)
-  const [attachment, setAttachment] = useState(null)
-  const [touched, setTouched] = useState({})
-  const [showAllErrors, setShowAllErrors] = useState(false)
+  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const { set, blur } = useFieldHandlers(setValues, setTouched)
-
-  // Defer the values used for validation so `validate()` runs off the
-  // critical path — keystrokes render immediately, error re-computation
-  // catches up on idle. Same pattern the IA registration form uses.
-  const deferredValues = useDeferredValue(values)
-  const errors = useMemo(() => validate(deferredValues), [deferredValues])
-  const errFor = (name) => (showAllErrors || touched[name]) ? errors[name] : ''
-
-  // Stable Select onChange so the MUI Select isn't re-instantiated on every
-  // keystroke in unrelated text fields.
-  const handleChannelsChange = useCallback(
-    (e) => setValues((p) => ({ ...p, channels: e.target.value })),
-    [],
-  )
-
   const publishMin = useMemo(() => ({ min: todayIso() }), [])
 
-  const reset = () => {
-    setValues(INITIAL); setAttachment(null); setTouched({}); setShowAllErrors(false)
-  }
-
-  const submit = async (e) => {
-    e.preventDefault()
-    setShowAllErrors(true)
-    if (Object.keys(errors).length > 0) {
-      setToast({ severity: 'warning', msg: 'Please fix the highlighted fields.' })
-      return
-    }
+  const submit = async (values) => {
     setSubmitting(true)
     try {
       const dto = {
@@ -76,20 +48,20 @@ export default function Dia3cInfoSeries() {
         attachment: null,
       }
       const created = await createContent(DIA_ENDPOINTS.INFO_SERIES, dto)
-      if (attachment && created?.id) {
+      if (values.attachment && created?.id) {
         try {
-          const urls = await uploadContentAttachments(DIA_ENDPOINTS.INFO_SERIES, created.id, [attachment])
+          const urls = await uploadContentAttachments(DIA_ENDPOINTS.INFO_SERIES, created.id, [values.attachment])
           if (urls[0]) {
             await updateContent(DIA_ENDPOINTS.INFO_SERIES, created.id, { ...dto, attachment: urls[0] })
           }
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
-          reset()
+          methods.reset(INITIAL)
           return
         }
       }
       setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      reset()
+      methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -97,36 +69,28 @@ export default function Dia3cInfoSeries() {
     }
   }
 
+  const reset = () => methods.reset(INITIAL)
+
   return (
     <PmuFormShell
       title="3C Info-Series"
       subtitle="Draft an info-series entry — submits to SIDBI HO Checker for approval."
-      onSubmit={submit} onReset={reset}
+      methods={methods}
+      onSubmit={submit}
+      onReset={reset}
       submitting={submitting}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Entry details">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth required label="Topic"
-              value={values.topic} onChange={set('topic')} onBlur={blur('topic')}
-              error={!!errFor('topic')} helperText={errFor('topic')}
-            />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth required label="Chapter No."
-              value={values.chapterNo} onChange={set('chapterNo')} onBlur={blur('chapterNo')}
-              error={!!errFor('chapterNo')} helperText={errFor('chapterNo')}
-            />
+            <RhfTextField name="chapterNo" fullWidth required label="Chapter No." rules={REQUIRED_TEXT} />
           </FieldCell>
           <FieldCell>
-            <FormTextField
-              fullWidth required label="Subject line"
-              value={values.subjectLine} onChange={set('subjectLine')} onBlur={blur('subjectLine')}
-              error={!!errFor('subjectLine')} helperText={errFor('subjectLine')}
-            />
+            <RhfTextField name="subjectLine" fullWidth required label="Subject line" rules={REQUIRED_TEXT} />
           </FieldCell>
         </FieldRow>
       </PmuSection>
@@ -134,27 +98,24 @@ export default function Dia3cInfoSeries() {
       <PmuSection title="Content" description="Short summary + full body copy that goes out.">
         <FieldRow>
           <FieldCell>
-            <FormTextField
-              fullWidth required multiline minRows={2}
+            <RhfTextField
+              name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              value={values.relevance} onChange={set('relevance')} onBlur={blur('relevance')}
-              error={!!errFor('relevance')} helperText={errFor('relevance')}
+              rules={REQUIRED_TEXT}
             />
           </FieldCell>
           <FieldCell>
-            <FormTextField
-              fullWidth required multiline minRows={3}
+            <RhfTextField
+              name="brief" fullWidth required multiline minRows={3}
               label="Brief of the content"
-              value={values.brief} onChange={set('brief')} onBlur={blur('brief')}
-              error={!!errFor('brief')} helperText={errFor('brief')}
+              rules={REQUIRED_TEXT}
             />
           </FieldCell>
           <FieldCell>
-            <FormTextField
-              fullWidth required multiline minRows={6}
+            <RhfTextField
+              name="mainContent" fullWidth required multiline minRows={6}
               label="Main content"
-              value={values.mainContent} onChange={set('mainContent')} onBlur={blur('mainContent')}
-              error={!!errFor('mainContent')} helperText={errFor('mainContent')}
+              rules={REQUIRED_TEXT}
             />
           </FieldCell>
         </FieldRow>
@@ -163,35 +124,27 @@ export default function Dia3cInfoSeries() {
       <PmuSection title="Delivery">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormControl fullWidth>
-              <InputLabel id="channels-label">Bulk messaging</InputLabel>
-              <Select
-                labelId="channels-label" multiple
-                value={values.channels}
-                onChange={handleChannelsChange}
-                input={<OutlinedInput label="Bulk messaging" />}
-                renderValue={CHIP_RENDER_VALUE}
-              >
-                {CHANNELS.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <RhfSelectField
+              name="channels"
+              label="Bulk messaging"
+              multiple
+              options={CHANNELS}
+              renderValue={CHIP_RENDER_VALUE}
+            />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <FormTextField
-              fullWidth type="date" label="Proposed publish date"
+            <RhfTextField
+              name="publishDate" fullWidth type="date" label="Proposed publish date"
               InputLabelProps={SHRINK_LABEL}
               inputProps={publishMin}
-              value={values.publishDate} onChange={set('publishDate')} onBlur={blur('publishDate')}
-              error={!!errFor('publishDate')} helperText={errFor('publishDate')}
             />
           </FieldCell>
           <FieldCell>
-            <FileDropField
+            <RhfFileField
+              name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
               helperText="PDF, Word, PPT, PNG or JPG. Optional."
-              files={attachment}
-              onChange={setAttachment}
             />
           </FieldCell>
         </FieldRow>
@@ -200,9 +153,4 @@ export default function Dia3cInfoSeries() {
   )
 }
 
-function validate(v) {
-  const errs = {}
-  for (const k of REQUIRED) if (!String(v[k] || '').trim()) errs[k] = 'Required.'
-  if (v.publishDate && v.publishDate < todayIso()) errs.publishDate = 'Publish date must be today or later.'
-  return errs
-}
+const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }
