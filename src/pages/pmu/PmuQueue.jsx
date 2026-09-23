@@ -12,14 +12,25 @@ import { useBseList } from '../../queries'
 
 const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 
-// Workflow gate: PMU only sees records that GT has RECOMMENDED and that PMU
-// hasn't decided yet. Applied client-side because the `/pmu-recommendation/
-// {status}` endpoint doesn't currently express "pending" (see notes on the
-// backend enum discussion).
+// Workflow gate: PMU only sees records that GT has RECOMMENDED and PMU
+// hasn't decided yet. Mirror of `isHoPending` in HoBseApprovals.jsx —
+// only "Recommended" cascades to the next reviewer; "Not Recommended"
+// ends the chain at whichever stage rejected. Applied client-side
+// because `/pmu-recommendation/{status}` returns already-decided
+// records, not the pending set.
 function isPmuPending(r) {
   const gt = String(r.raw?.gtRecommendation || '').toLowerCase()
   const pmu = String(r.raw?.pmuRecommendation || '').trim()
   return gt === 'recommended' && !pmu
+}
+
+// Row can only reach this queue when GT === "Recommended", but keep the
+// mapping defensive in case backend adds new decision values.
+function gtChipColor(v) {
+  const s = String(v || '').trim().toLowerCase()
+  if (s === 'recommended') return 'success'
+  if (s === 'not recommended') return 'error'
+  return 'default'
 }
 
 // BSE recommendations waiting for the GT PMU's decision. Row click opens
@@ -97,7 +108,12 @@ export default function PmuQueue() {
                   </TableCell>
                   <TableCell><Typography variant="body2">{r.ia}</Typography></TableCell>
                   <TableCell>
-                    <Chip size="small" color="success" label={r.raw?.gtRecommendation || 'Recommended'} sx={{ fontWeight: 600 }} />
+                    <Chip
+                      size="small"
+                      color={gtChipColor(r.raw?.gtRecommendation)}
+                      label={r.raw?.gtRecommendation || '—'}
+                      sx={{ fontWeight: 600 }}
+                    />
                   </TableCell>
                   <TableCell align="right">
                     <Button size="small" variant="outlined" startIcon={<VisibilityOutlinedIcon />}

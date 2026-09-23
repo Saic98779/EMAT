@@ -61,6 +61,8 @@ import HoDisbursementApprovals from './pages/ho/HoDisbursementApprovals'
 import HoDisbursementReview from './pages/ho/HoDisbursementReview'
 import HoBseApprovals from './pages/ho/HoBseApprovals'
 import HoBseReview from './pages/ho/HoBseReview'
+import PanelSubmissionQueue from './pages/ho/PanelSubmissionQueue'
+import PanelSubmissionUpload from './pages/ho/PanelSubmissionUpload'
 import HoCapacityBuildingReview from './pages/ho/HoCapacityBuildingReview'
 
 import PmuDashboard from './pages/pmu/PmuDashboard'
@@ -268,6 +270,8 @@ export default function App() {
         <Route path="/sde/capacity-building-officials" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoCapacityBuildingReview /></DenyRawRoles>} />
         <Route path="/sde/action-plan" element={<DenyRawRoles roles={['CLUSTER_EXPERT']}><ActionPlan /></DenyRawRoles>} />
         <Route path="/sde/bse/:uuid/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseReview /></DenyRawRoles>} />
+        <Route path="/sde/panel-submissions" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><PanelSubmissionQueue /></DenyRawRoles>} />
+        <Route path="/sde/panel-submissions/:uuid" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><PanelSubmissionUpload /></DenyRawRoles>} />
       </Route>
 
       {/* BSE — field officer */}

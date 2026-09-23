@@ -82,7 +82,6 @@ export default function HoBseReview() {
     committeeRecommendation: d.recommendation,
     committeeDate: d.date || todayIso(),
     committeeRemarks: d.remarks,
-    committeeMom: d.mom,
   }), [doSave])
 
   const saveOnboarding = useCallback((d) => doSave('Onboarding details', {
@@ -246,7 +245,6 @@ const COMMITTEE_MAPPING = [
   ['recommendation', 'committeeRecommendation', false],
   ['date', 'committeeDate', true],
   ['remarks', 'committeeRemarks', false],
-  ['mom', 'committeeMom', false],
 ]
 
 const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
@@ -254,7 +252,6 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
     recommendation: initial.committeeRecommendation || '',
     date: (initial.committeeDate || '').slice(0, 10),
     remarks: initial.committeeRemarks || '',
-    mom: initial.committeeMom || '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -276,17 +273,8 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
         <Grid size={{ xs: 12, sm: 4 }}>
           <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} label="Committee status" />
         </Grid>
-        <Grid size={{ xs: 12, sm: 3 }}>
+        <Grid size={{ xs: 12, sm: 8 }}>
           <DateField value={d.date} onChange={set('date')} label="Committee date" />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 5 }}>
-          <TextInput
-            value={d.mom}
-            onChange={set('mom')}
-            label="MoM file / reference"
-            placeholder="e.g. committee_mom_2026-08-03.pdf"
-            helperText="Upload the actual PDF via the Supporting Documents panel; paste the filename here."
-          />
         </Grid>
         <Grid size={12}>
           <TextInput value={d.remarks} onChange={set('remarks')} label="Committee remarks" multiline />
@@ -296,6 +284,7 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
     </SectionCard>
   )
 })
+
 
 const ONBOARDING_MAPPING = [
   ['approvedSalary', 'approvedSalary', false],

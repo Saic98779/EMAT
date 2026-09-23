@@ -85,6 +85,7 @@ export const NAV = {
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'SIDBI HO Maker' },
     { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
     { icon: 'groups', label: 'BSE Approvals', path: '/sde/bse-approvals', overline: 'Approvals', title: 'BSE Approvals' },
+    { icon: 'doc', label: 'Panel Submissions', path: '/sde/panel-submissions', overline: 'Approvals', title: 'BSE Panel Submissions' },
     { icon: 'payments', label: 'Vendor Disbursements', path: '/sde/vendor-disbursements', overline: 'Approvals', title: 'Vendor Disbursements' },
     { icon: 'doc', label: 'Capacity Building', path: '/sde/capacity-building-officials', overline: 'Approvals', title: 'Capacity Building (IA Officials) Approvals' },
   ],
