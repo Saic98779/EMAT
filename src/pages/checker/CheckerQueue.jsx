@@ -146,7 +146,9 @@ function QueueBody({ type, cfg }) {
 
   const filtered = useMemo(() => {
     let list = rows
-    if (filter === 'pending')  list = rows.filter((r) => !r.status)
+    // Pending includes fresh submissions AND revert'd items the GT-PMU
+    // has resubmitted since (they need re-review). See isPending() below.
+    if (filter === 'pending')  list = rows.filter(isPending)
     if (filter === 'approved') list = rows.filter((r) => r.status === 'APPROVED')
     if (filter === 'rejected') list = rows.filter((r) => r.status === 'REJECT')
     if (filter === 'reverted') list = rows.filter((r) => r.status === 'REVERT')
@@ -304,11 +306,24 @@ function QueueRow({ cfg, row }) {
               )
             })}
             <AttachmentChip row={row} />
+            {wasResubmitted(row) && (
+              <Chip
+                label="Resubmitted"
+                size="small"
+                sx={{
+                  height: 20, fontSize: 12, fontWeight: 700,
+                  bgcolor: (t) => alpha(t.palette.info.main, 0.14),
+                  color: (t) => t.palette.info.dark,
+                  '.MuiChip-label': { px: 0.9 },
+                }}
+              />
+            )}
           </Stack>
           <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.75 }}>
             <AccessTimeRoundedIcon sx={{ fontSize: 12, color: theme.palette.text.disabled }} />
             <Typography sx={{ fontSize: 11.5, color: theme.palette.text.disabled }}>
-              {row.createdBy || 'Unknown'} · {timeAgo(row.createdAt)}
+              {row.createdBy || 'Unknown'} · submitted {timeAgo(row.createdAt)}
+              {row.updatedAt && row.updatedAt !== row.createdAt && ` · updated ${timeAgo(row.updatedAt)}`}
             </Typography>
           </Stack>
         </Box>
@@ -424,11 +439,26 @@ function collectAttachmentUrls(row) {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────
-// A row is "pending" only if the checker hasn't touched it yet. REVERT
-// items are the submitter's problem now — they need to resubmit — so
-// they shouldn't inflate the checker's "still to do" badge.
+// A row is "pending" if:
+//   • It's never been touched by the checker (`status == null`), OR
+//   • It was REVERTed and the GT-PMU has since edited it (a resubmit).
+//
+// Detection for the second case relies on the audit fields: when the
+// checker PATCHes /status, backend writes `updatedBy = sidbi_ho_checker`
+// while `createdBy` stays as the original PMU. When the PMU resubmits
+// via PUT, `updatedBy` flips back to their username (typically equal to
+// `createdBy`). So `status === 'REVERT' && updatedBy === createdBy`
+// means "waiting for me to re-review" as opposed to "waiting for the
+// PMU to act".
+export function wasResubmitted(row) {
+  if (row.status !== 'REVERT') return false
+  const created = String(row.createdBy || '').toLowerCase()
+  const updated = String(row.updatedBy || '').toLowerCase()
+  return !!created && created === updated
+}
+
 function isPending(row) {
-  return !row.status
+  return !row.status || wasResubmitted(row)
 }
 
 function formatCellValue(col, v) {

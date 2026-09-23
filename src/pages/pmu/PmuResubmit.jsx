@@ -4,6 +4,7 @@ import {
   Alert, Box, Button, CircularProgress, Stack, Typography,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import { alpha, useTheme } from '@mui/material/styles'
 import { PageHeader } from '../../components/shared'
 import { useContentRecord } from '../../queries'
@@ -92,8 +93,58 @@ export default function PmuResubmit() {
         </Box>
       }
     >
-      <Form editId={id} initialRecord={dto} />
+      <Box sx={{ maxWidth: 1080, mx: 'auto', pb: 10 }}>
+        <RevertBanner remark={dto.remark} typeLabel={cfg.label} backTo={`/gt/pmu/list/${type}/${id}`} />
+        <Form editId={id} initialRecord={dto} />
+      </Box>
     </Suspense>
+  )
+}
+
+// Prominent banner above the resubmit form — makes it obvious the user
+// is in edit mode and surfaces the checker's remark so they know what to
+// fix. Also gives an escape hatch back to the read-only view.
+function RevertBanner({ remark, typeLabel, backTo }) {
+  const theme = useTheme()
+  return (
+    <Box
+      sx={{
+        mt: 1, mb: 2, p: 2, borderRadius: 2,
+        border: 1, borderColor: alpha(theme.palette.warning.main, 0.4),
+        bgcolor: alpha(theme.palette.warning.main, 0.05),
+      }}
+    >
+      <Stack direction="row" spacing={1.25} alignItems="flex-start">
+        <HistoryRoundedIcon sx={{ fontSize: 22, color: theme.palette.warning.dark, mt: 0.15 }} />
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: theme.palette.warning.dark }}>
+            The checker sent this {typeLabel} back for changes.
+          </Typography>
+          {remark
+            ? (
+              <Typography sx={{ mt: 0.5, fontSize: 13, whiteSpace: 'pre-wrap', color: theme.palette.text.primary }}>
+                <b>Checker's remark:</b> {remark}
+              </Typography>
+            )
+            : (
+              <Typography sx={{ mt: 0.5, fontSize: 12.5, color: theme.palette.text.secondary }}>
+                No remark was recorded — reach out to the checker for guidance.
+              </Typography>
+            )}
+          <Typography sx={{ mt: 0.5, fontSize: 12, color: theme.palette.text.secondary }}>
+            Update the fields below and hit <b>Resubmit for Approval</b>.
+          </Typography>
+        </Box>
+        <Button
+          component={Link}
+          to={backTo}
+          size="small"
+          sx={{ textTransform: 'none', color: 'text.secondary', flexShrink: 0 }}
+        >
+          Cancel
+        </Button>
+      </Stack>
+    </Box>
   )
 }
 

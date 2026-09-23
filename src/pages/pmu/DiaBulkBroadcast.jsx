@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { InputAdornment } from '@mui/material'
 import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined'
 import {
@@ -65,6 +65,11 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
   const [submitting, setSubmitting] = useState(false)
 
   const broadcastMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
+
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     setSubmitting(true)
@@ -195,8 +200,10 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
               name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
-              helperText={isEdit && existingAttachment
-                ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+              helperText={isEdit
+                ? (existingAttachment
+                    ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                    : 'No file was previously attached. You can upload one now if needed.')
                 : 'PDF, Word, PPT or image. Optional.'}
             />
           </FieldCell>

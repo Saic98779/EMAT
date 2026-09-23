@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
@@ -30,6 +30,11 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
   const [submitting, setSubmitting] = useState(false)
 
   const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
+
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     setSubmitting(true)

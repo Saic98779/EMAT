@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
   RhfTextField, RhfFileField, SHRINK_LABEL, useForm, useWatch,
@@ -33,6 +33,11 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
   const [submitting, setSubmitting] = useState(false)
 
   const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
+
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     setSubmitting(true)
@@ -119,8 +124,10 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
           multiple
           label="Files"
           accept={ATTACHMENT_ACCEPT}
-          helperText={isEdit && existingAttachment
-            ? `Currently attached: ${String(existingAttachment).split('/').pop().split('?')[0]}. Pick files to replace it.`
+          helperText={isEdit
+            ? (existingAttachment
+                ? `Currently attached: ${String(existingAttachment).split('/').pop().split('?')[0]}. Pick files to replace it.`
+                : 'No files were previously attached. You can upload some now if needed.')
             : 'PDF, Word, PPT or image. Optional. You can add multiple.'}
         />
       </PmuSection>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Box, Button, IconButton, MenuItem, Stack, Typography,
 } from '@mui/material'
@@ -78,6 +78,11 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
 
   const { fields, append, remove } = useFieldArray({ control, name: 'questions' })
   const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
+
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     // Single/Multi Choice questions need at least two non-empty options
@@ -226,8 +231,10 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
           name="attachment"
           label="Reference document"
           accept={ATTACHMENT_ACCEPT}
-          helperText={isEdit && existingAttachment
-            ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+          helperText={isEdit
+            ? (existingAttachment
+                ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                : 'No file was previously attached. You can upload one now if needed.')
             : 'Word or PDF. Optional.'}
         />
       </PmuSection>

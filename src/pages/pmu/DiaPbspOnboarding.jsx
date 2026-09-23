@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { InputAdornment, MenuItem } from '@mui/material'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell,
@@ -95,6 +95,11 @@ export default function DiaPbspOnboarding({ editId = null, initialRecord = null 
   const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     setSubmitting(true)

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   FormControlLabel, Radio, RadioGroup, Typography,
 } from '@mui/material'
@@ -44,6 +44,11 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
   const [submitting, setSubmitting] = useState(false)
 
   const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
+
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     setSubmitting(true)

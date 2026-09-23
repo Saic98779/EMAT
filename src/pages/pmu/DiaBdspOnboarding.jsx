@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+// useEffect already imported above — used both for the state cascade and for
+// the resubmit reset guard added below.
 import { useFormContext } from 'react-hook-form'
 import {
   Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogContentText,
@@ -58,6 +60,11 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
   const [importFile, setImportFile] = useState(null)
   const [importing, setImporting] = useState(false)
   const importRef = useRef(null)
+
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     setSubmitting(true)

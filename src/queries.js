@@ -110,6 +110,7 @@ import {
 import {
   updateContentStatus, listContent, getContent,
 } from './apis/contentStatus'
+import { updateContent } from './apis/diaContent'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -1449,7 +1450,12 @@ export function useContentList(path, { enabled = true } = {}) {
     queryKey: contentKey.list(path),
     enabled: !!path && enabled,
     queryFn: ({ signal }) => listContent(path, { signal }).then(unwrapList),
-    staleTime: 60 * 1000,
+    // No stale window: the checker's queue and the GT-PMU's list must
+    // reflect status transitions and resubmits immediately. A 60s TTL
+    // hid GT-PMU resubmits from the checker until they hit Refresh.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   })
 }
 
@@ -1458,6 +1464,21 @@ export function useContentRecord(path, id) {
     queryKey: contentKey.detail(path, id),
     enabled: !!path && !!id,
     queryFn: ({ signal }) => getContent(path, id, { signal }),
+  })
+}
+
+// PUT /<path>/{id} — used by the GT-PMU resubmit flow to update a
+// REVERT'd record. Invalidates both the list and detail cache so the
+// checker's queue reflects the resubmit immediately (paired with the
+// zero-stale useContentList above).
+export function useUpdateContent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ path, id, body }) => updateContent(path, id, body),
+    onSuccess: (_data, { path, id }) => {
+      qc.invalidateQueries({ queryKey: contentKey.list(path), refetchType: 'all' })
+      if (id) qc.invalidateQueries({ queryKey: contentKey.detail(path, id) })
+    },
   })
 }
 

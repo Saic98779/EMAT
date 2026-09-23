@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, FileDropField, todayIso,
   RhfTextField, RhfSelectField, RhfFileField, SHRINK_LABEL, CHIP_RENDER_VALUE,
@@ -50,6 +50,15 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
   const [submitting, setSubmitting] = useState(false)
 
   const publishMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
+
+  // Belt-and-suspenders: RHF captures defaultValues on first mount, but
+  // if Suspense / lazy-loading mounts the form before `initialRecord` is
+  // fully hydrated, the initial defaults may be blank. Reset explicitly
+  // when the record arrives.
+  useEffect(() => {
+    if (initialRecord) methods.reset(recordToDefaults(initialRecord))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRecord])
 
   const submit = async (values) => {
     setSubmitting(true)
@@ -170,8 +179,10 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
               name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
-              helperText={isEdit && existingAttachment
-                ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+              helperText={isEdit
+                ? (existingAttachment
+                    ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                    : 'No file was previously attached. You can upload one now if needed.')
                 : 'PDF, Word, PPT, PNG or JPG. Optional.'}
             />
           </FieldCell>
