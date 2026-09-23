@@ -40,12 +40,31 @@ const INITIAL = {
   attachment: null,
 }
 
-export default function DiaBulkBroadcast() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  const channel = record.broadcastThrough
+  return {
+    topic: record.topic || '',
+    subject: record.subjectLine || '',
+    relevance: record.relevanceOfTopic || '',
+    sample: record.sampleForBroadcast || '',
+    broadcastDate: (record.dateOfBroadcast || '').slice(0, 10),
+    mainContent: record.mainContent || '',
+    channels: channel ? [channel] : [],
+    link: record.link || '',
+    attachment: null,
+  }
+}
+
+export default function DiaBulkBroadcast({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const existingAttachment = initialRecord?.attachment || null
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const broadcastMin = useMemo(() => ({ min: todayIso() }), [])
+  const broadcastMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
 
   const submit = async (values) => {
     setSubmitting(true)
@@ -57,28 +76,30 @@ export default function DiaBulkBroadcast() {
         sampleForBroadcast: values.sample.trim(),
         dateOfBroadcast: values.broadcastDate,
         mainContent: values.mainContent.trim(),
-        // Backend still types `broadcastThrough` as `String` (not List) as of
-        // 2026-09-19; send the first selected channel. Switch back to
-        // `toBackendChannels(values.channels)` once backend changes column.
         broadcastThrough: toBackendChannels(values.channels)[0] || null,
         link: values.link.trim() || null,
-        attachment: null,
+        attachment: isEdit ? existingAttachment : null,
       }
-      const created = await createContent(DIA_ENDPOINTS.BROADCAST, dto)
-      if (values.attachment && created?.id) {
+      const savedId = isEdit
+        ? (await updateContent(DIA_ENDPOINTS.BROADCAST, editId, dto))?.id ?? editId
+        : (await createContent(DIA_ENDPOINTS.BROADCAST, dto))?.id
+      if (values.attachment && savedId) {
         try {
-          const urls = await uploadContentAttachments(DIA_ENDPOINTS.BROADCAST, created.id, [values.attachment])
+          const urls = await uploadContentAttachments(DIA_ENDPOINTS.BROADCAST, savedId, [values.attachment])
           if (urls[0]) {
-            await updateContent(DIA_ENDPOINTS.BROADCAST, created.id, { ...dto, attachment: urls[0] })
+            await updateContent(DIA_ENDPOINTS.BROADCAST, savedId, { ...dto, attachment: urls[0] })
           }
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
-          methods.reset(INITIAL)
+          if (!isEdit) methods.reset(INITIAL)
           return
         }
       }
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+      })
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -86,17 +107,20 @@ export default function DiaBulkBroadcast() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   return (
     <PmuFormShell
-      title="Bulk Broadcast"
-      subtitle="Draft a SMS / WhatsApp broadcast — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit Bulk Broadcast' : 'Bulk Broadcast'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Draft a SMS / WhatsApp broadcast — submits to SIDBI HO Checker for approval.'}
       approvalNote="Once submitted, this broadcast goes to the SIDBI HO Checker for approval. Recipients receive it only after approval."
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Broadcast details">
@@ -171,7 +195,9 @@ export default function DiaBulkBroadcast() {
               name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
-              helperText="PDF, Word, PPT or image. Optional."
+              helperText={isEdit && existingAttachment
+                ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                : 'PDF, Word, PPT or image. Optional.'}
             />
           </FieldCell>
         </FieldRow>

@@ -55,7 +55,7 @@ import {
   listVendors, getVendor, getVendorByUser, createVendor, updateVendor, deleteVendor,
   listVendorsDropdown,
 } from './apis/vendors'
-import { listFiles } from './apis/files'
+import { listFiles, FILE_STAGE } from './apis/files'
 import {
   listVendorDisbursements, getVendorDisbursement,
   updateVendorDisbursement, reviewerUpdateVendorDisbursement,
@@ -735,10 +735,12 @@ export function useFilesByScope(registrationId, stage, stageId) {
   })
 }
 
-// Convenience for IA-scoped file lists — the common case. `stage="ia"`,
-// both id slots take the IA id.
+// Convenience for IA-scoped file lists — the common case. Backend renamed
+// the tag `ia` → `registration` in Sep '26, so uploads and reads must both
+// use FILE_STAGE.IA (= 'registration') or GETs return an empty list even
+// after successful uploads.
 export function useFilesByIa(iaId) {
-  return useFilesByScope(iaId, 'ia', iaId)
+  return useFilesByScope(iaId, FILE_STAGE.IA, iaId)
 }
 
 // ── Vendor disbursements (HO Maker review) ────────────────────────────────
@@ -913,6 +915,22 @@ export function useUpdateDisbursementCapacityBuilding() {
   })
 }
 
+// PATCH /disbursement-note-capacity-building-ia/{id}/status — the new
+// maker-checker style status transition (APPROVED / REJECT / REVERT).
+// SDE screen calls this after a decision; PUT is still used for the
+// field-level amendments (invoice trio, nature, compliance).
+export function useUpdateDisbursementCapacityBuildingStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status, remarks }) =>
+      updateContentStatus('disbursement-note-capacity-building-ia', id, { status, remarks }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: keys.capacityBuilding.all })
+      if (id) qc.invalidateQueries({ queryKey: keys.capacityBuilding.detail(id) })
+    },
+  })
+}
+
 export function useDeleteDisbursementCapacityBuilding() {
   const qc = useQueryClient()
   return useMutation({
@@ -963,6 +981,21 @@ export function useUpdateCapacityBuildingOfficials() {
     onSuccess: (updated, { id }) => {
       if (updated) qc.setQueryData(keys.capacityBuildingOfficials.detail(id), updated)
       qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.all })
+    },
+  })
+}
+
+// PATCH /disbursement-note-capacity-building-ia-officials/{id}/status —
+// sibling of the members-side status hook, wired for the HO Maker's
+// Approve / Reject / Revert flow. PUT still handles amendments.
+export function useUpdateCapacityBuildingOfficialsStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status, remarks }) =>
+      updateContentStatus('disbursement-note-capacity-building-ia-officials', id, { status, remarks }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.all })
+      if (id) qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.detail(id) })
     },
   })
 }

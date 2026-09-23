@@ -26,12 +26,30 @@ const INITIAL = {
   attachment: null,
 }
 
-export default function Dia3cInfoSeries() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  return {
+    topic: record.topic || '',
+    chapterNo: record.chapterNo || '',
+    subjectLine: record.subjectLine || '',
+    relevance: record.relevanceOfTopic || '',
+    brief: record.briefOfContent || '',
+    mainContent: record.mainContent || '',
+    channels: Array.isArray(record.bulkMessaging) ? record.bulkMessaging : [],
+    publishDate: (record.proposedPublishDate || '').slice(0, 10),
+    attachment: null,
+  }
+}
+
+export default function Dia3cInfoSeries({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const existingAttachment = initialRecord?.attachment || null
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const publishMin = useMemo(() => ({ min: todayIso() }), [])
+  const publishMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
 
   const submit = async (values) => {
     setSubmitting(true)
@@ -45,23 +63,28 @@ export default function Dia3cInfoSeries() {
         mainContent: values.mainContent.trim(),
         bulkMessaging: toBackendChannels(values.channels),
         proposedPublishDate: values.publishDate || null,
-        attachment: null,
+        attachment: isEdit ? existingAttachment : null,
       }
-      const created = await createContent(DIA_ENDPOINTS.INFO_SERIES, dto)
-      if (values.attachment && created?.id) {
+      const savedId = isEdit
+        ? (await updateContent(DIA_ENDPOINTS.INFO_SERIES, editId, dto))?.id ?? editId
+        : (await createContent(DIA_ENDPOINTS.INFO_SERIES, dto))?.id
+      if (values.attachment && savedId) {
         try {
-          const urls = await uploadContentAttachments(DIA_ENDPOINTS.INFO_SERIES, created.id, [values.attachment])
+          const urls = await uploadContentAttachments(DIA_ENDPOINTS.INFO_SERIES, savedId, [values.attachment])
           if (urls[0]) {
-            await updateContent(DIA_ENDPOINTS.INFO_SERIES, created.id, { ...dto, attachment: urls[0] })
+            await updateContent(DIA_ENDPOINTS.INFO_SERIES, savedId, { ...dto, attachment: urls[0] })
           }
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
-          methods.reset(INITIAL)
+          if (!isEdit) methods.reset(INITIAL)
           return
         }
       }
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+      })
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -69,16 +92,19 @@ export default function Dia3cInfoSeries() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   return (
     <PmuFormShell
-      title="3C Info-Series"
-      subtitle="Draft an info-series entry — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit 3C Info-Series' : '3C Info-Series'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Draft an info-series entry — submits to SIDBI HO Checker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Entry details">
@@ -144,7 +170,9 @@ export default function Dia3cInfoSeries() {
               name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
-              helperText="PDF, Word, PPT, PNG or JPG. Optional."
+              helperText={isEdit && existingAttachment
+                ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                : 'PDF, Word, PPT, PNG or JPG. Optional.'}
             />
           </FieldCell>
         </FieldRow>

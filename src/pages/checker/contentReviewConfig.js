@@ -221,7 +221,7 @@ export const CONTENT_REVIEW_TYPES = {
         title: 'Survey details',
         fields: [
           { key: 'topic',            label: 'Topic' },
-          { key: 'sample',           label: 'Sample size', type: 'number' },
+          { key: 'sample',           label: 'Sample of the Survey', type: 'multiline' },
           { key: 'startDate',        label: 'Survey start date', type: 'date' },
           { key: 'endDate',          label: 'Survey end date',   type: 'date' },
           { key: 'bulkMessaging',    label: 'Bulk messaging', type: 'chips' },

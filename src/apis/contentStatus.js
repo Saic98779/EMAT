@@ -15,16 +15,17 @@ export const CONTENT_STATUS = {
 
 // PATCH /<path>/{id}/status — universal helper.
 //
-//   path        the content endpoint slug, e.g. 'dia-3c-info-series'
-//   id          record id (encrypted ENC:... coming back from the create
-//               call is fine — apiFetch's middleware skips path encryption
-//               on non-numeric segments so it flows through unchanged)
-//   status      one of the CONTENT_STATUS values above
-//   remarks     optional (backend is adding this field; safe to pass now,
-//               ignored server-side until the column lands)
+//   path     the content endpoint slug, e.g. 'dia-3c-info-series'
+//   id       record id (encrypted ENC:... coming back from the create
+//            call is fine — apiFetch's middleware skips path encryption
+//            on non-numeric segments so it flows through unchanged)
+//   status   one of the CONTENT_STATUS values above
+//   remarks  optional. Verified via live PATCH on 2026-09-23: backend
+//            column is `remark` (singular). We accept `remarks` for
+//            call-site ergonomics and translate.
 export function updateContentStatus(path, id, { status, remarks } = {}) {
   const body = { status }
-  if (remarks) body.remarks = remarks
+  if (remarks) body.remark = remarks
   return apiFetch(`/${path}/${encodeURIComponent(id)}/status`, {
     method: 'PATCH',
     body,

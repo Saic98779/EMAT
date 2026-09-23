@@ -2,22 +2,25 @@ import { useMemo, useState } from 'react'
 import {
   Box, Card, Table, TableHead, TableBody, TableRow, TableCell, Typography,
   Button, Alert, CircularProgress, TextField, InputAdornment, Chip, Collapse,
-  IconButton, Stack, Grid, Paper, Snackbar, Radio, RadioGroup, FormControl,
-  FormControlLabel, FormLabel, Divider,
+  IconButton, Stack, Grid, Paper, Snackbar, Divider,
 } from '@mui/material'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import SearchIcon from '@mui/icons-material/Search'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp'
 import SaveIcon from '@mui/icons-material/Save'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import CancelRoundedIcon from '@mui/icons-material/CancelRounded'
+import UndoRoundedIcon from '@mui/icons-material/UndoRounded'
 import { PageHeader } from '../../components/shared'
 import {
   useDisbursementCapacityBuilding, useUpdateDisbursementCapacityBuilding,
+  useUpdateDisbursementCapacityBuildingStatus,
 } from '../../queries'
 import {
-  toFormValues, stageOf, DEFAULT_ACCOUNT_CODE, RECOMMENDED, NOT_RECOMMENDED,
+  toFormValues, stageOf, DEFAULT_ACCOUNT_CODE,
 } from '../../apis/disbursementCapacityBuilding'
+import { CONTENT_STATUS } from '../../apis/contentStatus'
 
 // SIDBI SDE — capacity building approval queue.
 // SDE owns rows 10, 11 and 14 of the note format (amount recommended,
@@ -194,12 +197,12 @@ function ReviewPanel({ dto, onDone }) {
   // SDE-owned rows.
   const [amount, setAmount] = useState(initial.amountRecommendedForDisbursement ?? '')
   const [accountCodeForPayment, setAccountCode] = useState(initial.accountCodeForPayment || DEFAULT_ACCOUNT_CODE)
-  // `recommendation` is a free-text column on the backend; the UI only ever
-  // writes RECOMMENDED / NOT_RECOMMENDED, and '' means "not yet decided".
-  const [recommendation, setRecommendation] = useState(initial.recommendation || '')
-  const isRecommended = recommendation === RECOMMENDED
+  const [remarks, setRemarks] = useState('')
+  const [remarksError, setRemarksError] = useState(false)
 
   const update = useUpdateDisbursementCapacityBuilding()
+  const patchStatus = useUpdateDisbursementCapacityBuildingStatus()
+  const busy = update.isPending || patchStatus.isPending
 
   // IGST and total follow whatever value is on screen, so an SDE amendment
   // to the invoice value re-derives them exactly as the adapter will on save.
@@ -207,53 +210,95 @@ function ReviewPanel({ dto, onDone }) {
   const igst = value != null ? +(value * 0.18).toFixed(2) : null
   const total = value != null ? +(value * 1.18).toFixed(2) : null
 
-  const dirty =
+  const amendmentsDirty =
     (natureOfPayment || '') !== (initial.natureOfPayment || '') ||
     (invoiceDate || '') !== ((initial.invoiceDate || '').slice(0, 10)) ||
     (invoiceNumber || '') !== (initial.invoiceNumber || '') ||
     String(valueOfServiceItemsSupplied ?? '') !== String(initial.valueOfServiceItemsSupplied ?? '') ||
     (compliance || '') !== (initial.compliancePreDisbursementTerms || '') ||
     String(amount ?? '') !== String(initial.amountRecommendedForDisbursement ?? '') ||
-    (accountCodeForPayment || '') !== (initial.accountCodeForPayment || DEFAULT_ACCOUNT_CODE) ||
-    (recommendation || '') !== (initial.recommendation || '')
+    (accountCodeForPayment || '') !== (initial.accountCodeForPayment || DEFAULT_ACCOUNT_CODE)
 
-  const problem = (() => {
+  const fieldProblem = (() => {
     if (!natureOfPayment?.trim()) return 'Nature of payment cannot be blank.'
     if (!invoiceDate) return 'Invoice date cannot be blank.'
     if (!invoiceNumber?.trim()) return 'Invoice number cannot be blank.'
     if (value == null || value <= 0) return 'Enter a valid value of service / items supplied.'
-    if (isRecommended) {
-      const n = Number(amount)
-      if (!Number.isFinite(n) || n <= 0) return 'Enter the amount recommended for disbursement.'
-      if (total != null && n > total) return `Cannot exceed the total invoice amount (₹${total.toLocaleString('en-IN')}).`
-      if (!accountCodeForPayment?.trim()) return 'Account Code is required.'
-    }
-    if (!recommendation) return 'Record a recommendation.'
     return null
   })()
 
-  const canSave = dirty && !problem
+  const approveProblem = (() => {
+    if (fieldProblem) return fieldProblem
+    const n = Number(amount)
+    if (!Number.isFinite(n) || n <= 0) return 'Enter the amount recommended for disbursement.'
+    if (total != null && n > total) return `Cannot exceed the total invoice amount (₹${total.toLocaleString('en-IN')}).`
+    if (!accountCodeForPayment?.trim()) return 'Account Code is required.'
+    return null
+  })()
 
-  const save = async () => {
-    if (problem) { onDone?.({ kind: 'warning', msg: problem }); return }
-    try {
-      await update.mutateAsync({
-        id: dto.id,
-        values: {
-          ...initial,
-          natureOfPayment,
-          invoiceDate,
-          invoiceNumber,
-          valueOfServiceItemsSupplied,
-          compliancePreDisbursementTerms: compliance,
-          amountRecommendedForDisbursement: isRecommended ? amount : null,
-          accountCodeForPayment,
-          recommendation,
-        },
+  // Push field-level amendments via PUT before touching status. `initial`
+  // supplies the fields the SDE didn't edit (GT comments, GSTIN, etc.).
+  const saveAmendments = async () => {
+    await update.mutateAsync({
+      id: dto.id,
+      values: {
+        ...initial,
+        natureOfPayment,
+        invoiceDate,
+        invoiceNumber,
+        valueOfServiceItemsSupplied,
+        compliancePreDisbursementTerms: compliance,
+        amountRecommendedForDisbursement: amount,
+        accountCodeForPayment,
+      },
+    })
+  }
+
+  const decide = async (status) => {
+    const needsRemarks = status === CONTENT_STATUS.REVERT || status === CONTENT_STATUS.REJECT
+    if (needsRemarks && !remarks.trim()) {
+      setRemarksError(true)
+      onDone?.({
+        kind: 'warning',
+        msg: status === CONTENT_STATUS.REVERT
+          ? 'Add remarks so the BSE knows what to change.'
+          : 'Add remarks explaining the rejection.',
       })
-      onDone?.({ kind: 'success', msg: 'Recommendation saved.' })
+      return
+    }
+    if (status === CONTENT_STATUS.APPROVED && approveProblem) {
+      onDone?.({ kind: 'warning', msg: approveProblem })
+      return
+    }
+    if (status !== CONTENT_STATUS.APPROVED && fieldProblem && amendmentsDirty) {
+      onDone?.({ kind: 'warning', msg: fieldProblem })
+      return
+    }
+
+    setRemarksError(false)
+    try {
+      if (amendmentsDirty) await saveAmendments()
+      await patchStatus.mutateAsync({
+        id: dto.id,
+        status,
+        remarks: remarks.trim() || undefined,
+      })
+      const label = status === CONTENT_STATUS.APPROVED ? 'Approved'
+        : status === CONTENT_STATUS.REVERT ? 'Reverted' : 'Rejected'
+      onDone?.({ kind: 'success', msg: `${label} · saved.` })
+      setRemarks('')
     } catch (e) {
-      onDone?.({ kind: 'error', msg: e?.message || 'Failed to save recommendation.' })
+      onDone?.({ kind: 'error', msg: e?.message || 'Failed to update status.' })
+    }
+  }
+
+  const saveOnly = async () => {
+    if (fieldProblem) { onDone?.({ kind: 'warning', msg: fieldProblem }); return }
+    try {
+      await saveAmendments()
+      onDone?.({ kind: 'success', msg: 'Amendments saved.' })
+    } catch (e) {
+      onDone?.({ kind: 'error', msg: e?.message || 'Failed to save amendments.' })
     }
   }
 
@@ -357,60 +402,85 @@ function ReviewPanel({ dto, onDone }) {
 
         <SubCard title="SDE — Recommendation" accent="primary">
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl required>
-                <FormLabel sx={{ fontSize: '0.78rem', mb: 0.5 }}>Recommendation</FormLabel>
-                <RadioGroup row value={recommendation || ''}
-                  onChange={(e) => setRecommendation(e.target.value)}>
-                  <FormControlLabel value={RECOMMENDED} control={<Radio size="small" />} label="Recommended" />
-                  <FormControlLabel value={NOT_RECOMMENDED} control={<Radio size="small" />} label="Not Recommended" />
-                </RadioGroup>
-              </FormControl>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth size="small" type="number"
+                label="Amount Recommended for Disbursement"
+                value={amount ?? ''}
+                onChange={(e) => setAmount(e.target.value)}
+                InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                helperText={`Max ₹${Number(total || 0).toLocaleString('en-IN')} — required to approve.`}
+              />
             </Grid>
-
-            {isRecommended && (
-              <>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    fullWidth size="small" type="number" required
-                    label="Amount Recommended for Disbursement"
-                    value={amount ?? ''}
-                    onChange={(e) => setAmount(e.target.value)}
-                    InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
-                    helperText={`Max ₹${Number(total || 0).toLocaleString('en-IN')}`}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, md: 4 }}>
-                  <TextField
-                    fullWidth size="small" required
-                    label="Account Code"
-                    value={accountCodeForPayment}
-                    onChange={(e) => setAccountCode(e.target.value)}
-                    helperText={`Default: ${DEFAULT_ACCOUNT_CODE}`}
-                  />
-                </Grid>
-              </>
-            )}
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth size="small"
+                label="Account Code"
+                value={accountCodeForPayment}
+                onChange={(e) => setAccountCode(e.target.value)}
+                helperText={`Default: ${DEFAULT_ACCOUNT_CODE}`}
+              />
+            </Grid>
+            <Grid size={12}>
+              <TextField
+                fullWidth size="small" multiline minRows={2} maxRows={4}
+                label="Remarks"
+                placeholder="Required to revert or reject. Optional on approve."
+                value={remarks}
+                error={remarksError}
+                onChange={(e) => { setRemarks(e.target.value); if (e.target.value.trim()) setRemarksError(false) }}
+              />
+            </Grid>
           </Grid>
 
           <Divider sx={{ my: 2 }} />
 
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            {initial.recommendation && !dirty && (
-              <Chip icon={<CheckCircleOutlineIcon />} size="small" color="success" variant="outlined"
-                label="Saved" sx={{ fontWeight: 600 }} />
-            )}
-            {problem && dirty && (
-              <Typography variant="caption" color="warning.main">{problem}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            {initial.status && (
+              <Chip
+                size="small"
+                label={`Currently ${labelFor(initial.status)}`}
+                sx={{ fontWeight: 600 }}
+                color={initial.status === 'APPROVED' ? 'success'
+                  : initial.status === 'REJECT' ? 'error'
+                  : initial.status === 'REVERT' ? 'warning' : 'default'}
+              />
             )}
             <Box sx={{ flexGrow: 1 }} />
             <Button
-              variant="contained"
-              startIcon={update.isPending ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-              disabled={!canSave || update.isPending}
-              onClick={save}
+              onClick={saveOnly}
+              disabled={!amendmentsDirty || busy}
+              startIcon={update.isPending ? <CircularProgress size={16} /> : <SaveIcon />}
+              sx={{ textTransform: 'none', color: 'text.secondary' }}
             >
-              {update.isPending ? 'Saving…' : 'Save Recommendation'}
+              Save amendments
+            </Button>
+            <Button
+              onClick={() => decide(CONTENT_STATUS.REVERT)}
+              disabled={busy}
+              startIcon={<UndoRoundedIcon />}
+              sx={{ textTransform: 'none', color: 'warning.dark' }}
+            >
+              Revert
+            </Button>
+            <Button
+              onClick={() => decide(CONTENT_STATUS.REJECT)}
+              disabled={busy}
+              startIcon={<CancelRoundedIcon />}
+              sx={{ textTransform: 'none', color: 'error.dark' }}
+            >
+              Reject
+            </Button>
+            <Button
+              variant="contained"
+              disableElevation
+              onClick={() => decide(CONTENT_STATUS.APPROVED)}
+              disabled={busy}
+              startIcon={patchStatus.isPending ? <CircularProgress size={16} color="inherit" /> : <CheckCircleRoundedIcon />}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+              color="success"
+            >
+              Approve
             </Button>
           </Stack>
         </SubCard>
@@ -466,6 +536,15 @@ function StageChip({ stage }) {
     : stage === 'GT Commented' ? 'info'
     : 'warning'
   return <Chip size="small" color={color} label={stage} sx={{ fontWeight: 700 }} />
+}
+
+function labelFor(status) {
+  switch (status) {
+    case 'APPROVED': return 'Approved'
+    case 'REJECT':   return 'Rejected'
+    case 'REVERT':   return 'Reverted'
+    default:         return 'Pending'
+  }
 }
 
 function num(v) {

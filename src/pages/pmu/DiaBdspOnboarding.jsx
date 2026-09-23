@@ -14,7 +14,7 @@ import {
 } from './_shared'
 import { STATES, districtsOf } from '../../geo'
 import {
-  createContent, downloadBdspTemplate, importBdspRows, DIA_ENDPOINTS,
+  createContent, updateContent, downloadBdspTemplate, importBdspRows, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — BDSP Onboarding
@@ -32,8 +32,25 @@ const INITIAL = {
   contact: '', email: '', kyc: '',
 }
 
-export default function DiaBdspOnboarding() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  return {
+    name: record.nameOfBdsp || '',
+    rationale: record.rationaleForOnboarding || '',
+    theme: record.theme || '',
+    area: record.areaOfServiceExpertise || '',
+    state: record.state || '',
+    district: record.district || '',
+    contact: record.contact || '',
+    email: record.email || '',
+    kyc: record.kyc || '',
+  }
+}
+
+export default function DiaBdspOnboarding({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -45,7 +62,7 @@ export default function DiaBdspOnboarding() {
   const submit = async (values) => {
     setSubmitting(true)
     try {
-      await createContent(DIA_ENDPOINTS.BDSP, {
+      const dto = {
         nameOfBdsp: values.name.trim(),
         rationaleForOnboarding: values.rationale.trim(),
         theme: values.theme.trim(),
@@ -55,9 +72,14 @@ export default function DiaBdspOnboarding() {
         contact: values.contact.trim(),
         email: values.email.trim(),
         kyc: values.kyc.trim(),
+      }
+      if (isEdit) await updateContent(DIA_ENDPOINTS.BDSP, editId, dto)
+      else await createContent(DIA_ENDPOINTS.BDSP, dto)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
       })
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -65,7 +87,7 @@ export default function DiaBdspOnboarding() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   const onPickImport = (e) => {
     const file = e.target.files?.[0]
@@ -107,9 +129,11 @@ export default function DiaBdspOnboarding() {
   return (
     <>
       <PmuFormShell
-        title="BDSP Onboarding"
-        subtitle="Add a Business Development Service Provider — submits to SIDBI HO Checker for approval."
-        headerAction={
+        title={isEdit ? 'Resubmit BDSP Onboarding' : 'BDSP Onboarding'}
+        subtitle={isEdit
+          ? 'Address the checker\'s remarks and resubmit for re-review.'
+          : 'Add a Business Development Service Provider — submits to SIDBI HO Checker for approval.'}
+        headerAction={!isEdit && (
           <Button
             variant="outlined" startIcon={<CloudUploadOutlinedIcon />}
             onClick={() => setImportOpen(true)}
@@ -117,11 +141,12 @@ export default function DiaBdspOnboarding() {
           >
             Import from CSV / Excel
           </Button>
-        }
+        )}
         methods={methods}
         onSubmit={submit}
         onReset={reset}
         submitting={submitting}
+        submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
         toast={toast} onToastClose={() => setToast(null)}
       >
         <PmuSection first title="BDSP identity">

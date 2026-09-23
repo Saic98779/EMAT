@@ -11,6 +11,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
+import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import { PageHeader } from '../../components/shared'
 import { useAuth } from '../../auth'
@@ -188,6 +189,7 @@ function ContentRow({ type, cfg, row }) {
                 />
               )
             })}
+            <AttachmentChip row={row} />
           </Stack>
           <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.75 }}>
             <AccessTimeRoundedIcon sx={{ fontSize: 12, color: theme.palette.text.disabled }} />
@@ -267,6 +269,50 @@ function EmptyState({ cfg, anySubmissions, query, onCreate }) {
       )}
     </Box>
   )
+}
+
+// ─── Attachment chip ───────────────────────────────────────────────────
+// Shows a "1 file / 3 files" pill on the row when the record carries any
+// attachment. Clicking the pill opens the first file in a new tab — one
+// click, no need to enter the detail view just to see what was uploaded.
+function AttachmentChip({ row }) {
+  const theme = useTheme()
+  const urls = collectAttachmentUrls(row)
+  if (urls.length === 0) return null
+  const first = urls[0]
+  return (
+    <Chip
+      icon={<AttachFileRoundedIcon sx={{ fontSize: 12 }} />}
+      component="a"
+      href={first}
+      target="_blank"
+      rel="noreferrer"
+      clickable
+      onClick={(e) => e.stopPropagation()}
+      label={urls.length === 1 ? 'File' : `${urls.length} files`}
+      size="small"
+      sx={{
+        height: 20, fontSize: 12,
+        bgcolor: alpha(theme.palette.primary.main, 0.08),
+        color: theme.palette.primary.dark,
+        '.MuiChip-icon': { color: theme.palette.primary.main },
+        '.MuiChip-label': { px: 0.75, fontWeight: 600 },
+      }}
+    />
+  )
+}
+
+// Widen this list if more attachment field names appear on the DTOs.
+const ATTACHMENT_KEYS = ['attachment', 'attachments', 'file', 'files']
+function collectAttachmentUrls(row) {
+  const out = []
+  for (const k of ATTACHMENT_KEYS) {
+    const v = row?.[k]
+    if (!v) continue
+    if (Array.isArray(v)) v.forEach((x) => { if (typeof x === 'string' && x) out.push(x) })
+    else if (typeof v === 'string' && v) out.push(v)
+  }
+  return out
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────

@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Box, Card, CardContent, Grid, Stack, Typography, Button, Snackbar, Alert,
-  Paper, CircularProgress, TextField, MenuItem, InputAdornment, Divider,
+  Box, Grid, Stack, Typography, Button, Snackbar, Alert,
+  Paper, CircularProgress, TextField, MenuItem, InputAdornment,
 } from '@mui/material'
+import { alpha, useTheme } from '@mui/material/styles'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SendIcon from '@mui/icons-material/Send'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
@@ -183,13 +184,14 @@ export default function BseCapacityBuilding() {
       <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/bse')} sx={{ mb: 2 }}>Back</Button>
 
       <PageHeader
+        overline="Disbursement · IA members"
         title="Capacity Building of IA Members"
         subtitle="Raise the disbursement note. Routes to GT Field Manager (event comments) → SIDBI SDE (recommendation)."
       />
 
       <Stack spacing={2.5}>
 
-        <SectionCard n={1} title="Industry Association">
+        <SectionCard title="Industry Association" overline="Rows 1 – 3">
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 8 }}>
               {loginIa ? (
@@ -248,7 +250,7 @@ export default function BseCapacityBuilding() {
           </Grid>
         </SectionCard>
 
-        <SectionCard n={2} title="Grant & Disbursement Totals">
+        <SectionCard title="Grant & Disbursement Totals" overline="Rows 4 – 6">
           {v.registrationId && (
             <PriorNotesBanner loading={iaLoading} error={iaQ.error} summary={priorSummary} />
           )}
@@ -277,7 +279,7 @@ export default function BseCapacityBuilding() {
           </Grid>
         </SectionCard>
 
-        <SectionCard n={3} title="Nature of Payment">
+        <SectionCard title="Nature of Payment" overline="Row 7">
           <TextField
             fullWidth multiline minRows={6} size="small" required
             label="Nature of Payment"
@@ -292,7 +294,7 @@ export default function BseCapacityBuilding() {
           </Stack>
         </SectionCard>
 
-        <SectionCard n={4} title="Invoice Details">
+        <SectionCard title="Invoice Details" overline="Row 8">
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 3 }}>
               <TextField
@@ -328,7 +330,7 @@ export default function BseCapacityBuilding() {
           </Grid>
         </SectionCard>
 
-        <SectionCard n={5} title="TDS & Compliance">
+        <SectionCard title="TDS" overline="Row 9">
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 4 }}>
               <ReadField
@@ -346,42 +348,38 @@ export default function BseCapacityBuilding() {
                 />
               </Grid>
             )}
-            <Grid size={12}>
-              <Divider sx={{ my: 0.5 }} />
-            </Grid>
-            <Grid size={12}>
-              <TextField
-                fullWidth size="small" multiline minRows={3} required
-                label="Compliance of Pre-disbursement Terms & Conditions"
-                value={v.compliancePreDisbursementTerms}
-                onChange={(e) => set('compliancePreDisbursementTerms', e.target.value)}
-                helperText="Describe compliance status. SDE may edit during review."
+          </Grid>
+        </SectionCard>
+
+        <SectionCard title="Account Code" overline="Row 11">
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <ReadField
+                label="Account Code for Payment"
+                value={DEFAULT_ACCOUNT_CODE}
+                helperText="Autofilled"
               />
             </Grid>
           </Grid>
         </SectionCard>
+
+        <SectionCard title="Pre-disbursement Compliance" overline="Row 13">
+          <TextField
+            fullWidth size="small" multiline minRows={3} required
+            label="Compliance of Pre-disbursement Terms & Conditions"
+            value={v.compliancePreDisbursementTerms}
+            onChange={(e) => set('compliancePreDisbursementTerms', e.target.value)}
+            helperText="Describe compliance status. SDE may edit during review."
+          />
+        </SectionCard>
       </Stack>
 
-      <Paper
-        elevation={3}
-        sx={{
-          position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3,
-          display: 'flex', alignItems: 'center', gap: 1.5,
-        }}
-      >
-        <Typography variant="body2" color={problem ? 'warning.main' : 'text.secondary'} sx={{ flexGrow: 1 }}>
-          {problem || 'All required fields are filled. Ready to submit.'}
-        </Typography>
-        <Button color="inherit" onClick={() => navigate('/bse')}>Cancel</Button>
-        <Button
-          variant="contained"
-          startIcon={create.isPending ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
-          disabled={!!problem || create.isPending}
-          onClick={submit}
-        >
-          {create.isPending ? 'Submitting…' : 'Submit for Approval'}
-        </Button>
-      </Paper>
+      <StickyFooter
+        problem={problem}
+        busy={create.isPending}
+        onCancel={() => navigate('/bse')}
+        onSubmit={submit}
+      />
 
       <Snackbar
         open={!!toast}
@@ -399,23 +397,85 @@ export default function BseCapacityBuilding() {
   )
 }
 
+// ── Sticky footer ───────────────────────────────────────────────────────────
+const StickyFooter = memo(function StickyFooter({ problem, busy, onCancel, onSubmit }) {
+  const theme = useTheme()
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        position: 'fixed',
+        bottom: 16,
+        left: { xs: 16, md: `${288 + 16}px` },
+        right: 16,
+        maxWidth: 1040,
+        mx: { md: 'auto' },
+        p: 2, borderRadius: 2,
+        border: 1, borderColor: alpha(theme.palette.text.primary, 0.1),
+        backdropFilter: 'blur(10px)',
+        background: alpha(theme.palette.background.paper, 0.96),
+        boxShadow: `0 8px 24px ${alpha(theme.palette.text.primary, 0.06)}`,
+        zIndex: 10,
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1.5}>
+        <Typography
+          sx={{
+            flex: 1, fontSize: 12.5,
+            color: problem ? theme.palette.warning.main : theme.palette.text.secondary,
+          }}
+        >
+          {problem || 'All required fields are filled. Ready to submit.'}
+        </Typography>
+        <Button onClick={onCancel} sx={{ textTransform: 'none', color: 'text.secondary' }}>
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          disableElevation
+          startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+          disabled={!!problem || busy}
+          onClick={onSubmit}
+          sx={{ textTransform: 'none', fontWeight: 600 }}
+        >
+          {busy ? 'Submitting…' : 'Submit for Approval'}
+        </Button>
+      </Stack>
+    </Paper>
+  )
+})
+
 // ── Building blocks ─────────────────────────────────────────────────────────
 
-const SectionCard = memo(function SectionCard({ n, title, children }) {
+const SectionCard = memo(function SectionCard({ title, overline, children }) {
+  const theme = useTheme()
   return (
-    <Card variant="outlined">
-      <CardContent sx={{ p: 2.5 }}>
-        <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 2 }}>
-          <Box sx={{
-            width: 28, height: 28, borderRadius: '50%',
-            bgcolor: 'primary.light', color: 'primary.dark',
-            display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: '0.85rem',
-          }}>{n}</Box>
-          <Typography variant="subtitle1" fontWeight={700}>{title}</Typography>
-        </Stack>
-        {children}
-      </CardContent>
-    </Card>
+    <Box
+      sx={{
+        border: 1,
+        borderColor: alpha(theme.palette.text.primary, 0.09),
+        borderRadius: 2,
+        bgcolor: '#fff',
+      }}
+    >
+      <Box
+        sx={{
+          px: 3, py: 1.75,
+          borderBottom: 1,
+          borderColor: alpha(theme.palette.text.primary, 0.06),
+        }}
+      >
+        {overline && (
+          <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: theme.palette.text.disabled }}>
+            {overline}
+          </Typography>
+        )}
+        <Typography sx={{ mt: overline ? 0.25 : 0, fontSize: 15, fontWeight: 700, color: theme.palette.text.primary, letterSpacing: '-0.005em' }}>
+          {title}
+        </Typography>
+      </Box>
+      <Box sx={{ px: 3, py: 2.5 }}>{children}</Box>
+    </Box>
   )
 })
 
@@ -480,7 +540,6 @@ const ReadField = memo(function ReadField({ label, value, helperText }) {
       InputProps={{ readOnly: true }}
       InputLabelProps={{ shrink: true }}
       helperText={helperText}
-      sx={{ '& .MuiInputBase-root': { bgcolor: 'action.hover' } }}
     />
   )
 })
@@ -499,7 +558,6 @@ const ReadMoneyField = memo(function ReadMoneyField({ label, value, helperText }
       }}
       InputLabelProps={{ shrink: true }}
       helperText={helperText}
-      sx={{ '& .MuiInputBase-root': { bgcolor: 'action.hover' } }}
     />
   )
 })

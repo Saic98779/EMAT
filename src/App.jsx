@@ -77,6 +77,7 @@ import DiaDiscussionForum from './pages/pmu/DiaDiscussionForum'
 import DiaLatestDevelopments from './pages/pmu/DiaLatestDevelopments'
 import DiaPopUps from './pages/pmu/DiaPopUps'
 import PmuSubmissionView from './pages/pmu/PmuSubmissionView'
+import PmuResubmit from './pages/pmu/PmuResubmit'
 import ContentTypeList from './pages/pmu/ContentTypeList'
 
 function Protected({ role, children }) {
@@ -210,6 +211,7 @@ export default function App() {
         <Route path="/gt/pmu/pop-ups" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><DiaPopUps /></DenyRawRoles>} />
         <Route path="/gt/pmu/list/:type" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><ContentTypeList /></DenyRawRoles>} />
         <Route path="/gt/pmu/list/:type/:id" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuSubmissionView /></DenyRawRoles>} />
+        <Route path="/gt/pmu/list/:type/:id/edit" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuResubmit /></DenyRawRoles>} />
         <Route path="/gt/pmu/:uuid" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuReview /></DenyRawRoles>} />
         <Route path="/gt/pmu/capacity-building" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuCapacityBuildingReview /></DenyRawRoles>} />
       </Route>

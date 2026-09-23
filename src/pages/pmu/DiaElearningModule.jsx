@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { InputAdornment } from '@mui/material'
 import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined'
 import {
@@ -29,8 +29,25 @@ const INITIAL = {
   attachment: null,
 }
 
-export default function DiaElearningModule() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  return {
+    topic: record.topic || '',
+    moduleName: record.moduleName || '',
+    relevance: record.relevanceOfTopic || '',
+    brief: record.briefOfContent || '',
+    mainContent: record.mainContent || '',
+    link: record.link || '',
+    placement: record.placementOfModule || '',
+    attachment: null,
+  }
+}
+
+export default function DiaElearningModule({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const existingAttachment = initialRecord?.attachment || null
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -45,23 +62,28 @@ export default function DiaElearningModule() {
         mainContent: values.mainContent.trim(),
         link: values.link.trim() || null,
         placementOfModule: values.placement.trim(),
-        attachment: null,
+        attachment: isEdit ? existingAttachment : null,
       }
-      const created = await createContent(DIA_ENDPOINTS.ELEARNING, dto)
-      if (values.attachment && created?.id) {
+      const savedId = isEdit
+        ? (await updateContent(DIA_ENDPOINTS.ELEARNING, editId, dto))?.id ?? editId
+        : (await createContent(DIA_ENDPOINTS.ELEARNING, dto))?.id
+      if (values.attachment && savedId) {
         try {
-          const urls = await uploadContentAttachments(DIA_ENDPOINTS.ELEARNING, created.id, [values.attachment])
+          const urls = await uploadContentAttachments(DIA_ENDPOINTS.ELEARNING, savedId, [values.attachment])
           if (urls[0]) {
-            await updateContent(DIA_ENDPOINTS.ELEARNING, created.id, { ...dto, attachment: urls[0] })
+            await updateContent(DIA_ENDPOINTS.ELEARNING, savedId, { ...dto, attachment: urls[0] })
           }
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
-          methods.reset(INITIAL)
+          if (!isEdit) methods.reset(INITIAL)
           return
         }
       }
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+      })
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -69,16 +91,19 @@ export default function DiaElearningModule() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   return (
     <PmuFormShell
-      title="E-learning Module"
-      subtitle="Draft a module — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit E-learning Module' : 'E-learning Module'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Draft a module — submits to SIDBI HO Checker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Module identity">
@@ -144,7 +169,9 @@ export default function DiaElearningModule() {
               name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
-              helperText="PDF, Word, PPT, image or video. Optional."
+              helperText={isEdit && existingAttachment
+                ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                : 'PDF, Word, PPT, image or video. Optional.'}
             />
           </FieldCell>
         </FieldRow>

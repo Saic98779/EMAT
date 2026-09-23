@@ -13,12 +13,26 @@ import {
 const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp'
 const INITIAL = { topic: '', relevance: '', startDate: '', endDate: '', attachments: [] }
 
-export default function DiaPopUps() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  return {
+    topic: record.topic || '',
+    relevance: record.relevanceOfPopUp || '',
+    startDate: (record.startDate || '').slice(0, 10),
+    endDate: (record.endDate || '').slice(0, 10),
+    attachments: [],
+  }
+}
+
+export default function DiaPopUps({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const existingAttachment = initialRecord?.attachments || null
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const startMin = useMemo(() => ({ min: todayIso() }), [])
+  const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
 
   const submit = async (values) => {
     setSubmitting(true)
@@ -28,26 +42,28 @@ export default function DiaPopUps() {
         relevanceOfPopUp: values.relevance.trim(),
         startDate: values.startDate,
         endDate: values.endDate,
-        attachments: null,
+        attachments: isEdit ? existingAttachment : null,
       }
-      const created = await createContent(DIA_ENDPOINTS.POPUPS, dto)
-      if (values.attachments?.length && created?.id) {
+      const savedId = isEdit
+        ? (await updateContent(DIA_ENDPOINTS.POPUPS, editId, dto))?.id ?? editId
+        : (await createContent(DIA_ENDPOINTS.POPUPS, dto))?.id
+      if (values.attachments?.length && savedId) {
         try {
-          const urls = await uploadContentAttachments(DIA_ENDPOINTS.POPUPS, created.id, values.attachments)
+          const urls = await uploadContentAttachments(DIA_ENDPOINTS.POPUPS, savedId, values.attachments)
           if (urls.length) {
-            // Backend types `attachments` as `String` (not List) as of
-            // 2026-09-19; send the first URL. Switch to `urls` once
-            // backend flips the column to List<String>.
-            await updateContent(DIA_ENDPOINTS.POPUPS, created.id, { ...dto, attachments: urls[0] })
+            await updateContent(DIA_ENDPOINTS.POPUPS, savedId, { ...dto, attachments: urls[0] })
           }
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
-          methods.reset(INITIAL)
+          if (!isEdit) methods.reset(INITIAL)
           return
         }
       }
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+      })
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -55,17 +71,20 @@ export default function DiaPopUps() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   return (
     <PmuFormShell
-      title="Pop-Ups"
-      subtitle="Schedule a pop-up — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit Pop-Up' : 'Pop-Ups'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Schedule a pop-up — submits to SIDBI HO Checker for approval.'}
       approvalNote="Once submitted, this pop-up goes to the SIDBI HO Checker for approval. It becomes live only after approval and stays visible for the duration you set."
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Pop-up details">
@@ -100,7 +119,9 @@ export default function DiaPopUps() {
           multiple
           label="Files"
           accept={ATTACHMENT_ACCEPT}
-          helperText="PDF, Word, PPT or image. Optional. You can add multiple."
+          helperText={isEdit && existingAttachment
+            ? `Currently attached: ${String(existingAttachment).split('/').pop().split('?')[0]}. Pick files to replace it.`
+            : 'PDF, Word, PPT or image. Optional. You can add multiple.'}
         />
       </PmuSection>
     </PmuFormShell>

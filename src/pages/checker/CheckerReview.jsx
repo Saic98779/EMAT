@@ -44,6 +44,10 @@ export default function CheckerReview({
   overline: overlineProp,
   title: titleProp = 'Review submission',
   subtitle: subtitleProp = 'Read the entry below, then approve, revert, or reject with remarks.',
+  // Optional CTA rendered inside the hero when the outer wrapper wants
+  // to surface a workflow action (e.g. the PMU's "Edit & Resubmit"
+  // button on REVERT records). Receives the DTO so it can gate itself.
+  heroAction = null,
 } = {}) {
   const navigate = useNavigate()
   const { type, id } = useParams()
@@ -125,7 +129,8 @@ export default function CheckerReview({
         <Alert severity="error">{recordQ.error.message || 'Failed to load record.'}</Alert>
       ) : dto ? (
         <>
-          <ReviewHero dto={dto} cfg={cfg} />
+          <ReviewHero dto={dto} cfg={cfg} action={typeof heroAction === 'function' ? heroAction(dto) : heroAction} />
+          {dto.remark && <RemarkBanner status={dto.status} remark={dto.remark} />}
           <Stack spacing={2.5} sx={{ mt: 3 }}>
             {cfg.sections.map((sec) => (
               <ReviewSection key={sec.title} title={sec.title} fields={sec.fields} dto={dto} />
@@ -175,7 +180,7 @@ export default function CheckerReview({
 // ─── Header ────────────────────────────────────────────────────────────
 // Simple, quiet header: title + label + submitter meta + status pill.
 // No color stripe, no oversized type — the record itself is the content.
-const ReviewHero = memo(function ReviewHero({ dto, cfg }) {
+const ReviewHero = memo(function ReviewHero({ dto, cfg, action = null }) {
   const theme = useTheme()
   const title = primaryTitle(dto, cfg)
   const currentStatus = dto?.status || null
@@ -210,11 +215,47 @@ const ReviewHero = memo(function ReviewHero({ dto, cfg }) {
             )}
           </Stack>
         </Box>
-        <StatusPill status={currentStatus} />
+        <Stack direction="column" spacing={1} alignItems="flex-end" sx={{ flexShrink: 0 }}>
+          <StatusPill status={currentStatus} />
+          {action}
+        </Stack>
       </Stack>
     </Box>
   )
 })
+
+// ─── Remark banner ─────────────────────────────────────────────────────
+// Auto-renders whenever the record carries a checker's remark. The tone
+// matches the status: warning-yellow on REVERT, error-red on REJECT,
+// success-green on APPROVED. Visible both to the checker (own audit
+// trail) and to the GT PMU on their read-only submission view.
+function RemarkBanner({ status, remark }) {
+  const theme = useTheme()
+  const tone = status === 'REVERT' ? theme.palette.warning
+    : status === 'REJECT' ? theme.palette.error
+    : status === 'APPROVED' ? theme.palette.success
+    : theme.palette.info
+  const label = status === 'REVERT' ? 'Sent back for changes'
+    : status === 'REJECT' ? 'Rejected'
+    : status === 'APPROVED' ? 'Approved'
+    : 'Checker remark'
+  return (
+    <Box
+      sx={{
+        mt: 2, p: 2, borderRadius: 2,
+        border: 1, borderColor: alpha(tone.main, 0.4),
+        bgcolor: alpha(tone.main, 0.05),
+      }}
+    >
+      <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: tone.dark }}>
+        {label}
+      </Typography>
+      <Typography sx={{ mt: 0.5, fontSize: 13.5, whiteSpace: 'pre-wrap', color: theme.palette.text.primary }}>
+        {remark}
+      </Typography>
+    </Box>
+  )
+}
 
 function MetaBit({ label, value }) {
   const theme = useTheme()
@@ -342,26 +383,55 @@ function renderValue(field, value, theme) {
   if (field.type === 'link') {
     const items = Array.isArray(value) ? value : [value]
     return (
-      <Stack spacing={0.5}>
-        {items.filter(Boolean).map((v, i) => (
-          <Stack key={`${v}::${i}`} direction="row" alignItems="center" spacing={0.75} sx={{ minWidth: 0 }}>
-            <LinkOutlinedIcon sx={{ fontSize: 14, color: theme.palette.text.disabled, flexShrink: 0 }} />
-            <Box
+      <Stack spacing={0.75}>
+        {items.filter(Boolean).map((v, i) => {
+          const url = typeof v === 'string' ? v : ''
+          const name = filenameFromUrl(url) || url || 'Open file'
+          return (
+            <Stack
+              key={`${v}::${i}`}
               component="a"
-              href={typeof v === 'string' ? v : '#'}
+              href={url || '#'}
               target="_blank"
               rel="noreferrer"
+              direction="row"
+              alignItems="center"
+              spacing={1}
               sx={{
-                fontSize: 13.5, color: theme.palette.primary.main,
-                wordBreak: 'break-all', textDecoration: 'none',
-                '&:hover': { textDecoration: 'underline' },
-                minWidth: 0,
+                display: 'inline-flex',
+                textDecoration: 'none',
+                border: 1,
+                borderColor: alpha(theme.palette.primary.main, 0.28),
+                borderRadius: 1,
+                px: 1.25, py: 0.5,
+                width: 'fit-content',
+                maxWidth: '100%',
+                color: theme.palette.primary.dark,
+                bgcolor: alpha(theme.palette.primary.main, 0.04),
+                transition: 'background-color 120ms ease, border-color 120ms ease',
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  borderColor: theme.palette.primary.main,
+                },
               }}
             >
-              {String(v)}
-            </Box>
-          </Stack>
-        ))}
+              <LinkOutlinedIcon sx={{ fontSize: 15, flexShrink: 0 }} />
+              <Box
+                sx={{
+                  fontSize: 13, fontWeight: 600,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  minWidth: 0,
+                }}
+                title={url}
+              >
+                {name}
+              </Box>
+              <Box sx={{ fontSize: 11, fontWeight: 600, color: theme.palette.text.disabled, flexShrink: 0 }}>
+                Open ↗
+              </Box>
+            </Stack>
+          )
+        })}
       </Stack>
     )
   }
@@ -667,6 +737,20 @@ function valueLooksMeaningful(v) {
   if (v == null || v === '') return false
   if (Array.isArray(v) && v.length === 0) return false
   return true
+}
+
+// Pull the last path segment out of a URL and strip any query string —
+// used to show a friendly filename instead of the full download URL on
+// attachment chips.
+function filenameFromUrl(url) {
+  if (!url) return ''
+  try {
+    const clean = String(url).split('?')[0].split('#')[0]
+    const last = clean.split('/').filter(Boolean).pop() || ''
+    return decodeURIComponent(last)
+  } catch {
+    return ''
+  }
 }
 
 function NotFound({ msg, backTo = '/checker' }) {

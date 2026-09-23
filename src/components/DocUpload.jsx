@@ -7,7 +7,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import DownloadIcon from '@mui/icons-material/Download'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import { listFiles, uploadFilesBatch, deleteFile, downloadFile } from '../apis/files'
+import { listFiles, uploadFilesBatch, deleteFile, downloadFile, FILE_STAGE } from '../apis/files'
 import { decodeFilename } from '../fileFieldLabels'
 
 // Attach supporting documents (Invoice, attendance, etc.).
@@ -27,10 +27,10 @@ function DocUpload({
   docs,
   setDocs,
   registrationId = null,
-  // Entity-type tag used in the file API path (Sep '26 change).
-  // Default "ia" covers every IA-workspace caller; BSE / CAPEX pages
-  // pass their own tag.
-  stage = 'ia',
+  // Entity-type tag used in the file API query string. Backend renamed
+  // `ia` → `registration` in Sep '26 (see FILE_STAGE.IA). Default covers
+  // every IA-workspace caller; BSE / CAPEX pages pass their own tag.
+  stage = FILE_STAGE.IA,
   // Sub-entity id, if the file scope is different from `registrationId`
   // (e.g. an appraisal record under an IA). Defaults to `registrationId`
   // since the vast majority of callers use the same id in both slots.

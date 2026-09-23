@@ -1,4 +1,5 @@
 import { API_BASE, apiFetch } from '../api'
+import { encryptString } from './pii'
 
 // Backend `file-controller`.
 //
@@ -46,17 +47,38 @@ function getStoredToken() {
   } catch { return null }
 }
 
-function scopeQuery(registrationId, stage, stageId) {
+// Backend flipped to strict encryption on the file API (2026-09-23):
+// query params `registrationId` and `stageId` must be `ENC:...` strings,
+// plain integers now 400 with `Plain-text value rejected: expected an
+// encrypted ENC:... value for a PII-protected field`. `stage` is a
+// non-PII tag and stays plain-text.
+//
+// Callers still hand us whatever id they have in memory (an ENC string
+// from a URL param, or a plain integer from a decrypted DTO); we
+// idempotently upgrade both to ENC here. Because encryptString is
+// async, every file API call site is async now.
+async function encryptIdForFiles(v) {
+  const s = v == null ? '' : String(v)
+  if (s.startsWith('ENC:')) return s
+  return await encryptString(s)
+}
+
+async function scopeQuery(registrationId, stage, stageId) {
+  const [encReg, encStage] = await Promise.all([
+    encryptIdForFiles(registrationId),
+    encryptIdForFiles(stageId),
+  ])
   const p = new URLSearchParams()
-  p.set('registrationId', String(registrationId))
+  p.set('registrationId', encReg)
   p.set('stage', String(stage))
-  p.set('stageId', String(stageId))
+  p.set('stageId', encStage)
   return p.toString()
 }
 
 // GET /files?registrationId=&stage=&stageId= → UploadedFileResponse[]
-export function listFiles(registrationId, stage, stageId, { signal } = {}) {
-  return apiFetch(`${PATH}?${scopeQuery(registrationId, stage, stageId)}`, { signal })
+export async function listFiles(registrationId, stage, stageId, { signal } = {}) {
+  const qs = await scopeQuery(registrationId, stage, stageId)
+  return apiFetch(`${PATH}?${qs}`, { signal })
 }
 
 // POST /files?…  multipart/form-data, field name `file`
@@ -65,8 +87,9 @@ export async function uploadFile(registrationId, stage, stageId, file, { signal 
   const form = new FormData()
   form.append('file', file)
 
+  const qs = await scopeQuery(registrationId, stage, stageId)
   const res = await fetch(
-    `${API_BASE}${PATH}?${scopeQuery(registrationId, stage, stageId)}`,
+    `${API_BASE}${PATH}?${qs}`,
     {
       method: 'POST',
       signal,
@@ -97,8 +120,9 @@ export async function uploadFilesBatch(registrationId, stage, stageId, files, { 
   const form = new FormData()
   for (const f of files) form.append('files', f)
 
+  const qs = await scopeQuery(registrationId, stage, stageId)
   const res = await fetch(
-    `${API_BASE}${PATH}/batch?${scopeQuery(registrationId, stage, stageId)}`,
+    `${API_BASE}${PATH}/batch?${qs}`,
     {
       method: 'POST',
       signal,
@@ -127,23 +151,27 @@ export async function uploadFilesBatch(registrationId, stage, stageId, files, { 
 }
 
 // DELETE /files/{filename}?…
-export function deleteFile(registrationId, stage, stageId, filename, { signal } = {}) {
+export async function deleteFile(registrationId, stage, stageId, filename, { signal } = {}) {
+  const qs = await scopeQuery(registrationId, stage, stageId)
   return apiFetch(
-    `${PATH}/${encodeURIComponent(filename)}?${scopeQuery(registrationId, stage, stageId)}`,
+    `${PATH}/${encodeURIComponent(filename)}?${qs}`,
     { method: 'DELETE', signal },
   )
 }
 
 // Absolute URL for a specific file — pair with `downloadFile()` since
 // bearer auth is required (naked <a href> won't carry the header).
-export function fileUrl(registrationId, stage, stageId, filename) {
-  return `${API_BASE}${PATH}/${encodeURIComponent(filename)}?${scopeQuery(registrationId, stage, stageId)}`
+// Async now because backend requires ENC-encrypted IDs on the query
+// string; encryptString is a WebCrypto AES call.
+export async function fileUrl(registrationId, stage, stageId, filename) {
+  const qs = await scopeQuery(registrationId, stage, stageId)
+  return `${API_BASE}${PATH}/${encodeURIComponent(filename)}?${qs}`
 }
 
 // Fetches the file as a Blob and triggers a browser download.
 export async function downloadFile(registrationId, stage, stageId, filename) {
   const bearer = getStoredToken()
-  const url = fileUrl(registrationId, stage, stageId, filename)
+  const url = await fileUrl(registrationId, stage, stageId, filename)
   const res = await fetch(url, {
     headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
   })

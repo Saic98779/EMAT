@@ -7,7 +7,7 @@ import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
   RhfTextField, SHRINK_LABEL, useForm, useWatch, Controller,
 } from './_shared'
-import { createContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — Discussion Forum
 // GT_PMU raises; SIDBI HO Checker approves.
@@ -24,26 +24,45 @@ const INITIAL = {
   visibility: 'global',
 }
 
-export default function DiaDiscussionForum() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  return {
+    topic: record.topic || '',
+    theme: record.theme || '',
+    relevance: record.relevanceOfTopic || '',
+    startDate: (record.startDate || '').slice(0, 10),
+    endDate: (record.endDate || '').slice(0, 10),
+    visibility: record.globalOrOnlyMembers === 'MEMBERS' ? 'members' : 'global',
+  }
+}
+
+export default function DiaDiscussionForum({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const startMin = useMemo(() => ({ min: todayIso() }), [])
+  const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
 
   const submit = async (values) => {
     setSubmitting(true)
     try {
-      await createContent(DIA_ENDPOINTS.FORUM, {
+      const dto = {
         topic: values.topic.trim(),
         theme: values.theme.trim(),
         relevanceOfTopic: values.relevance.trim(),
         startDate: values.startDate,
         endDate: values.endDate,
         globalOrOnlyMembers: values.visibility === 'members' ? 'MEMBERS' : 'GLOBAL',
+      }
+      if (isEdit) await updateContent(DIA_ENDPOINTS.FORUM, editId, dto)
+      else await createContent(DIA_ENDPOINTS.FORUM, dto)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
       })
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -51,17 +70,20 @@ export default function DiaDiscussionForum() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   return (
     <PmuFormShell
-      title="Discussion Forum"
-      subtitle="Open a forum thread — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit Discussion Forum' : 'Discussion Forum'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Open a forum thread — submits to SIDBI HO Checker for approval.'}
       approvalNote="Once submitted, this thread goes to the SIDBI HO Checker for approval. It becomes visible to participants only after approval."
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Thread details">

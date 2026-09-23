@@ -43,18 +43,59 @@ const INITIAL = {
   questions: [makeQuestion()],
 }
 
-const SAMPLE_INPUT_PROPS = { min: 1 }
+// Hydrate the form from the record fetched during a PMU resubmit.
+// Attachment stays null on the file field (browsers won't let us re-seed
+// a File input from a URL) — the existing URL rides along in
+// `existingAttachment` and we keep it unless the user picks a new file.
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  return {
+    topic: record.topic || '',
+    relevance: record.relevanceOfTopic || '',
+    sample: record.sample == null ? '' : String(record.sample),
+    startDate: (record.startDate || '').slice(0, 10),
+    endDate: (record.endDate || '').slice(0, 10),
+    channels: Array.isArray(record.bulkMessaging) ? record.bulkMessaging : [],
+    attachment: null,
+    questions: Array.isArray(record.surveyQuestionnaires) && record.surveyQuestionnaires.length
+      ? record.surveyQuestionnaires.map((q) => ({
+          text: q.question || '',
+          type: q.questionType || 'SINGLE_CHOICE',
+          options: (q.questionType === 'TEXT' ? [] : (q.options && q.options.length ? q.options : ['', ''])),
+        }))
+      : [makeQuestion()],
+  }
+}
 
-export default function DiaSurvey() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+export default function DiaSurvey({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const existingAttachment = initialRecord?.attachment || null
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const { control } = methods
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
   const { fields, append, remove } = useFieldArray({ control, name: 'questions' })
-  const startMin = useMemo(() => ({ min: todayIso() }), [])
+  const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
 
   const submit = async (values) => {
+    // Single/Multi Choice questions need at least two non-empty options
+    // — a one-option "choice" isn't a choice, and enforcing this on
+    // submit keeps the surveys the checker sees usable.
+    const badChoice = values.questions.findIndex((q) => {
+      if (q.type !== 'SINGLE_CHOICE' && q.type !== 'MULTIPLE_CHOICE') return false
+      const filled = (q.options || []).map((o) => (o || '').trim()).filter(Boolean)
+      return filled.length < 2
+    })
+    if (badChoice >= 0) {
+      setToast({
+        severity: 'warning',
+        msg: `Question ${badChoice + 1}: single/multiple choice questions need at least two options.`,
+      })
+      return
+    }
+
     setSubmitting(true)
     try {
       const dto = {
@@ -62,30 +103,39 @@ export default function DiaSurvey() {
         relevanceOfTopic: values.relevance.trim(),
         startDate: values.startDate,
         endDate: values.endDate,
-        sample: Number(values.sample),
+        sample: values.sample.trim(),
         bulkMessaging: toBackendChannels(values.channels),
-        attachment: null,
+        // Keep the existing attachment URL on resubmit unless the user
+        // picked a new file — the file-upload step below overwrites it.
+        attachment: isEdit ? existingAttachment : null,
         surveyQuestionnaires: values.questions.map((q) => ({
           question: (q.text || '').trim(),
           questionType: q.type,
           options: q.type === 'TEXT' ? [] : (q.options || []).map((o) => (o || '').trim()).filter(Boolean),
         })),
       }
-      const created = await createContent(DIA_ENDPOINTS.SURVEY, dto)
-      if (values.attachment && created?.id) {
+      const savedId = isEdit
+        ? (await updateContent(DIA_ENDPOINTS.SURVEY, editId, dto))?.id ?? editId
+        : (await createContent(DIA_ENDPOINTS.SURVEY, dto))?.id
+      if (values.attachment && savedId) {
         try {
-          const urls = await uploadContentAttachments(DIA_ENDPOINTS.SURVEY, created.id, [values.attachment])
+          const urls = await uploadContentAttachments(DIA_ENDPOINTS.SURVEY, savedId, [values.attachment])
           if (urls[0]) {
-            await updateContent(DIA_ENDPOINTS.SURVEY, created.id, { ...dto, attachment: urls[0] })
+            await updateContent(DIA_ENDPOINTS.SURVEY, savedId, { ...dto, attachment: urls[0] })
           }
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
-          methods.reset(INITIAL)
+          if (!isEdit) methods.reset(INITIAL)
           return
         }
       }
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset({ ...INITIAL, questions: [makeQuestion()] })
+      setToast({
+        severity: 'success',
+        msg: isEdit
+          ? 'Resubmitted. The checker will re-review.'
+          : 'Submitted. Sent to SIDBI HO Checker for approval.',
+      })
+      if (!isEdit) methods.reset({ ...INITIAL, questions: [makeQuestion()] })
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -93,16 +143,19 @@ export default function DiaSurvey() {
     }
   }
 
-  const reset = () => methods.reset({ ...INITIAL, questions: [makeQuestion()] })
+  const reset = () => methods.reset(isEdit ? defaults : { ...INITIAL, questions: [makeQuestion()] })
 
   return (
     <PmuFormShell
-      title="Survey"
-      subtitle="Draft a survey — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit Survey' : 'Survey'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Draft a survey — submits to SIDBI HO Checker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Survey details">
@@ -134,19 +187,12 @@ export default function DiaSurvey() {
           <FieldCell span={{ xs: 12, md: 6 }}>
             <EndDateField />
           </FieldCell>
-          <FieldCell span={{ xs: 12, md: 6 }}>
+          <FieldCell span={12}>
             <RhfTextField
-              name="sample" fullWidth required type="number"
-              label="Sample size" placeholder="Number of respondents"
-              inputProps={SAMPLE_INPUT_PROPS}
-              rules={{
-                validate: (v) => {
-                  if (v === '' || v == null) return 'Required.'
-                  const n = Number(v)
-                  if (!Number.isFinite(n) || n < 1) return 'Enter a positive number.'
-                  return true
-                },
-              }}
+              name="sample" fullWidth required multiline minRows={2}
+              label="Sample of the Survey"
+              placeholder="Who receives this — audience, filters, sample size…"
+              rules={REQUIRED_TEXT}
             />
           </FieldCell>
         </FieldRow>
@@ -180,7 +226,9 @@ export default function DiaSurvey() {
           name="attachment"
           label="Reference document"
           accept={ATTACHMENT_ACCEPT}
-          helperText="Word or PDF. Optional."
+          helperText={isEdit && existingAttachment
+            ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+            : 'Word or PDF. Optional.'}
         />
       </PmuSection>
     </PmuFormShell>

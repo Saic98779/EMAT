@@ -3,7 +3,7 @@ import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
 } from './_shared'
-import { createContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — Latest Developments
 // GT_PMU raises; SIDBI HO Checker approves.
@@ -12,24 +12,41 @@ import { createContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 const INITIAL = { topic: '', relevance: '', startDate: '', endDate: '' }
 
-export default function DiaLatestDevelopments() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  return {
+    topic: record.topic || '',
+    relevance: record.relevanceOfTopic || '',
+    startDate: (record.startDate || '').slice(0, 10),
+    endDate: (record.endDate || '').slice(0, 10),
+  }
+}
+
+export default function DiaLatestDevelopments({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const startMin = useMemo(() => ({ min: todayIso() }), [])
+  const startMin = useMemo(() => ({ min: isEdit ? undefined : todayIso() }), [isEdit])
 
   const submit = async (values) => {
     setSubmitting(true)
     try {
-      await createContent(DIA_ENDPOINTS.LATEST_DEV, {
+      const dto = {
         topic: values.topic.trim(),
         relevanceOfTopic: values.relevance.trim(),
         startDate: values.startDate,
         endDate: values.endDate,
+      }
+      if (isEdit) await updateContent(DIA_ENDPOINTS.LATEST_DEV, editId, dto)
+      else await createContent(DIA_ENDPOINTS.LATEST_DEV, dto)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
       })
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -37,16 +54,19 @@ export default function DiaLatestDevelopments() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   return (
     <PmuFormShell
-      title="Latest Developments"
-      subtitle="Add a Latest Developments entry — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit Latest Developments' : 'Latest Developments'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Add a Latest Developments entry — submits to SIDBI HO Checker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       <PmuSection first title="Entry details">

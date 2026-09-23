@@ -120,9 +120,9 @@ export async function uploadContentAttachments(path, id, files) {
   if (!id || !files?.length) return []
   const uploaded = await uploadFilesBatch(id, path, id, files)
   // Backend returns UploadedFileResponse[] with `filename`; build the
-  // download URL from the same (id, path, id, filename) scope we uploaded to.
-  return (uploaded || [])
-    .map((f) => f?.filename)
-    .filter(Boolean)
-    .map((filename) => fileUrl(id, path, id, filename))
+  // download URL from the same (id, path, id, filename) scope we uploaded
+  // to. `fileUrl` is async because it AES-encrypts the ids in the query
+  // string, so we await the batch in parallel.
+  const filenames = (uploaded || []).map((f) => f?.filename).filter(Boolean)
+  return Promise.all(filenames.map((filename) => fileUrl(id, path, id, filename)))
 }

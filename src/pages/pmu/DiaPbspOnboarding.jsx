@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { InputAdornment, MenuItem } from '@mui/material'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell,
   EMAIL_RE, PHONE_RE,
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
 } from './_shared'
-import { createContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — PBSP Onboarding (Panel BDS Provider)
 // GT_PMU raises; SIDBI HO Checker approves. Fields mirror the backend
@@ -74,17 +74,39 @@ const SECTIONS = [
 
 const INITIAL = Object.keys(FIELDS).reduce((acc, k) => { acc[k] = ''; return acc }, {})
 
-export default function DiaPbspOnboarding() {
-  const methods = useForm({ mode: 'onSubmit', defaultValues: INITIAL })
+// Reverse-map the backend DTO onto the UI keys. Booleans → 'Yes'/'No';
+// numbers → strings; missing values → ''.
+function recordToDefaults(record) {
+  if (!record) return INITIAL
+  const out = {}
+  for (const [name, spec] of Object.entries(FIELDS)) {
+    const v = record[spec.backend]
+    if (v == null) { out[name] = ''; continue }
+    if (spec.type === 'yesNo') { out[name] = v === true ? 'Yes' : v === false ? 'No' : ''; continue }
+    if (spec.type === 'date') { out[name] = String(v).slice(0, 10); continue }
+    out[name] = String(v)
+  }
+  return out
+}
+
+export default function DiaPbspOnboarding({ editId = null, initialRecord = null } = {}) {
+  const isEdit = !!editId
+  const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
+  const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
   const [toast, setToast] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
   const submit = async (values) => {
     setSubmitting(true)
     try {
-      await createContent(DIA_ENDPOINTS.PBSP, buildPayload(values))
-      setToast({ severity: 'success', msg: 'Submitted. Sent to SIDBI HO Checker for approval.' })
-      methods.reset(INITIAL)
+      const payload = buildPayload(values)
+      if (isEdit) await updateContent(DIA_ENDPOINTS.PBSP, editId, payload)
+      else await createContent(DIA_ENDPOINTS.PBSP, payload)
+      setToast({
+        severity: 'success',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+      })
+      if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -92,16 +114,19 @@ export default function DiaPbspOnboarding() {
     }
   }
 
-  const reset = () => methods.reset(INITIAL)
+  const reset = () => methods.reset(isEdit ? defaults : INITIAL)
 
   return (
     <PmuFormShell
-      title="PBSP Onboarding"
-      subtitle="Add a Panel BDS Provider — submits to SIDBI HO Checker for approval."
+      title={isEdit ? 'Resubmit PBSP Onboarding' : 'PBSP Onboarding'}
+      subtitle={isEdit
+        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        : 'Add a Panel BDS Provider — submits to SIDBI HO Checker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
       submitting={submitting}
+      submitLabel={isEdit ? 'Resubmit for Approval' : 'Submit for Approval'}
       toast={toast} onToastClose={() => setToast(null)}
     >
       {SECTIONS.map((section, sIdx) => (
