@@ -369,8 +369,30 @@ function isEnvelope(v) {
 // Spring problem+json, legacy `{message}`, and plain strings.
 function messageFrom(v) {
   if (!v) return null
-  if (typeof v === 'string') return v
-  return v.message || v.detail || v.error || null
+  const raw = typeof v === 'string' ? v : (v.message || v.detail || v.error || null)
+  if (!raw) return null
+  return sanitizeErrorMessage(raw)
+}
+
+// Backend occasionally leaks raw JDBC / Hibernate prepared-statement
+// text into error responses (e.g. `... industry_association_name=?,
+// is_active=?, ...` reflected out of a DataIntegrityViolationException).
+// Users shouldn't see SQL fragments. Detect the shape and swap in a
+// generic message; the raw text is still available on `err.data` for
+// developer log inspection.
+function sanitizeErrorMessage(raw) {
+  const s = String(raw)
+  // Heuristic: SQL prepared-statement noise almost always carries a
+  // run of "column=?, column=?, …" segments. `=?,` doesn't naturally
+  // appear in prose, so 2+ hits is a strong signal.
+  const paramHits = (s.match(/=\?/g) || []).length
+  const hasSqlKeywords = /\b(insert into|update\s+\w+\s+set|select\s+.*\s+from|values\s*\()/i.test(s)
+  if (paramHits >= 2 || hasSqlKeywords) {
+    // eslint-disable-next-line no-console
+    console.warn('[api] suppressed SQL-shaped error from backend:', s)
+    return 'Something went wrong on the server. Please try again — if it keeps happening, share this timestamp with support.'
+  }
+  return s
 }
 
 function safeJson(t) {
