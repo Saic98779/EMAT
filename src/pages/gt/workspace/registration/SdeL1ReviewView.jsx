@@ -152,7 +152,12 @@ export default function SdeL1ReviewView({
 //
 // Also encapsulates the confirmation dialog (needs the remark text) so
 // the parent doesn't need to see it either.
-const DecisionBar = memo(function DecisionBar({
+//
+// Exported so the editable SDE variant of the L1 view (SdeL1EditableView)
+// can reuse the exact same bar + confirm dialog + copy without
+// duplicating it. Its `onDecide(d, remarks)` contract lets that caller
+// interleave a PUT-of-edits before recording the decision.
+export const DecisionBar = memo(function DecisionBar({
   decisions, iaName, onDecide, onValidationFail,
 }) {
   const theme = useTheme()
@@ -226,7 +231,7 @@ const DecisionBar = memo(function DecisionBar({
             </Typography>
             <TextField
               value={comments}
-              onChange={(e) => setComments(e.target.value.slice(0, 500))}
+              onChange={(e) => setComments(e.target.value.slice(0, 2000))}
               placeholder="Optional — required if rejecting or sending back to GT"
               fullWidth
               size="small"

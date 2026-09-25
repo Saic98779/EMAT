@@ -21,6 +21,22 @@ const URL_PATTERN = {
   msg: 'Enter a valid URL (e.g. www.example.com or https://example.com)',
 }
 
+// Cross-field guard for the three L2 grant buckets — Salary + CAPEX +
+// Capacity Building must not exceed the ₹14,00,000 cap. Blank fields
+// are treated as zero so the user can enter values in any order
+// without seeing a spurious error before all three are filled.
+const GRANT_TOTAL_CAP = 1400000
+export function grantSumProblem(values) {
+  const s = Number(values?.grant_proposed_salary) || 0
+  const c = Number(values?.grant_proposed_capex) || 0
+  const b = Number(values?.grant_proposed_capacity_building) || 0
+  const total = s + c + b
+  if (total > GRANT_TOTAL_CAP) {
+    return `Salary + CAPEX + Capacity Building cannot exceed ₹14,00,000 (current: ₹${total.toLocaleString('en-IN')}).`
+  }
+  return ''
+}
+
 // Validator for CIBIL/SMART report dates on the appraisal — spec says they
 // must be dated after the parent In-Principle registration was created.
 // The parent IA's createdAt is threaded into form values under
@@ -121,6 +137,10 @@ export const makeInPrincipleSchema = ({
       { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 6, required: true },
     ] },
     { n: 2, title: 'Address of IA', fields: [
+      { name: 'full_address', label: 'Full postal address', type: 'textarea', span: 12, required: true,
+        placeholder: 'Line 1, Line 2, Landmark, City, State — PIN',
+        rows: 2, max: 500,
+        help: 'Enter the complete postal address as it should appear on official correspondence.' },
       { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true, help: 'Within the selected State' },
       { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE },
     ] },
@@ -135,7 +155,7 @@ export const makeInPrincipleSchema = ({
       // three orphaned inputs scattered across rows.
       { name: '_apex_kyc', label: 'KYC Document (Address Proof)', type: 'subheading', span: 12 },
       { name: 'apex_kyc_doc', label: 'KYC Document', type: 'select', span: 4, required: true,
-        options: ['Voter ID card', 'Driving licence', 'Passport', 'Telephone bill', 'Electricity bill', 'Water consumption bill', 'Gas receipt / connection card'] },
+        options: ['Aadhaar', 'Voter ID card', 'Driving licence', 'Passport', 'Telephone bill', 'Electricity bill', 'Water consumption bill', 'Gas receipt / connection card'] },
       { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter document / bill number',
         showIf: (v) => !!v.apex_kyc_doc },
@@ -200,23 +220,21 @@ export const makeInPrincipleSchema = ({
       { name: 'building', label: 'Building of IA', type: 'select', span: 6, required: true,
         options: ['Owned office', 'Rented office', 'Leased office', 'Office of office bearer'] },
       { name: 'declaration_signed', label: 'Declaration signed by office bearer', type: 'yesno', span: 6, required: true },
-      { name: 'electricity_bill', label: 'Electricity bill (proof)', type: 'file', span: 6, required: true },
-      { name: 'telephone_bill', label: 'Telephone bill (proof)', type: 'file', span: 6, required: true },
+      { name: 'electricity_bill', label: 'Electricity bill (proof)', type: 'file', span: 6 },
+      { name: 'telephone_bill', label: 'Telephone bill (proof)', type: 'file', span: 6 },
 
       { name: '_amenities', label: 'IT & staff', type: 'subheading', span: 12 },
-      { name: 'it_infra', label: 'IT infrastructure (Computer / Printer / Scanner)?', type: 'yesno', span: 6, required: true },
-      { name: 'it_infra_details', label: 'If yes, infrastructure available (select all that apply)', type: 'checkboxes', span: 12, required: true,
-        showIf: (v) => v.it_infra === 'yes',
-        options: ['Computer', 'Laptop', 'Printer', 'Printer with Scanner', 'Internet Connection'] },
-      { name: 'secretariat_staff', label: 'Availability of Secretariat Staff', type: 'yesno', span: 12, required: true },
-      { name: 'secretariat_list', label: 'Secretariat staff members', type: 'repeater', span: 12,
-        showIf: (v) => v.secretariat_staff === 'yes', required: true,
-        addLabel: 'Add staff',
-        columns: [
-          { name: 'name', label: 'Name', type: 'text' },
-          { name: 'contact', label: 'Contact', type: 'tel' },
-          { name: 'email', label: 'Email', type: 'email' },
-        ] },
+      // Free-text descriptions instead of the earlier Yes/No + checkbox
+      // grid and the secretariat-repeater — per client UAT (2026-09-25
+      // #6 + #7). 500-char cap comes from the FormRenderer default.
+      { name: 'it_infra', label: 'IT infrastructure available', type: 'textarea', span: 12, required: true,
+        rows: 2, max: 300,
+        placeholder: 'e.g. 2 desktops, 1 printer with scanner, broadband internet, video conferencing setup…',
+        help: 'Describe the computers, printers, scanners, connectivity, etc. available at the IA office.' },
+      { name: 'secretariat_staff', label: 'Secretariat staff', type: 'textarea', span: 12, required: true,
+        rows: 2, max: 300,
+        placeholder: 'e.g. 1 admin officer + 2 support staff, working full-time from the IA office…',
+        help: 'Describe the secretariat staff — headcount, roles, contact points where relevant.' },
 
       { name: '_online', label: 'Online presence & services', type: 'subheading', span: 12 },
       { name: 'website', label: 'Website availability', type: 'yesno', span: 6, required: true },
@@ -233,8 +251,10 @@ export const makeInPrincipleSchema = ({
       { name: 'adverse_report', label: 'Upload web report', type: 'file', span: 12, required: true, showIf: (v) => v.adverse_remarks === 'yes' },
     ] },
     { n: 7, title: 'DIA Specific Details', fields: [
-      { name: 'basis_of_selection', label: 'Basis of selection (select one / multiple / all)', type: 'checkboxes', required: true,
-        options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
+      { name: 'basis_of_selection', label: 'Basis of selection', type: 'textarea', span: 12, required: true,
+        rows: 2, max: 500,
+        placeholder: 'e.g. active member base > 200; runs regular training programs; maintains an updated member directory…',
+        help: 'Describe the reasons this IA was selected — combine one or more criteria in your own words.' },
       { name: 'willingness_comments', label: "Comments on IA's willingness to take up Micro income-generating activities", type: 'textarea', span: 12, max: 500, required: true },
 
       { name: '_grant', label: 'Grant proposal', type: 'subheading', span: 12 },
@@ -249,7 +269,8 @@ export const makeInPrincipleSchema = ({
           if (n > 1400000) return 'Cannot exceed ₹14,00,000 (₹14 Lakhs)'
           return ''
         } },
-      { name: 'grant_details', label: 'Grant Details proposed (BSE Salary ₹60,000/month from date of joining; Budget for IA Sustainability & Training Program ₹6,80,000)', type: 'textarea', span: 12, required: true },
+      { name: 'grant_details', label: 'Grant Details proposed (BSE Salary ₹60,000/month from date of joining; Budget for IA Sustainability & Training Program ₹6,80,000)',
+        type: 'textarea', span: 12, required: true, rows: 4, max: 4000 },
 
       { name: '_envisaged', label: 'Envisaged impact', type: 'subheading', span: 12 },
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500, required: true },
@@ -657,6 +678,14 @@ export const appraisalSchema = {
       { name: 'secretariat_staff', label: 'Availability of Secretariat Staff?', type: 'yesno', span: 4 },
       { name: 'secretariat_details', label: 'If yes, details', type: 'text', span: 8, showIf: (v) => v.secretariat_staff === 'yes' },
       { name: 'website', label: 'Website availability?', type: 'yesno', span: 4 },
+      // Autofetched from In-Principle when the parent flag is Yes — see
+      // fromDto below where `website_url` is hydrated off the IA record.
+      // Client UAT (2026-09-25 #64): show + modifiable on the L2 too.
+      { name: 'website_url', label: 'Website URL', type: 'text', span: 8,
+        showIf: (v) => v.website === 'yes',
+        placeholder: 'https://example.com',
+        pattern: URL_PATTERN,
+        help: 'Auto-fetched from In-Principle — editable here.' },
       { name: 'paid_services', label: 'Paid services offered to members?', type: 'yesno', span: 4 },
       { name: 'paid_services_details', label: 'Details of paid services', type: 'text', span: 12, showIf: (v) => v.paid_services === 'yes' },
       { name: 'major_sources_of_income', label: 'Major sources of income', type: 'textarea', span: 12 },
@@ -669,7 +698,9 @@ export const appraisalSchema = {
       { name: 'ready_bse_yn', label: "IA's readiness to place SIDBI Business Support Executives", type: 'yesno', span: 4 },
       { name: 'ready_bse', label: 'Remarks — placing SIDBI BSE', type: 'textarea', span: 8, max: 500 },
       { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
-      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4 },
+      // Sector #1 required — client UAT (2026-09-25 #67): sectoral IAs
+      // may deal in only one sector, so #2 / #3 stay optional.
+      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true },
       { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
       { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4 },
       { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
@@ -684,30 +715,49 @@ export const appraisalSchema = {
           if (n < 0) return 'Cannot be negative'
           return ''
         } },
-      { name: 'project_location', label: 'Location where the project is being proposed', type: 'text', span: 6 },
-      { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'checkboxes', span: 12,
-        options: ['More than 200 IAs', 'Active Website', 'Availability of Association Members Database', 'Ready to share the Database', 'Active in Conducting Training Programs', 'All'] },
-      // Grant split — backend replaced the old aggregated `grantProposed`
-      // column with two: `grantProposedSalary` (BSE salary allocation) and
-      // `grantProposedCapex` (IA sustainability + training budget). Spec
-      // §11: BSE Salary ₹7,20,000 maximum; CAPEX ₹4,80,000. Enter each
-      // separately — the payload adapter sends them to their own columns.
+      { name: 'project_location', label: 'Location where the project is being proposed', type: 'textarea', span: 12, max: 500,
+        rows: 2, placeholder: 'District(s), block(s), specific villages / MSME clusters where the project will operate.' },
+      // Client UAT (2026-09-25 #68): checkboxes → free-text 500-char
+      // description, mirroring the Stage-2 change. Autofetched from the
+      // IA record — see fromDto below.
+      { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'textarea', span: 12,
+        rows: 2, max: 500,
+        placeholder: 'e.g. active member base > 200; runs regular training programs; maintains an updated member directory…',
+        help: 'Autofetched from the IA record — editable here.' },
+      // Grant split — backend keeps `grantProposedSalary` and
+      // `grantProposedCapex`, and (2026-09-25) added a third bucket for
+      // capacity building. Client caps:
+      //   • BSE Salary        — ₹7,20,000
+      //   • CAPEX             — ₹2,00,000 (was suggested ₹4,80,000)
+      //   • Capacity Building — no per-field cap
+      //   • Sum of all three  — must not exceed ₹14,00,000
+      // The sum guard is applied on every input so pasting a large amount
+      // into any of the three flags the aggregate breach.
       { name: 'grant_proposed_salary', label: 'Grant Proposed — BSE Salary (₹)', type: 'number', prefix: '₹', span: 4,
         help: 'BSE salary allocation. Max ₹7,20,000.',
-        validate: (v) => {
+        validate: (v, values) => {
           if (v === '' || v == null) return ''
           const n = Number(v)
           if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
           if (n > 720000) return 'Cannot exceed ₹7,20,000'
-          return ''
+          return grantSumProblem(values)
         } },
       { name: 'grant_proposed_capex', label: 'Grant Proposed — CAPEX (₹)', type: 'number', prefix: '₹', span: 4,
-        help: 'IA sustainability + training budget. Suggested ₹4,80,000.',
-        validate: (v) => {
+        help: 'IA sustainability + training budget. Max ₹2,00,000.',
+        validate: (v, values) => {
           if (v === '' || v == null) return ''
           const n = Number(v)
           if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
-          return ''
+          if (n > 200000) return 'Cannot exceed ₹2,00,000'
+          return grantSumProblem(values)
+        } },
+      { name: 'grant_proposed_capacity_building', label: 'Grant Proposed — Capacity Building (₹)', type: 'number', prefix: '₹', span: 4,
+        help: 'Additional capacity-building budget. No per-field cap.',
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
+          return grantSumProblem(values)
         } },
       { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, help: 'Autofetched — modifiable' },
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
@@ -719,7 +769,9 @@ export const appraisalSchema = {
       // asked to contribute. `required` is safe to keep on the shared schema
       // because GT/SDE variants filter this whole section out (see
       // `schemaFor` in AppraisalForm).
-      { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4, required: true },
+      // 2000-char cap per client UAT (2026-09-25 #74) — overrides the
+      // 500-char default the FormRenderer applies to free text.
+      { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4, required: true, max: 2000 },
     ] },
     { n: 13, title: 'Terms of Assistance', fields: [
       { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'textarea', span: 12, placeholder: 'As per Annexure' },
@@ -741,13 +793,25 @@ export const appraisalSchema = {
           { value: '2027-04-01', label: 'FY 2027-28' },
           { value: '2028-04-01', label: 'FY 2028-29' },
         ] },
-      { name: 'budget_allocated', label: 'Budget allocated (₹)', type: 'number', prefix: '₹', span: 3 },
-      { name: 'budget_utilized', label: 'Utilization so far (₹)', type: 'number', prefix: '₹', span: 3 },
+      { name: 'budget_allocated', label: 'Budget allocated (₹)', type: 'number', prefix: '₹', span: 3,
+        validate: (v) => (v === '' || v == null ? '' : (Number(v) < 0 ? 'Cannot be negative.' : '')) },
+      { name: 'budget_utilized', label: 'Utilization so far (₹)', type: 'number', prefix: '₹', span: 3,
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (n < 0) return 'Cannot be negative.'
+          const alloc = Number(values?.budget_allocated) || 0
+          if (n > alloc) return 'Utilization cannot exceed the allocated budget.'
+          return ''
+        } },
       { name: 'budget_available', label: 'Available Budget (₹)', type: 'computed', prefix: '₹', span: 3,
+        // Available budget = allocated − utilised, floored at zero. Even
+        // if some future data-entry mistake sneaks utilisation > alloc
+        // past validation, we don't want to paint a negative number.
         formula: (v) => {
           const a = Number(v.budget_allocated) || 0
           const u = Number(v.budget_utilized) || 0
-          return a - u
+          return Math.max(0, a - u)
         } },
     ] },
     { n: 15, title: 'Delegation of Power', fields: [

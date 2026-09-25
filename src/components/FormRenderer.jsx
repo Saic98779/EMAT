@@ -60,6 +60,14 @@ const PATTERNS = {
 //
 // Whitespace-only strings are treated as empty (a user typing " " should
 // not satisfy a required field).
+//
+// Free-text length policy (2026-09-25, per client UAT):
+//   • text / textarea fields default to a max of 500 characters unless
+//     the schema opts in with a bigger `max` (e.g. Grant Details =4000).
+//   • non-empty text / textarea values must be at least 3 characters —
+//     a lone letter should never survive submit.
+//   • Schemas can opt out of the min-length check by setting `min: 0`
+//     or a different threshold via `min`.
 export function fieldError(f, value, values, { showRequired = false } = {}) {
   const raw = value ?? ''
   const trimmed = typeof raw === 'string' ? raw.trim() : raw
@@ -67,28 +75,56 @@ export function fieldError(f, value, values, { showRequired = false } = {}) {
   if (showRequired && f.required && !filled) return 'Required'
   if (f.validate) { const e = f.validate(trimmed, values); if (e) return e }
   if (trimmed === '' || trimmed == null) return ''
+  const isFreeText = f.type === 'text' || f.type === 'textarea'
+  if (isFreeText && typeof trimmed === 'string') {
+    const minLen = f.min ?? 3
+    const maxLen = f.max ?? 500
+    if (trimmed.length < minLen) return `Enter at least ${minLen} characters.`
+    if (trimmed.length > maxLen) return `Keep it under ${maxLen} characters.`
+  }
   const p = f.pattern || (f.type === 'email' && PATTERNS.email) || (f.type === 'tel' && PATTERNS.phone)
   if (p && !p.re.test(String(trimmed))) return p.msg
   return ''
 }
 
 // Inline whitespace guard applied on every keystroke of a text-ish input.
-// Two behaviours by field type:
-//   • Identifier-like (email, tel, pattern-locked text like PAN/PIN/UUID):
-//     strip ALL whitespace — these shouldn't contain spaces at all.
-//   • Free text / textarea: strip leading whitespace, collapse consecutive
-//     internal whitespace to a single space. Trailing whitespace is left
-//     alone while the caret is inside the field (so the user can hit space
-//     between words) and cleaned up on blur (see handleBlur).
+// Behaviour matrix (2026-09-25):
+//   • Identifier-like (email, tel, pattern-locked text where the pattern
+//     itself doesn't accept whitespace — PAN, PIN, UUID etc.): strip ALL
+//     whitespace — these shouldn't contain spaces at all.
+//   • Free single-line text AND patterns that DO permit whitespace
+//     (e.g. NAME_PATTERN accepts `[A-Za-z\s.'-]`): strip leading
+//     whitespace, collapse consecutive internal whitespace to a single
+//     space. Trailing whitespace is left alone while the caret is
+//     inside the field (see handleBlur).
+//   • Textarea: only collapse HORIZONTAL whitespace (spaces / tabs) —
+//     newlines survive. Client UAT #56 flagged that Enter wasn't
+//     inserting line breaks, because the old `\s{2,}` collapse ate the
+//     newline as part of a whitespace run.
 // Numbers / dates / selects skip this path entirely.
 export function normaliseWhitespace(f, raw) {
   if (typeof raw !== 'string') return raw
   const type = f?.type || 'text'
+  const patternAllowsWs = f?.pattern?.re && patternAllowsWhitespace(f.pattern.re)
   // Fields where whitespace is never legal.
-  const noWs = type === 'email' || type === 'tel' || f?.pattern
+  const noWs = type === 'email' || type === 'tel' || (f?.pattern && !patternAllowsWs)
   if (noWs) return raw.replace(/\s+/g, '')
-  // Free text / textarea — no leading, and collapse runs of whitespace.
+  if (type === 'textarea') {
+    // Preserve newlines (\n / \r) so paragraphs work; only strip
+    // leading horizontal whitespace and collapse runs of spaces/tabs.
+    return raw.replace(/^[ \t]+/, '').replace(/[ \t]{2,}/g, ' ')
+  }
+  // Single-line free text — no leading, collapse runs of any whitespace.
   return raw.replace(/^\s+/, '').replace(/\s{2,}/g, ' ')
+}
+
+// Returns true if the regex source contains a `\s` escape, an explicit
+// space character, or a common whitespace shorthand. Used so patterns
+// like NAME_PATTERN (`[A-Za-z\s.'-]`) that clearly allow spaces don't
+// have their user input mangled by the keystroke whitespace stripper.
+function patternAllowsWhitespace(re) {
+  const src = re?.source || ''
+  return src.includes('\\s') || / /.test(src) || src.includes('\\t')
 }
 
 const optsOf = (f, values) => (f.optionsFrom ? f.optionsFrom(values) : f.options) || []
@@ -606,7 +642,12 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   // option's label through a plain text input instead.
   const lockedSelect = isSelect && f.readOnly
   const multiline = f.type === 'textarea'
-  const counter = f.max ? `${String(value ?? '').length} / ${f.max}` : null
+  // Free-text fields now have an implicit 500-char cap unless the schema
+  // sets a bigger `max`. Show the counter in both cases so users see the
+  // running length regardless of whether the field is at default or
+  // custom cap.
+  const effectiveMax = (f.type === 'text' || f.type === 'textarea') ? (f.max ?? 500) : f.max
+  const counter = effectiveMax ? `${String(value ?? '').length} / ${effectiveMax}` : null
   // Native calendar bounds for date inputs. Accepts an ISO string
   // ("YYYY-MM-DD") or the literal "today".
   // NOTE: format in local time — toISOString() would emit UTC, so at IST
@@ -699,6 +740,9 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         InputLabelProps={f.type === 'date' || lockedSelect ? { shrink: true } : undefined}
         multiline={multiline}
         minRows={multiline ? (f.rows || 2) : undefined}
+        // No `maxRows` — let textareas grow with content so long grant
+        // details / narrative fields don't stay stuck at 2–3 rows with
+        // an internal scrollbar (client UAT 2026-09-25 #18).
         select={isSelect && !lockedSelect}
         value={lockedSelect ? labelOfOption(options, selVal) : selVal}
         onChange={handleChange}
@@ -710,7 +754,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         // number field.
         onWheel={isNumber ? (e) => e.target.blur() : undefined}
         inputProps={{
-          maxLength: f.max,
+          maxLength: effectiveMax,
           max: dateMax,
           // For number fields, always cap the minimum at 0 (so browser
           // constraint-validation / stepper also refuse negatives).

@@ -17,6 +17,7 @@ import { stackedLabelSx } from '../../../components/workspace/formStyles'
 import SectionStepper from './registration/SectionStepper'
 import RegistrationFooter from './registration/RegistrationFooter'
 import SdeL1ReviewView from './registration/SdeL1ReviewView'
+import SdeL1EditableView from './registration/SdeL1EditableView'
 import { useRegistrationSubmit } from './registration/useRegistrationSubmit'
 
 // RegistrationTab (L1 · In-Principle Approval)
@@ -185,6 +186,7 @@ function RegistrationForm({ ws }) {
     return s.status === STATUS.COMPLETED || s.status === STATUS.IN_PROGRESS
   })
   const isGtFieldTeam = ws.viewerRole === 'GT_FIELD_TEAM'
+  const isSdeReviewer = ws.viewerRole === 'SIDBI_SDE'
   const isLocked = submissionDone && !(l1Reverted && isGtFieldTeam)
   // Latest reviewer remark to show GT what needs fixing (populated by
   // deriveWorkflow when it saw a REVERTED sub-stage in history).
@@ -201,7 +203,11 @@ function RegistrationForm({ ws }) {
         ...sec,
         fields: sec.fields.map((f) => {
           // Locked view — every field becomes a read-only record cell.
-          if (isLocked) return { ...f, readOnly: true, required: false }
+          // Exception (client UAT 2026-09-25): the SIDBI SDE reviewer
+          // must be able to edit any field before recording their L1
+          // decision. Keep header fields locked either way (canonical
+          // on the eligibility record).
+          if (isLocked && !isSdeReviewer) return { ...f, readOnly: true, required: false }
           if (LOCKED_HEADER_FIELDS.has(f.name)) {
             return { ...f, readOnly: true, required: false, help: 'Captured on the Eligibility Matrix — read-only here.' }
           }
@@ -209,7 +215,7 @@ function RegistrationForm({ ws }) {
         }),
       })),
     }
-  }, [branchOptions, sdeOptions, branchHelp, sdeHelp, isLocked])
+  }, [branchOptions, sdeOptions, branchHelp, sdeHelp, isLocked, isSdeReviewer])
 
   const sections = fullSchema.sections
   const [activeIndex, setActiveIndex] = useState(0)
@@ -285,13 +291,15 @@ function RegistrationForm({ ws }) {
   const decisions = ws.decisionsForCurrent || []
   const isReviewer = decisions.length > 0
 
-  // Reviewer branch — SDE opens the L1 tab on a submitted IA. Full
-  // review surface (fields + docs + Approve/Reject bar). GT / other
-  // non-reviewers fall through to the read-only-form branch below.
+  // Reviewer branch — SDE / CE / HO Maker opens the L1 tab on a
+  // submitted IA. SIDBI SDE gets the editable variant (client spec:
+  // every field is modifiable by SDE); everyone else keeps the classic
+  // read-only review surface with docs sidebar + decision bar.
   if (isLocked && isReviewer) {
+    const ReviewComponent = isSdeReviewer ? SdeL1EditableView : SdeL1ReviewView
     return (
       <>
-        <SdeL1ReviewView
+        <ReviewComponent
           iaId={ws.iaId}
           iaName={ws.ia?.name}
           dto={dto}

@@ -80,18 +80,26 @@ export default function AppraisalReviewView({
   // bar (Section 12 "Cluster Expert Comments") and strip any `ceOnly`
   // fields that live inside other sections (e.g. the Terms-of-Assistance
   // section carries `cluster_expert_terms_comments` which is CE-owned).
-  // Otherwise CE sees two "empty comments" fields alongside the input
-  // box in the sticky bar, which reads like the value is missing.
+  // For everyone else, hide Section 12 while it's still empty — client
+  // UAT (2026-09-25 #16) flagged that SDE reviews *before* the CE has
+  // commented, and an empty "Cluster Expert Comments" section on that
+  // screen reads like a broken form. Once CE fills it, we still want
+  // HO Maker etc. to see it, so gate on content-presence rather than
+  // hiding it outright.
+  const ceCommentsFilled = !!String(seed?.cluster_expert_comments || '').trim()
   const sections = useMemo(() => {
     const all = appraisalSchema?.sections || []
-    if (viewerRole !== REVIEWER_ROLES.CLUSTER_EXPERT) return all
-    return all
-      .filter((sec) => sec.n !== 12)
-      .map((sec) => ({
-        ...sec,
-        fields: (sec.fields || []).filter((f) => !f.ceOnly),
-      }))
-  }, [viewerRole])
+    if (viewerRole === REVIEWER_ROLES.CLUSTER_EXPERT) {
+      return all
+        .filter((sec) => sec.n !== 12)
+        .map((sec) => ({
+          ...sec,
+          fields: (sec.fields || []).filter((f) => !f.ceOnly),
+        }))
+    }
+    if (ceCommentsFilled) return all
+    return all.filter((sec) => sec.n !== 12)
+  }, [viewerRole, ceCommentsFilled])
   const [openSection, setOpenSection] = useState(() => sections[0]?.n ?? null)
   const toggleSection = (n) => setOpenSection((prev) => (prev === n ? null : n))
 
@@ -363,7 +371,7 @@ const DecisionBar = memo(function DecisionBar({
             </Typography>
             <TextField
               value={comments}
-              onChange={(e) => setComments(e.target.value.slice(0, 1000))}
+              onChange={(e) => setComments(e.target.value.slice(0, 2000))}
               placeholder={roleCopy.remarksPlaceholder}
               fullWidth
               size="small"

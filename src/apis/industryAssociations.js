@@ -134,6 +134,11 @@ export function toPayload(v = {}) {
     constitutionProof: null,
     district: str(v.district),
     pincode: str(v.pincode),
+    // Free-text full postal address (client UAT 2026-09-25 #1). Payload
+    // key is `address` per backend naming (2026-09-25 confirm) — the
+    // local form field stays `full_address` to keep it distinct from
+    // the older split-address labelling.
+    address: str(v.full_address),
     apexHolderName: str(v.apex_name),
     apexHolderDesignation: str(v.apex_designation),
     apexHolderMobile: str(v.apex_contact),
@@ -161,11 +166,15 @@ export function toPayload(v = {}) {
     declarationSigned: bool(v.declaration_signed),
     electricityBill: null,
     telephoneBill: null,
-    itInfrastructureAvailable: bool(v.it_infra),
-    infrastructureType: v.it_infra === 'yes'
-      ? (Array.isArray(v.it_infra_details) ? (v.it_infra_details.length ? v.it_infra_details.join(', ') : null) : str(v.it_infra_details))
-      : null,
-    secretariatStaffAvailable: bool(v.secretariat_staff),
+    // Client UAT (2026-09-25 #6, #7): IT infra and secretariat staff are
+    // now free-text descriptions instead of Yes/No + a structured list.
+    // Send both the boolean (derived from "did they type anything") for
+    // legacy columns and the free-text as `infrastructureType` /
+    // `secretariatStaff` (which used to be structured). Backend now
+    // stores whichever it has a column for; unknown keys are ignored.
+    itInfrastructureAvailable: !!str(v.it_infra),
+    infrastructureType: str(v.it_infra),
+    secretariatStaffAvailable: !!str(v.secretariat_staff),
     websiteAvailable: bool(v.website),
     websiteUrl: v.website === 'yes' ? str(v.website_url) : null,
     paidServicesAvailable: bool(v.paid_services),
@@ -173,22 +182,19 @@ export function toPayload(v = {}) {
     // ignores unknown keys, so it's safe to include either way. If the POST
     // response echoes this back, backend already supports it.
     paidServicesDetails: v.paid_services === 'yes' ? str(v.paid_services_details) : null,
-    // Same story for the secretariat staff grid. Sending as an array of
-    // { name, contact, email } — filter out empty rows so we don't ship
-    // half-blank entries.
-    secretariatStaff: v.secretariat_staff === 'yes' && Array.isArray(v.secretariat_list)
-      ? v.secretariat_list
-          .map((row) => ({
-            name: str(row?.name),
-            contact: str(row?.contact),
-            email: str(row?.email),
-          }))
-          .filter((r) => r.name || r.contact || r.email)
-      : [],
+    // Secretariat staff — now a free-text description. If backend still
+    // types this column as an array, it'll drop the string silently and
+    // the boolean above carries the "yes/no" signal.
+    secretariatStaff: str(v.secretariat_staff),
     adverseRemarksAvailable: bool(v.adverse_remarks),
     adverseRemarks: v.adverse_remarks === 'yes' ? str(v.adverse_details) : null,
     webReport: null,
-    selectionCriteria: Array.isArray(v.basis_of_selection) ? v.basis_of_selection : [],
+    // Basis of selection — now free-text. Send as a single-element array
+    // so the existing backend `selectionCriteria: List<String>` column
+    // still round-trips; and mirror it on `selectionCriteriaText` for
+    // whenever backend adds a proper text column.
+    selectionCriteria: str(v.basis_of_selection) ? [str(v.basis_of_selection)] : [],
+    selectionCriteriaText: str(v.basis_of_selection),
     willingnessComments: str(v.willingness_comments),
     workedWithSidbiBefore: bool(v.worked_before),
     grantProposed: num(v.grant_proposed),
@@ -239,6 +245,10 @@ export function toFormValues(dto = {}) {
     ia_profit_type: dto.iaType ?? '',
     district: dto.district ?? '',
     pincode: dto.pincode ?? '',
+    // Hydrate from `address` (current backend column). Fall back to
+    // `fullAddress` in case any older records were saved under the
+    // pre-rename key.
+    full_address: dto.address ?? dto.fullAddress ?? '',
     apex_name: dto.apexHolderName ?? '',
     apex_designation: dto.apexHolderDesignation ?? '',
     apex_contact: dto.apexHolderMobile ?? '',
@@ -262,19 +272,30 @@ export function toFormValues(dto = {}) {
     member_directory: yn(dto.memberDirectoryAvailable),
     building: dto.buildingType ?? '',
     declaration_signed: yn(dto.declarationSigned),
-    it_infra: yn(dto.itInfrastructureAvailable),
-    it_infra_details: typeof dto.infrastructureType === 'string' && dto.infrastructureType.length
-      ? dto.infrastructureType.split(',').map((s) => s.trim()).filter(Boolean)
-      : [],
-    secretariat_staff: yn(dto.secretariatStaffAvailable),
-    secretariat_list: Array.isArray(dto.secretariatStaff) ? dto.secretariatStaff : [],
+    // Free-text hydration for the fields that used to be Yes/No + list.
+    // Prefer the new string columns when present; fall back to
+    // pretty-printing the legacy structured payload so records created
+    // under the old schema still show something meaningful.
+    it_infra: typeof dto.infrastructureType === 'string'
+      ? dto.infrastructureType
+      : '',
+    secretariat_staff: typeof dto.secretariatStaff === 'string'
+      ? dto.secretariatStaff
+      : (Array.isArray(dto.secretariatStaff)
+          ? dto.secretariatStaff.map((r) => [r?.name, r?.contact, r?.email].filter(Boolean).join(' · ')).filter(Boolean).join('\n')
+          : ''),
     website: yn(dto.websiteAvailable),
     website_url: dto.websiteUrl ?? '',
     paid_services: yn(dto.paidServicesAvailable),
     paid_services_details: dto.paidServicesDetails ?? '',
     adverse_remarks: yn(dto.adverseRemarksAvailable),
     adverse_details: dto.adverseRemarks ?? '',
-    basis_of_selection: Array.isArray(dto.selectionCriteria) ? dto.selectionCriteria : [],
+    // Basis of selection — now a single free-text string. Prefer the new
+    // string column, fall back to joining the legacy checkbox array so
+    // older records still show their selection when reloaded.
+    basis_of_selection: typeof dto.selectionCriteriaText === 'string'
+      ? dto.selectionCriteriaText
+      : (Array.isArray(dto.selectionCriteria) ? dto.selectionCriteria.filter(Boolean).join(', ') : ''),
     willingness_comments: dto.willingnessComments ?? '',
     worked_before: yn(dto.workedWithSidbiBefore),
     grant_proposed: num(dto.grantProposed),

@@ -198,12 +198,21 @@ export function toCreatePayload(values = {}, registrationId = null) {
     infrastructureType: str(values.it_infra_details),
     secretariatStaffAvailable: bool(values.secretariat_staff),
     websiteAvailable: bool(values.website),
+    // Client UAT (2026-09-25 #64) — persist the URL from Stage 5 too, so
+    // SDE / HO edits on the L2 flow back into the IA record.
+    websiteUrl: values.website === 'yes' ? str(values.website_url) : null,
     paidServicesAvailable: bool(values.paid_services),
     paidServicesDetails: values.paid_services === 'yes' ? str(values.paid_services_details) : null,
     majorSourcesOfIncome: str(values.major_sources_of_income),
     activitiesLastYear: str(values.activities_last_year),
 
     // ── Section 11 — DIA Specific ─────────────────────────────────────────
+    // Basis of selection is now a free-text string on Stage 5 too
+    // (client UAT 2026-09-25 #68). Send as `selectionCriteriaText` and
+    // mirror in the legacy list column so the existing column keeps
+    // working during backend migration.
+    selectionCriteriaText: str(values.basis_of_selection),
+    selectionCriteria: str(values.basis_of_selection) ? [str(values.basis_of_selection)] : [],
     formalizationComments: str(values.ready_formalization),
     referralArrangementComments: str(values.ready_referral),
     bseReadinessComments: str(values.ready_bse),
@@ -228,6 +237,10 @@ export function toCreatePayload(values = {}, registrationId = null) {
     // so it's not sent — Jackson would drop it anyway.
     grantProposedSalary: num(values.grant_proposed_salary),
     grantProposedCapex: num(values.grant_proposed_capex),
+    // Client UAT 2026-09-25 #14 — new bucket for capacity-building spend
+    // sitting alongside salary + CAPEX. Backend adds the column shortly;
+    // Jackson drops unknown keys, so it's safe to send speculatively.
+    grantProposedCapacityBuilding: num(values.grant_proposed_capacity_building),
     grantDetails: str(values.grant_details),
     envisagedOutput: str(values.envisaged_output),
     envisagedOutcome: str(values.envisaged_outcome),
@@ -417,6 +430,7 @@ export function toFormValues(dto = {}) {
   // by the backend, so fall back to the sum for backward-viewing only.
   putNum('grant_proposed_salary', dto.grantProposedSalary)
   putNum('grant_proposed_capex', dto.grantProposedCapex)
+  putNum('grant_proposed_capacity_building', dto.grantProposedCapacityBuilding)
   putStr('grant_details', dto.grantDetails)
   putStr('envisaged_output', dto.envisagedOutput)
   putStr('envisaged_outcome', dto.envisagedOutcome)
@@ -487,9 +501,17 @@ export function buildIaSeed(iaDto, branchesList = null) {
     it_infra_details: r.infrastructureType ?? '',
     secretariat_staff: yn(r.secretariatStaffAvailable),
     website: yn(r.websiteAvailable),
+    // Autofetched from the parent IA — client UAT (2026-09-25 #64):
+    // when website is Yes, seed the URL from the In-Principle record.
+    website_url: r.websiteUrl ?? '',
     paid_services: yn(r.paidServicesAvailable),
     paid_services_details: r.paidServicesDetails ?? '',
-    basis_of_selection: Array.isArray(r.selectionCriteria) ? r.selectionCriteria : [],
+    // Basis of selection now a free-text string. Prefer the string
+    // column, fall back to joining the legacy array so older records
+    // still hydrate meaningfully.
+    basis_of_selection: typeof r.selectionCriteriaText === 'string'
+      ? r.selectionCriteriaText
+      : (Array.isArray(r.selectionCriteria) ? r.selectionCriteria.filter(Boolean).join(', ') : ''),
     grant_proposed: r.grantProposed ?? '',
     grant_details: r.grantDetails ?? '',
     envisaged_output: r.envisagedOutput ?? '',
@@ -508,7 +530,9 @@ function computeAvailable(v) {
   const a = Number(v?.budget_allocated)
   const u = Number(v?.budget_utilized)
   if (!Number.isFinite(a) && !Number.isFinite(u)) return null
-  return (Number.isFinite(a) ? a : 0) - (Number.isFinite(u) ? u : 0)
+  // Floor at 0 — client UAT (2026-09-25 #17): available budget must
+  // never render or persist as a negative number.
+  return Math.max(0, (Number.isFinite(a) ? a : 0) - (Number.isFinite(u) ? u : 0))
 }
 
 // ── Cluster Expert comments ───────────────────────────────────────────────

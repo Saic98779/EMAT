@@ -247,7 +247,7 @@ const SdeDecisionBar = memo(function SdeDecisionBar({
             </Typography>
             <TextField
               value={comments}
-              onChange={(e) => setComments(e.target.value.slice(0, 1000))}
+              onChange={(e) => setComments(e.target.value.slice(0, 2000))}
               placeholder="Optional — required if rejecting or sending back to GT"
               fullWidth
               size="small"
