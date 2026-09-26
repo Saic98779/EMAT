@@ -257,7 +257,7 @@ export function toCreatePayload(values = {}, registrationId = null) {
     availableBudget: computeAvailable(values),
 
     // ── Terms ─────────────────────────────────────────────────────────────
-    // Backend types this as List<String> — one entry per line of the box.
+    // Backend types this as List<String> — one entry per term text box.
     termsAndConditions: toTermsList(values.terms),
 
     // ── Annexures V & VI ─────────────────────────────────────────────────
@@ -383,9 +383,7 @@ export function toFormValues(dto = {}) {
     annexure_vi: fromAnnexureVIList(dto.annexureVIList),
 
     // ── Terms, Budget, DoP ───────────────────────────────────────────
-    terms: Array.isArray(dto.termsAndConditions)
-      ? dto.termsAndConditions.join('\n')
-      : (dto.termsAndConditions ?? ''),
+    terms: fromTermsList(dto.termsAndConditions),
     financial_year: (dto.financialYear ?? '').slice(0, 10),
     budget_allocated: dto.budgetAllocated ?? '',
     budget_utilized: dto.utilizedAmount ?? '',
@@ -618,10 +616,26 @@ const bool = (v) => {
   }
   return null
 }
+// Terms of Assistance — form holds `[{ term }]` (one text box per term),
+// backend holds List<String>. Legacy records stored one free-text blob;
+// that comes back as a single term.
 function toTermsList(v) {
-  if (Array.isArray(v)) return v.map((t) => String(t).trim()).filter(Boolean)
+  if (Array.isArray(v)) {
+    return v
+      .map((t) => (t && typeof t === 'object' ? t.term : t))
+      .map((t) => (t == null ? '' : String(t).trim()))
+      .filter(Boolean)
+  }
   if (v == null) return []
   return String(v).split('\n').map((t) => t.trim()).filter(Boolean)
+}
+
+function fromTermsList(v) {
+  const list = Array.isArray(v) ? v : (v == null || v === '' ? [] : [v])
+  return list
+    .map((t) => (t == null ? '' : String(t).trim()))
+    .filter(Boolean)
+    .map((term) => ({ term }))
 }
 
 const blank = (v) => v == null || String(v).trim() === ''

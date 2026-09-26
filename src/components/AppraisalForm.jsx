@@ -171,9 +171,10 @@ const LOCATION_INFRA_TITLES = new Set([
 ])
 // The tail sections each carry only 1–2 GT-visible fields after CE
 // filtering, so each getting its own stepper row wastes clicks. Merge
-// them into a single "Sanction & Recommendation" section.
+// them into a single "Sanction & Recommendation" section. Terms of
+// Assistance stays its own section (below Annexure VI) — it's a list.
 const SANCTION_TAIL_TITLES = new Set([
-  'Terms of Assistance', 'Budget', 'Delegation of Power', 'Recommendation',
+  'Budget', 'Delegation of Power', 'Recommendation',
 ])
 
 function consolidateForGt(sections) {
@@ -230,7 +231,7 @@ function consolidateForGt(sections) {
     merged.push({
       n: nextN++,
       title: 'Sanction & recommendation',
-      desc: 'Terms of assistance, budget, delegation of power, and final recommendation.',
+      desc: 'Budget, delegation of power, and final recommendation.',
       fields: sanctionFields,
     })
   }

@@ -813,7 +813,22 @@ export const appraisalSchema = {
           { name: 'section_note', label: 'Section note', type: 'textarea', span: 12, placeholder: 'Optional — conditions or specifications for this section' },
         ] },
     ] },
-    { n: 14, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
+    { n: 14, title: 'Terms of Assistance', desc: 'List each term or condition of assistance separately.', fields: [
+      // One text box per term — maps 1:1 to `termsAndConditions`
+      // (List<String>) on the appraisal DTO.
+      { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'repeater',
+        serial: true, addLabel: 'Add term',
+        columns: [
+          { name: 'term', label: 'Term', type: 'textarea', required: true,
+            placeholder: 'e.g. First tranche released on signing of the agreement' },
+        ] },
+      // Cluster Expert comments specifically on the Terms of Assistance.
+      // Editable only by CLUSTER_EXPERT; every other role sees it read-only.
+      // Optional — the mandatory contribution is the remarks field in the
+      // Cluster Expert Comments section.
+      { name: 'cluster_expert_terms_comments', label: "Cluster Expert's comments on the Terms of Assistance", type: 'textarea', span: 12, rows: 3, ceOnly: true, optional: true },
+    ] },
+    { n: 15, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
       // Mandatory for the Cluster Expert — it is the one thing that role is
       // asked to contribute. `required` is safe to keep on the shared schema
       // because GT/SDE variants filter this whole section out (see
@@ -821,14 +836,6 @@ export const appraisalSchema = {
       // 2000-char cap per client UAT (2026-09-25 #74) — overrides the
       // 500-char default the FormRenderer applies to free text.
       { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4, required: true, max: 2000 },
-    ] },
-    { n: 15, title: 'Terms of Assistance', fields: [
-      { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'textarea', span: 12, placeholder: 'As per Annexure' },
-      // Cluster Expert comments specifically on the Terms of Assistance.
-      // Editable only by CLUSTER_EXPERT; every other role sees it read-only.
-      // Optional — the mandatory contribution is the remarks field in the
-      // Cluster Expert Comments section above.
-      { name: 'cluster_expert_terms_comments', label: "Cluster Expert's comments on the Terms of Assistance", type: 'textarea', span: 12, rows: 3, ceOnly: true, optional: true },
     ] },
     { n: 16, title: 'Budget', fields: [
       // Backend stores this as a LocalDate; we key each option on the
