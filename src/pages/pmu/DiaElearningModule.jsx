@@ -174,9 +174,10 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
               name="attachment"
               label="Attachment"
               accept={ATTACHMENT_ACCEPT}
+              existing={isEdit ? existingAttachment : null}
               helperText={isEdit
                 ? (existingAttachment
-                    ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                    ? 'Pick a file to replace it.'
                     : 'No file was previously attached. You can upload one now if needed.')
                 : 'PDF, Word, PPT, image or video. Optional.'}
             />

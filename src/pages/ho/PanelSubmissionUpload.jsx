@@ -11,7 +11,8 @@ import SaveIcon from '@mui/icons-material/Save'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import { PageHeader } from '../../components/shared'
 import { useBse, useUpdateBse } from '../../queries'
-import { uploadFile, downloadFile } from '../../apis/files'
+import { uploadFile, downloadFile, viewFile } from '../../apis/files'
+import ViewFileButton from '../../components/ViewFileButton'
 import { toUpdatePayload } from '../../apis/bseRecommendations'
 
 // PanelSubmissionUpload
@@ -63,11 +64,15 @@ export default function PanelSubmissionUpload() {
     }
   }, [uuid])
 
-  const open = useCallback(async () => {
+  // Uploads land on the server immediately (the save step only links the
+  // filename to the record), so an unsaved pick is viewable too.
+  const view = () => viewFile(uuid, 'bse', uuid, currentFilename)
+
+  const download = useCallback(async () => {
     if (!currentFilename || !uuid) return
     setDownloading(true)
     try { await downloadFile(uuid, 'bse', uuid, currentFilename) }
-    catch (err) { setToast({ severity: 'error', msg: err?.message || 'Could not open the file.' }) }
+    catch (err) { setToast({ severity: 'error', msg: err?.message || 'Could not download the file.' }) }
     finally { setDownloading(false) }
   }, [uuid, currentFilename])
 
@@ -126,7 +131,8 @@ export default function PanelSubmissionUpload() {
             saving={saving}
             dirty={!!dirty}
             onPick={pick}
-            onOpen={open}
+            onView={view}
+            onDownload={download}
             onSave={save}
           />
           <input ref={inputRef} type="file" hidden accept={PANEL_ACCEPT} onChange={onFileChosen} />
@@ -195,7 +201,7 @@ function CandidateStrip({ dto }) {
 
 function UploadCard({
   currentFilename, savedFilename, busy, downloading, saving, dirty,
-  onPick, onOpen, onSave,
+  onPick, onView, onDownload, onSave,
 }) {
   const theme = useTheme()
   return (
@@ -240,8 +246,9 @@ function UploadCard({
               {currentFilename}
             </Typography>
           </Box>
-          <Button size="small" onClick={onOpen} disabled={downloading} sx={{ textTransform: 'none' }}>
-            {downloading ? '…' : 'Open'}
+          <ViewFileButton text onView={onView} />
+          <Button size="small" onClick={onDownload} disabled={downloading} sx={{ textTransform: 'none' }}>
+            {downloading ? '…' : 'Download'}
           </Button>
           <Button size="small" onClick={onPick} disabled={busy} sx={{ textTransform: 'none' }}>
             {busy ? 'Uploading…' : 'Replace'}

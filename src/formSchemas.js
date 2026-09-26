@@ -574,6 +574,12 @@ export const capexSchema = {
 // `readOnly` — those are autofetched and users can't fill them, so requiring
 // them would only surface false positives when seed data is thin — and any
 // field explicitly marked `optional`.
+const nonNegative = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return 'Enter a valid amount'
+  return n < 0 ? 'Cannot be negative' : ''
+}
+
 function requireAllInputs(sections) {
   return sections.map((sec) => ({
     ...sec,
@@ -764,7 +770,50 @@ export const appraisalSchema = {
       { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12, max: 500 },
     ] },
-    { n: 12, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
+    // Annexures V & VI — nested lists on the appraisal DTO
+    // (`annexureVList`, `annexureVIList`); mapping in
+    // apis/industryAssociationAppraisals.js. The backend replaces the whole
+    // list on every PUT, so rows carry no id client-side.
+    { n: 12, title: 'Annexure V — Cost & SIDBI Support', desc: 'Item-wise cost of the proposal and the SIDBI support sought against each item.', fields: [
+      { name: 'annexure_v', label: 'Cost items', type: 'repeater', serial: true, addLabel: 'Add item',
+        totals: ['total_cost', 'sidbi_support'],
+        columns: [
+          { name: 'particulars', label: 'Particulars', type: 'text', width: '50%', required: true },
+          { name: 'total_cost', label: 'Total Cost (₹)', type: 'number', required: true, validate: nonNegative },
+          { name: 'sidbi_support', label: 'SIDBI Support (₹)', type: 'number', required: true,
+            validate: (v, row) => {
+              const e = nonNegative(v)
+              if (e) return e
+              const cost = Number(row.total_cost)
+              if (row.total_cost !== '' && row.total_cost != null && Number.isFinite(cost) && Number(v) > cost) {
+                return 'Cannot exceed Total Cost'
+              }
+              return ''
+            } },
+        ],
+        validate: (rows) => {
+          if (!Array.isArray(rows) || rows.length === 0) return ''
+          const support = rows.reduce((s, r) => s + (Number(r?.sidbi_support) || 0), 0)
+          return support > 1400000 ? 'Total SIDBI support cannot exceed ₹14,00,000' : ''
+        } },
+    ] },
+    { n: 13, title: 'Annexure VI — Indicative List of Items', desc: 'Items the IA proposes to procure, grouped by section, with the maximum admissible cost.', fields: [
+      { name: 'annexure_vi', label: 'Items', type: 'repeater', layout: 'cards', serial: true, addLabel: 'Add item',
+        // Optional — not every proposal procures equipment.
+        optional: true,
+        columns: [
+          { name: 'section', label: 'Section', type: 'text', span: 6, required: true, placeholder: 'e.g. IT Infrastructure' },
+          { name: 'indicative_item', label: 'Indicative item', type: 'text', span: 6, required: true, placeholder: 'e.g. Desktop computer' },
+          { name: 'numbers', label: 'Numbers', type: 'number', span: 3,
+            validate: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 ? '' : 'Whole number, at least 1') },
+          { name: 'make', label: 'Make', type: 'text', span: 3 },
+          { name: 'maximum_cost', label: 'Maximum cost (₹)', type: 'number', span: 3, validate: nonNegative },
+          { name: 'maximum_cost_unit', label: 'Cost basis', type: 'select', span: 3,
+            options: ['Per unit', 'Lump sum', 'Per month', 'Per year'] },
+          { name: 'section_note', label: 'Section note', type: 'textarea', span: 12, placeholder: 'Optional — conditions or specifications for this section' },
+        ] },
+    ] },
+    { n: 14, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
       // Mandatory for the Cluster Expert — it is the one thing that role is
       // asked to contribute. `required` is safe to keep on the shared schema
       // because GT/SDE variants filter this whole section out (see
@@ -773,7 +822,7 @@ export const appraisalSchema = {
       // 500-char default the FormRenderer applies to free text.
       { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4, required: true, max: 2000 },
     ] },
-    { n: 13, title: 'Terms of Assistance', fields: [
+    { n: 15, title: 'Terms of Assistance', fields: [
       { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'textarea', span: 12, placeholder: 'As per Annexure' },
       // Cluster Expert comments specifically on the Terms of Assistance.
       // Editable only by CLUSTER_EXPERT; every other role sees it read-only.
@@ -781,7 +830,7 @@ export const appraisalSchema = {
       // Cluster Expert Comments section above.
       { name: 'cluster_expert_terms_comments', label: "Cluster Expert's comments on the Terms of Assistance", type: 'textarea', span: 12, rows: 3, ceOnly: true, optional: true },
     ] },
-    { n: 14, title: 'Budget', fields: [
+    { n: 16, title: 'Budget', fields: [
       // Backend stores this as a LocalDate; we key each option on the
       // April-1 start-date so it round-trips cleanly.
       { name: 'financial_year', label: 'Financial Year', type: 'select', span: 3,
@@ -814,10 +863,10 @@ export const appraisalSchema = {
           return Math.max(0, a - u)
         } },
     ] },
-    { n: 15, title: 'Delegation of Power', fields: [
+    { n: 17, title: 'Delegation of Power', fields: [
       { name: 'dop_date', label: 'DoP date (as per extant PDIV DoP)', type: 'date', span: 6 },
     ] },
-    { n: 16, title: 'Recommendation', fields: [
+    { n: 18, title: 'Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation', type: 'radio', options: ['Recommended', 'Not Recommended'], span: 6, required: true },
       { name: 'recommendation_remarks', label: 'Remarks', type: 'textarea', span: 12 },
     ] },

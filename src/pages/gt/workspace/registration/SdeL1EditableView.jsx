@@ -202,6 +202,7 @@ export default function SdeL1EditableView({
           <Box sx={stackedLabelSx}>
             <FormRenderer
               schema={sectionSchema}
+              fileScope={{ registrationId: iaId, stage: 'registration', stageId: iaId }}
               values={values}
               setValue={setValue}
               showAllErrors={showAllErrors}

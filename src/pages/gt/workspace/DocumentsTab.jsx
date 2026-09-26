@@ -7,7 +7,8 @@ import InsertDriveFileRoundedIcon from '@mui/icons-material/InsertDriveFileRound
 import { alpha, useTheme } from '@mui/material/styles'
 import { useFilesByIa } from '../../../queries'
 import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
-import { downloadFile } from '../../../apis/files'
+import { downloadFile, viewFile } from '../../../apis/files'
+import ViewFileButton from '../../../components/ViewFileButton'
 import { FILE_FIELD_LABELS, decodeFilename } from '../../../fileFieldLabels'
 
 // DocumentsTab
@@ -57,7 +58,8 @@ export default function DocumentsTab() {
 
       <Stack spacing={2}>
         {groups.map((group) => (
-          <DocGroup key={group.slug} group={group} onDownload={onDownload} />
+          <DocGroup key={group.slug} group={group} onDownload={onDownload}
+            onView={(filename) => viewFile(ws.iaId, 'registration', ws.iaId, filename)} />
         ))}
       </Stack>
 
@@ -75,7 +77,7 @@ export default function DocumentsTab() {
 
 // ── Slot group ─────────────────────────────────────────────────────────
 
-const DocGroup = memo(function DocGroup({ group, onDownload }) {
+const DocGroup = memo(function DocGroup({ group, onDownload, onView }) {
   const theme = useTheme()
   return (
     <Box
@@ -105,14 +107,14 @@ const DocGroup = memo(function DocGroup({ group, onDownload }) {
       </Stack>
       <Stack>
         {group.files.map((f) => (
-          <FileRow key={f.filename} file={f} onDownload={onDownload} />
+          <FileRow key={f.filename} file={f} onDownload={onDownload} onView={onView} />
         ))}
       </Stack>
     </Box>
   )
 })
 
-function FileRow({ file, onDownload }) {
+function FileRow({ file, onDownload, onView }) {
   const theme = useTheme()
   return (
     <Stack
@@ -136,6 +138,7 @@ function FileRow({ file, onDownload }) {
           {formatSize(file.size)} {file.uploadedAt ? `· uploaded ${formatDate(file.uploadedAt)}` : ''}
         </Typography>
       </Box>
+      <ViewFileButton onView={() => onView(file.filename)} />
       <IconButton
         size="small"
         onClick={() => onDownload(file.filename)}

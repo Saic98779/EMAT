@@ -552,7 +552,8 @@ export default function AppraisalForm({
         {viewSustainability}
       </Box>
 
-      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors} />
+      <FormRenderer schema={schema} accent="primary" values={values} setValue={setValue} showAllErrors={showAllErrors}
+        fileScope={{ registrationId, stage: 'registration', stageId: registrationId }} />
 
       {stickyFooter ? (
         <Paper elevation={3} sx={{ position: 'sticky', bottom: 16, mt: 3, p: 1.5, borderRadius: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
@@ -667,6 +668,7 @@ function StepperLayout({
           <Box sx={stackedLabelSx}>
             <FormRenderer
               schema={sectionSchema}
+              fileScope={{ registrationId, stage: 'registration', stageId: registrationId }}
               accent="primary"
               values={values}
               setValue={setValue}

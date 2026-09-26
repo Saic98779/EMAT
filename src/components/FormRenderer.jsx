@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useDeferredValue, useMemo, useRef, useState } from 'react'
 import {
   Box, Card, Grid, Stack, Typography, TextField, MenuItem, InputAdornment,
   ToggleButtonGroup, ToggleButton, Avatar, RadioGroup, FormControlLabel,
@@ -9,11 +9,10 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import { alpha } from '@mui/material/styles'
-import { decodeFilename } from '../fileFieldLabels'
+import FileChip from './FileChip'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
-import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import VerifiedIcon from '@mui/icons-material/Verified'
 import PublicIcon from '@mui/icons-material/Public'
 import BusinessIcon from '@mui/icons-material/Business'
@@ -74,6 +73,7 @@ export function fieldError(f, value, values, { showRequired = false } = {}) {
   const filled = Array.isArray(trimmed) ? trimmed.length > 0 : trimmed !== '' && trimmed !== null
   if (showRequired && f.required && !filled) return 'Required'
   if (f.validate) { const e = f.validate(trimmed, values); if (e) return e }
+  if (f.type === 'repeater') return repeaterProblem(f, trimmed)
   if (trimmed === '' || trimmed == null) return ''
   const isFreeText = f.type === 'text' || f.type === 'textarea'
   if (isFreeText && typeof trimmed === 'string') {
@@ -223,7 +223,13 @@ const ALLOWED_UPLOAD_ACCEPT = '.doc,.docx,.pdf,.jpg,.jpeg,.png,image/jpeg,image/
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 const MAX_UPLOAD_LABEL = '5 MB'
 
+// The file API scope ({ registrationId, stage, stageId }) that stored
+// filenames in this form live under. Supplied once on <FormRenderer> and read
+// by every Uploader, so already-uploaded files can be opened for viewing.
+const FileScopeContext = createContext(null)
+
 function Uploader({ value, label, help, required, error, onChange, readOnly }) {
+  const scope = useContext(FileScopeContext)
   // Two separate rejection buckets so we can show a distinct message for
   // "wrong type" vs "too big" — otherwise the user has to guess which rule
   // their file broke.
@@ -268,16 +274,12 @@ function Uploader({ value, label, help, required, error, onChange, readOnly }) {
       {docs.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: readOnly ? 0.25 : 1 }}>
           {docs.map((f, i) => {
-            // Already-uploaded files come back as slug-prefixed strings —
-            // strip the `<slot>__` prefix so the chip shows just the
-            // original filename the user picked.
-            const shown = typeof f === 'string' ? decodeFilename(f).name : f.name
             // Stable per-file key so deleting a chip in the middle doesn't
-            // misalign React's identity with the wrong file.
+            // misalign React's identity with the wrong file. Stored files are
+            // slug-prefixed strings; FileChip strips the prefix for display.
             const k = typeof f === 'string' ? f : `${f.name}::${f.size}::${f.lastModified}`
             return (
-              <Chip key={k} size="small" variant="outlined" icon={<DescriptionOutlinedIcon />}
-                label={shown}
+              <FileChip key={k} file={f} scope={scope}
                 onDelete={readOnly ? undefined : () => removeAt(i)} />
             )
           })}
@@ -301,20 +303,51 @@ function Uploader({ value, label, help, required, error, onChange, readOnly }) {
 // `columns` describes the row shape ({ name, label, type }); `value` is the
 // array of row objects. Cells edit in place; a per-row delete button removes
 // entries and the "Add" button appends a blank row.
+//
+// Optional schema knobs:
+//   serial            — leading "S.No" column (1-based row index)
+//   totals: [names]   — footer row summing those number columns
+//   layout: 'cards'   — one bordered card per row, cells laid out on a
+//                       12-col grid via `col.span`; for rows too wide to
+//                       fit as a table
+//   col.options       — renders the cell as a select
+//   col.required      — blank cell blocks submit (see repeaterProblem)
+//   col.validate(v, row)
 // Per-cell validation for repeater rows: applies the same email / phone /
 // pincode / custom pattern rules as the top-level Field, so each column
 // picks up inline red text without any per-schema wiring.
-function cellError(col, v) {
+function cellError(col, v, row) {
   const raw = v ?? ''
   const trimmed = typeof raw === 'string' ? raw.trim() : raw
   if (trimmed === '' || trimmed == null) return ''
-  if (col.validate) { const e = col.validate(trimmed); if (e) return e }
+  if (col.validate) { const e = col.validate(trimmed, row || {}); if (e) return e }
+  if (col.type === 'number' && !Number.isFinite(Number(trimmed))) return 'Enter a number'
   const p = col.pattern
     || (col.type === 'email' && PATTERNS.email)
     || (col.type === 'tel' && PATTERNS.phone)
   if (p && !p.re.test(String(trimmed))) return p.msg
   return ''
 }
+
+const isBlankCell = (v) => v == null || (typeof v === 'string' ? v.trim() === '' : v === '')
+
+// First problem across all rows of a repeater, or '' — feeds fieldError so
+// a bad cell blocks submit exactly like a bad top-level field does.
+function repeaterProblem(f, rows) {
+  if (!Array.isArray(rows)) return ''
+  const cols = f.columns || []
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] || {}
+    for (const c of cols) {
+      if (c.required && isBlankCell(row[c.name])) return `Row ${i + 1}: ${c.label} is required`
+      const e = cellError(c, row[c.name], row)
+      if (e) return `Row ${i + 1}: ${c.label} — ${e}`
+    }
+  }
+  return ''
+}
+
+const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
 
 // Synthetic key generator for Repeater rows. Rows have no natural id, and
 // index-as-key misaligns React state (focus, cursor, per-row validation
@@ -333,7 +366,37 @@ function ensureRid(row) {
   return row?._rid
 }
 
-function Repeater({ value, label, required, onChange, columns, addLabel, readOnly }) {
+function RepeaterCell({ col, row, onChange, readOnly, showLabel = false }) {
+  const cellVal = row?.[col.name] ?? ''
+  const err = cellError(col, cellVal, row)
+  const isSelect = Array.isArray(col.options)
+  return (
+    <TextField
+      size="small"
+      fullWidth
+      select={isSelect && !readOnly}
+      label={showLabel ? `${col.label}${col.required ? ' *' : ''}` : undefined}
+      value={cellVal}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={col.placeholder}
+      type={!isSelect && ['number', 'email', 'tel', 'date'].includes(col.type) ? col.type : 'text'}
+      multiline={col.type === 'textarea'}
+      minRows={col.type === 'textarea' ? 1 : undefined}
+      error={!!err}
+      helperText={err || undefined}
+      InputProps={{ readOnly }}
+      inputProps={col.type === 'number' ? { min: 0, step: 'any' } : undefined}
+      sx={readOnly ? { '& .MuiInputBase-root': { bgcolor: 'action.hover' } } : undefined}
+    >
+      {isSelect && !readOnly && col.options.map((o) => {
+        const opt = o && typeof o === 'object' ? o : { value: o, label: String(o) }
+        return <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+      })}
+    </TextField>
+  )
+}
+
+function Repeater({ value, label, required, error, onChange, columns, addLabel, readOnly, serial, totals, layout, help }) {
   const rows = Array.isArray(value) ? value : []
   const cols = Array.isArray(columns) ? columns : []
   const update = (idx, name, v) => {
@@ -347,20 +410,54 @@ function Repeater({ value, label, required, onChange, columns, addLabel, readOnl
     onChange(next)
   }
   const add = () => {
-    const blank = Object.fromEntries(cols.map((c) => [c.name, '']))
+    const blank = Object.fromEntries(cols.map((c) => [c.name, c.default ?? '']))
     ensureRid(blank)
     onChange([...rows, blank])
   }
   const remove = (idx) => onChange(rows.filter((_, i) => i !== idx))
-  return (
-    <Framed label={label} required={required}>
-      {rows.length > 0 ? (
+  const totalCols = Array.isArray(totals) ? totals : []
+  const sumOf = (name) => rows.reduce((s, r) => s + (Number(r?.[name]) || 0), 0)
+  // Row-level problems already show under their cell; only surface
+  // field-level ones (e.g. "at least one row") in the frame.
+  const frameError = error && !/^Row \d+:/.test(error) ? error : undefined
+
+  const body = layout === 'cards'
+    ? (
+      <Stack spacing={1.25} sx={{ mt: 0.5 }}>
+        {rows.map((r, i) => (
+          <Box key={ensureRid(r) || i} sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1.5 }}>
+            <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: 'text.secondary' }}>
+                {serial ? `#${i + 1}` : `Row ${i + 1}`}
+              </Typography>
+              <Box sx={{ flex: 1 }} />
+              {!readOnly && (
+                <IconButton size="small" color="error" onClick={() => remove(i)} aria-label={`Remove row ${i + 1}`}>
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Stack>
+            <Grid container spacing={1.5}>
+              {cols.map((c) => (
+                <Grid key={c.name} size={{ xs: 12, sm: c.span || 6 }}>
+                  <RepeaterCell col={c} row={r} readOnly={readOnly} showLabel
+                    onChange={(v) => update(i, c.name, v)} />
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        ))}
+      </Stack>
+    )
+    : (
+      <Box sx={{ overflowX: 'auto' }}>
         <Table size="small" sx={{ mt: 0.5, '& td, & th': { px: 1, py: 0.75 } }}>
           <TableHead>
             <TableRow>
+              {serial && <TableCell width={56} sx={{ fontWeight: 600, color: 'text.secondary' }}>S.No</TableCell>}
               {cols.map((c) => (
-                <TableCell key={c.name} sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                  {c.label}
+                <TableCell key={c.name} width={c.width} sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                  {c.label}{c.required && !readOnly ? ' *' : ''}
                 </TableCell>
               ))}
               {!readOnly && <TableCell align="right" width={48} />}
@@ -369,38 +466,52 @@ function Repeater({ value, label, required, onChange, columns, addLabel, readOnl
           <TableBody>
             {rows.map((r, i) => (
               <TableRow key={ensureRid(r) || i} hover>
-                {cols.map((c) => {
-                  const cellVal = r?.[c.name] ?? ''
-                  const err = cellError(c, cellVal)
-                  return (
-                    <TableCell key={c.name} sx={{ verticalAlign: 'top' }}>
-                      <TextField
-                        size="small"
-                        fullWidth
-                        value={cellVal}
-                        onChange={(e) => update(i, c.name, e.target.value)}
-                        placeholder={c.placeholder}
-                        type={['number', 'email', 'tel', 'date'].includes(c.type) ? c.type : 'text'}
-                        error={!!err}
-                        helperText={err || undefined}
-                        InputProps={{ readOnly }}
-                        sx={readOnly ? { '& .MuiInputBase-root': { bgcolor: 'action.hover' } } : undefined}
-                      />
-                    </TableCell>
-                  )
-                })}
+                {serial && (
+                  <TableCell sx={{ verticalAlign: 'top', pt: '14px !important', color: 'text.secondary', fontWeight: 600 }}>
+                    {i + 1}
+                  </TableCell>
+                )}
+                {cols.map((c) => (
+                  <TableCell key={c.name} sx={{ verticalAlign: 'top' }}>
+                    <RepeaterCell col={c} row={r} readOnly={readOnly}
+                      onChange={(v) => update(i, c.name, v)} />
+                  </TableCell>
+                ))}
                 {!readOnly && (
                   <TableCell align="right" sx={{ verticalAlign: 'top' }}>
-                    <IconButton size="small" color="error" onClick={() => remove(i)}>
+                    <IconButton size="small" color="error" onClick={() => remove(i)} aria-label={`Remove row ${i + 1}`}>
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
                   </TableCell>
                 )}
               </TableRow>
             ))}
+            {totalCols.length > 0 && rows.length > 0 && (
+              <TableRow sx={{ '& td': { borderBottom: 0, fontWeight: 700 } }}>
+                {serial && <TableCell />}
+                {cols.map((c, ci) => (
+                  <TableCell key={c.name} sx={{ pl: '22px !important' }}>
+                    {totalCols.includes(c.name)
+                      ? `₹${INR.format(sumOf(c.name))}`
+                      : ci === 0 ? 'Total' : ''}
+                  </TableCell>
+                ))}
+                {!readOnly && <TableCell />}
+              </TableRow>
+            )}
           </TableBody>
         </Table>
-      ) : (
+      </Box>
+    )
+
+  return (
+    <Framed label={label} required={required} error={frameError}>
+      {help && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+          {help}
+        </Typography>
+      )}
+      {rows.length > 0 ? body : (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
           {readOnly ? 'No entries.' : 'No entries yet — click below to add.'}
         </Typography>
@@ -599,10 +710,15 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
           value={value}
           label={f.label}
           required={f.required}
+          error={error}
           onChange={onChange}
           columns={f.columns || []}
           addLabel={f.addLabel}
           readOnly={f.readOnly}
+          serial={f.serial}
+          totals={f.totals}
+          layout={f.layout}
+          help={f.help}
         />
       </Grid>
     )
@@ -972,7 +1088,16 @@ const SectionCard = memo(function SectionCard({
 export default function FormRenderer({
   schema, accent = 'primary', values, setValue,
   showAllErrors = false, chrome = 'full',
+  // { registrationId, stage, stageId } for this form's stored files. Optional —
+  // without it, freshly picked files still preview but stored ones can't open.
+  fileScope = null,
 }) {
+  const { registrationId: fsReg, stage: fsStage, stageId: fsStageId } = fileScope || {}
+  const scope = useMemo(
+    () => (fsReg ? { registrationId: fsReg, stage: fsStage, stageId: fsStageId ?? fsReg } : null),
+    [fsReg, fsStage, fsStageId],
+  )
+
   // Cache one callback per field name so identities survive re-renders. Ref is
   // used (not useMemo) because we want the closure to always read the latest
   // setValue without invalidating each entry.
@@ -1009,6 +1134,7 @@ export default function FormRenderer({
   const isMinimal = chrome === 'minimal'
 
   return (
+    <FileScopeContext.Provider value={scope}>
     <Stack spacing={2}>
       {!isMinimal && <ProgressCard doneCount={doneCount} total={total} pct={pct} accent={accent} />}
       {schema.sections.map((sec, i) => (
@@ -1027,6 +1153,7 @@ export default function FormRenderer({
         />
       ))}
     </Stack>
+    </FileScopeContext.Provider>
   )
 }
 

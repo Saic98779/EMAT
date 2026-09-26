@@ -170,13 +170,109 @@ export async function fileUrl(registrationId, stage, stageId, filename) {
 
 // Fetches the file as a Blob and triggers a browser download.
 export async function downloadFile(registrationId, stage, stageId, filename) {
-  const bearer = getStoredToken()
   const url = await fileUrl(registrationId, stage, stageId, filename)
+  saveBlob(await fetchFileBlob(url), filename)
+}
+
+// Opens a stored file in a new tab. PDFs and images render inline; formats
+// the browser can't display (.doc/.docx) fall back to a download.
+//
+// The tab is opened *before* the first await, while the click's user
+// gesture is still active — opening it after the fetch resolves gets
+// swallowed by popup blockers.
+export async function viewFile(registrationId, stage, stageId, filename) {
+  const win = openPendingWindow()
+  try {
+    const url = await fileUrl(registrationId, stage, stageId, filename)
+    showBlob(await fetchFileBlob(url), filename, win)
+  } catch (err) {
+    win?.close()
+    throw err
+  }
+}
+
+// Same as viewFile, for records that store an absolute file-API URL
+// rather than a filename (DIA content `attachment` fields).
+export async function viewFileUrl(url, filename) {
+  const win = openPendingWindow()
+  try {
+    showBlob(await fetchFileBlob(url), filename || filenameFromUrl(url), win)
+  } catch (err) {
+    win?.close()
+    throw err
+  }
+}
+
+// Previews a picked-but-not-yet-uploaded File straight from memory.
+export function viewLocalFile(file) {
+  showBlob(file, file.name, openPendingWindow())
+}
+
+export function filenameFromUrl(url) {
+  if (!url) return ''
+  try {
+    const last = String(url).split('?')[0].split('#')[0].split('/').filter(Boolean).pop() || ''
+    return decodeURIComponent(last)
+  } catch {
+    return ''
+  }
+}
+
+// Bearer auth is required, so a plain <a href> can't open these — fetch
+// with the header and hand the browser a blob instead.
+async function fetchFileBlob(url) {
+  const bearer = getStoredToken()
   const res = await fetch(url, {
     headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
   })
-  if (!res.ok) throw new Error(`Download failed (${res.status})`)
-  const blob = await res.blob()
+  if (!res.ok) throw new Error(`Couldn't open the file (${res.status})`)
+  return res.blob()
+}
+
+// Backend serves most files as application/octet-stream, which a browser
+// will only ever download — so the inline type comes from the extension.
+const INLINE_TYPES = {
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  txt: 'text/plain',
+}
+
+function inlineTypeFor(filename, blobType) {
+  const ext = String(filename || '').split('.').pop().toLowerCase()
+  if (INLINE_TYPES[ext]) return INLINE_TYPES[ext]
+  return Object.values(INLINE_TYPES).includes(blobType) ? blobType : null
+}
+
+function openPendingWindow() {
+  const win = window.open('', '_blank')
+  if (win) {
+    win.document.title = 'Opening file…'
+    win.document.body.style.fontFamily = 'system-ui, sans-serif'
+    win.document.body.textContent = 'Opening file…'
+  }
+  return win
+}
+
+function showBlob(blob, filename, win) {
+  const type = inlineTypeFor(filename, blob.type)
+  // Not previewable, or the popup was blocked — download instead.
+  if (!type || !win) {
+    win?.close()
+    saveBlob(blob, filename)
+    return
+  }
+  const typed = blob.type === type ? blob : new Blob([blob], { type })
+  const href = URL.createObjectURL(typed)
+  win.location.href = href
+  // The new tab needs the URL alive while it loads; revoke well after.
+  setTimeout(() => URL.revokeObjectURL(href), 60_000)
+}
+
+function saveBlob(blob, filename) {
   const href = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = href

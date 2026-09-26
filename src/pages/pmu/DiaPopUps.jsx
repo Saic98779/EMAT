@@ -124,9 +124,10 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
           multiple
           label="Files"
           accept={ATTACHMENT_ACCEPT}
+          existing={isEdit ? existingAttachment : null}
           helperText={isEdit
             ? (existingAttachment
-                ? `Currently attached: ${String(existingAttachment).split('/').pop().split('?')[0]}. Pick files to replace it.`
+                ? 'Pick files to replace it.'
                 : 'No files were previously attached. You can upload some now if needed.')
             : 'PDF, Word, PPT or image. Optional. You can add multiple.'}
         />

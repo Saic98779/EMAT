@@ -231,9 +231,10 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
           name="attachment"
           label="Reference document"
           accept={ATTACHMENT_ACCEPT}
+          existing={isEdit ? existingAttachment : null}
           helperText={isEdit
             ? (existingAttachment
-                ? `Currently attached: ${existingAttachment.split('/').pop().split('?')[0]}. Pick a file to replace it.`
+                ? 'Pick a file to replace it.'
                 : 'No file was previously attached. You can upload one now if needed.')
             : 'Word or PDF. Optional.'}
         />

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Card, CardContent, Stack, Typography, Button, Chip, Box, Avatar,
   CircularProgress, Alert, IconButton, Tooltip,
@@ -7,7 +7,10 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import DownloadIcon from '@mui/icons-material/Download'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
-import { listFiles, uploadFilesBatch, deleteFile, downloadFile, FILE_STAGE } from '../apis/files'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
+import {
+  listFiles, uploadFilesBatch, deleteFile, downloadFile, viewFile, viewLocalFile, FILE_STAGE,
+} from '../apis/files'
 import { decodeFilename } from '../fileFieldLabels'
 
 // Attach supporting documents (Invoice, attendance, etc.).
@@ -48,6 +51,9 @@ function DocUpload({
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)  // upload/delete in flight
   const [error, setError] = useState('')
+  // Local mode only hands filenames back to the parent, so the picked File
+  // objects are kept here — without them there'd be nothing to preview.
+  const localFilesRef = useRef(new Map())
 
   const refresh = useCallback(async (signal) => {
     if (!apiMode) return
@@ -85,6 +91,7 @@ function DocUpload({
     if (!picked.length) return
 
     if (!apiMode) {
+      for (const f of picked) localFilesRef.current.set(f.name, f)
       setDocs?.((prev) => [...prev, ...picked.map((f) => f.name)])
       return
     }
@@ -132,6 +139,19 @@ function DocUpload({
     }
   }
 
+  const view = async (it) => {
+    if (!apiMode) {
+      const local = localFilesRef.current.get(it.name)
+      if (local) viewLocalFile(local)
+      return
+    }
+    try {
+      await viewFile(registrationId, stage, scopeId, it.meta.filename)
+    } catch (err) {
+      setError(err.message || "Couldn't open the file")
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   // Decode slug-prefixed filenames into { label, name } so each chip can show
   // "Incorporation Certificate · mycert.pdf" instead of the raw stored name.
@@ -156,7 +176,7 @@ function DocUpload({
       <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
         <Typography variant="body2" color="text.secondary" mb={2}>
           {readOnly
-            ? 'Documents submitted with this application. Click any file to download.'
+            ? 'Documents submitted with this application. Click any file to view it.'
             : 'Attach the Invoice and any supporting files (PDF, images, spreadsheets).'}
         </Typography>
 
@@ -173,17 +193,18 @@ function DocUpload({
           <Stack spacing={1} sx={{ mt: 2 }}>
             {items.map((it, i) => {
               const sizePart = apiMode && it.meta?.size ? ` · ${formatSize(it.meta.size)}` : ''
+              const viewable = apiMode || localFilesRef.current.has(it.name)
               return (
                 <Box
                   key={it.key}
-                  onClick={apiMode ? () => download(it.meta) : undefined}
+                  onClick={viewable ? () => view(it) : undefined}
                   sx={{
                     display: 'flex', alignItems: 'center', gap: 1.25,
                     p: 1, pl: 1.25, borderRadius: 1,
                     border: '1px solid', borderColor: 'divider',
-                    cursor: apiMode ? 'pointer' : 'default',
+                    cursor: viewable ? 'pointer' : 'default',
                     transition: 'background-color .12s, border-color .12s',
-                    ':hover': apiMode ? { bgcolor: 'action.hover', borderColor: 'primary.light' } : undefined,
+                    ':hover': viewable ? { bgcolor: 'action.hover', borderColor: 'primary.light' } : undefined,
                   }}
                 >
                   <DescriptionOutlinedIcon color="action" fontSize="small" />
@@ -197,6 +218,22 @@ function DocUpload({
                       {it.name}{sizePart}
                     </Typography>
                   </Box>
+                  {viewable && (
+                    <Tooltip title="View">
+                      <IconButton size="small" aria-label="View file"
+                        onClick={(e) => { e.stopPropagation(); view(it) }}>
+                        <VisibilityOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  {apiMode && (
+                    <Tooltip title="Download">
+                      <IconButton size="small" aria-label="Download file"
+                        onClick={(e) => { e.stopPropagation(); download(it.meta) }}>
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   {!readOnly && (
                     <IconButton
                       size="small"
@@ -213,13 +250,6 @@ function DocUpload({
           </Stack>
         )}
 
-        {apiMode && items.length > 0 && (
-          <Tooltip title="Tip: click a file to download">
-            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, mt: 1.5, color: 'text.secondary', fontSize: 12 }}>
-              <DownloadIcon fontSize="inherit" /> Click any file to download
-            </Box>
-          </Tooltip>
-        )}
       </CardContent>
     </Card>
   )

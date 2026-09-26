@@ -256,8 +256,15 @@ export function toCreatePayload(values = {}, registrationId = null) {
     utilizedAmount: num(values.budget_utilized),
     availableBudget: computeAvailable(values),
 
-    // ── Section 13 — Terms ────────────────────────────────────────────────
-    termsAndConditions: str(values.terms),
+    // ── Terms ─────────────────────────────────────────────────────────────
+    // Backend types this as List<String> — one entry per line of the box.
+    termsAndConditions: toTermsList(values.terms),
+
+    // ── Annexures V & VI ─────────────────────────────────────────────────
+    // Only sent when the form actually holds the list, so a payload built
+    // from a partial values object never wipes saved annexure rows.
+    ...(Array.isArray(values.annexure_v) ? { annexureVList: toAnnexureVList(values.annexure_v) } : null),
+    ...(Array.isArray(values.annexure_vi) ? { annexureVIList: toAnnexureVIList(values.annexure_vi) } : null),
     // ── Section 15 — Delegation of Power ─────────────────────────────────
     dopDate: toIsoDate(values.dop_date),
 
@@ -371,8 +378,14 @@ export function toFormValues(dto = {}) {
     cluster_expert_comments: clusterExpert.general,
     cluster_expert_terms_comments: clusterExpert.terms,
 
-    // ── Section 13, 14, 15 ───────────────────────────────────────────
-    terms: dto.termsAndConditions ?? '',
+    // ── Annexures V & VI ─────────────────────────────────────────────
+    annexure_v: fromAnnexureVList(dto.annexureVList),
+    annexure_vi: fromAnnexureVIList(dto.annexureVIList),
+
+    // ── Terms, Budget, DoP ───────────────────────────────────────────
+    terms: Array.isArray(dto.termsAndConditions)
+      ? dto.termsAndConditions.join('\n')
+      : (dto.termsAndConditions ?? ''),
     financial_year: (dto.financialYear ?? '').slice(0, 10),
     budget_allocated: dto.budgetAllocated ?? '',
     budget_utilized: dto.utilizedAmount ?? '',
@@ -605,6 +618,70 @@ const bool = (v) => {
   }
   return null
 }
+function toTermsList(v) {
+  if (Array.isArray(v)) return v.map((t) => String(t).trim()).filter(Boolean)
+  if (v == null) return []
+  return String(v).split('\n').map((t) => t.trim()).filter(Boolean)
+}
+
+const blank = (v) => v == null || String(v).trim() === ''
+const numOrNull = (v) => (blank(v) || !Number.isFinite(Number(v)) ? null : Number(v))
+const strOrNull = (v) => (blank(v) ? null : String(v).trim())
+
+// Annexure V — cost items. `snNo` is the row's position, re-derived on
+// every save so deleting a middle row doesn't leave gaps.
+function toAnnexureVList(rows) {
+  return rows
+    .filter((r) => r && !(blank(r.particulars) && blank(r.total_cost) && blank(r.sidbi_support)))
+    .map((r, i) => ({
+      snNo: i + 1,
+      particulars: strOrNull(r.particulars),
+      totalCost: numOrNull(r.total_cost),
+      sidbiSupport: numOrNull(r.sidbi_support),
+    }))
+}
+
+function fromAnnexureVList(list) {
+  if (!Array.isArray(list)) return []
+  return [...list]
+    .sort((a, b) => (a?.snNo ?? 0) - (b?.snNo ?? 0))
+    .map((r) => ({
+      particulars: r?.particulars ?? '',
+      total_cost: r?.totalCost ?? '',
+      sidbi_support: r?.sidbiSupport ?? '',
+    }))
+}
+
+// Annexure VI — indicative items. Rows are kept in entry order.
+function toAnnexureVIList(rows) {
+  return rows
+    .filter((r) => r && !(blank(r.section) && blank(r.indicative_item)))
+    .map((r) => ({
+      section: strOrNull(r.section),
+      sectionNote: strOrNull(r.section_note),
+      indicativeItem: strOrNull(r.indicative_item),
+      numbers: numOrNull(r.numbers),
+      make: strOrNull(r.make),
+      maximumCost: numOrNull(r.maximum_cost),
+      maximumCostUnit: strOrNull(r.maximum_cost_unit),
+    }))
+}
+
+function fromAnnexureVIList(list) {
+  if (!Array.isArray(list)) return []
+  return [...list]
+    .sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0))
+    .map((r) => ({
+      section: r?.section ?? '',
+      section_note: r?.sectionNote ?? '',
+      indicative_item: r?.indicativeItem ?? '',
+      numbers: r?.numbers ?? '',
+      make: r?.make ?? '',
+      maximum_cost: r?.maximumCost ?? '',
+      maximum_cost_unit: r?.maximumCostUnit ?? '',
+    }))
+}
+
 function toIsoDate(v) {
   if (!v) return null
   const s = String(v).trim()

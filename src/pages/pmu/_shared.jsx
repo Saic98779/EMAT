@@ -10,6 +10,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import { PageHeader } from '../../components/shared'
+import FileChip from '../../components/FileChip'
 import { stackedLabelSx } from '../../components/workspace/formStyles'
 
 // PMU form primitives
@@ -218,10 +219,18 @@ export function FileDropField({
   multiple = false,
   files = null,
   onChange,
+  // Stored file-API URL(s) already on the record (edit / resubmit mode).
+  // Picking new files replaces them on save.
+  existing = null,
 }) {
   const theme = useTheme()
   const inputRef = useRef(null)
-  const list = multiple ? (Array.isArray(files) ? files : []) : (files ? [files] : [])
+  // Only freshly picked File objects belong in `list`; edit forms seed the
+  // field with the stored URL string, which is shown via `existing` instead.
+  const isFile = (f) => typeof File !== 'undefined' && f instanceof File
+  const list = (multiple ? (Array.isArray(files) ? files : []) : (files ? [files] : [])).filter(isFile)
+  const existingUrls = (Array.isArray(existing) ? existing : existing ? [existing] : [])
+    .filter((u) => typeof u === 'string' && u)
 
   const openPicker = () => inputRef.current?.click()
   const onPick = (e) => {
@@ -293,16 +302,28 @@ export function FileDropField({
         multiple={multiple}
         onChange={onPick}
       />
+      {existingUrls.length > 0 && (
+        <Box sx={{ mt: 1.25 }}>
+          <Typography sx={{ fontSize: 12, color: theme.palette.text.secondary, mb: 0.5 }}>
+            {list.length > 0 ? 'Currently attached — replaced on save by the file below' : 'Currently attached'}
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
+            {existingUrls.map((u) => (
+              <FileChip key={u} url={u}
+                sx={list.length > 0 ? { textDecoration: 'line-through', opacity: 0.7 } : undefined} />
+            ))}
+          </Stack>
+        </Box>
+      )}
       {list.length > 0 && (
         <Stack direction="row" spacing={1} flexWrap="wrap" gap={1} sx={{ mt: 1.25 }}>
           {list.map((f, i) => (
-            <Chip
+            <FileChip
               key={`${f.name}::${f.size}::${i}`}
+              file={f}
               label={`${f.name} · ${formatFileSize(f.size)}`}
               onDelete={(e) => { e.stopPropagation(); removeAt(i) }}
               deleteIcon={<CloseRoundedIcon />}
-              variant="outlined"
-              sx={{ maxWidth: '100%' }}
             />
           ))}
         </Stack>
@@ -526,7 +547,7 @@ export function RhfSelectField({
 // RhfFileField — dashed drop-zone that stores a File (or File[]) in the
 // form state. Wraps `FileDropField` in a Controller.
 export function RhfFileField({
-  name, rules, multiple = false, label, accept, helperText,
+  name, rules, multiple = false, label, accept, helperText, existing = null,
 }) {
   const { control } = useFormContext()
   return (
@@ -544,6 +565,7 @@ export function RhfFileField({
             multiple={multiple}
             files={field.value}
             onChange={field.onChange}
+            existing={existing}
           />
         </Box>
       )}

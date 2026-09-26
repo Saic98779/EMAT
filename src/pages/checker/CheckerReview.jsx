@@ -15,6 +15,7 @@ import { PageHeader } from '../../components/shared'
 import { useContentRecord, useUpdateContentStatus } from '../../queries'
 import { CONTENT_STATUS } from '../../apis/contentStatus'
 import { CONTENT_REVIEW_TYPES } from './contentReviewConfig'
+import { viewFileUrl } from '../../apis/files'
 
 // CheckerReview
 // ────────────────────────────────────────────────────────────────────────
@@ -387,50 +388,7 @@ function renderValue(field, value, theme) {
         {items.filter(Boolean).map((v, i) => {
           const url = typeof v === 'string' ? v : ''
           const name = filenameFromUrl(url) || url || 'Open file'
-          return (
-            <Stack
-              key={`${v}::${i}`}
-              component="a"
-              href={url || '#'}
-              target="_blank"
-              rel="noreferrer"
-              direction="row"
-              alignItems="center"
-              spacing={1}
-              sx={{
-                display: 'inline-flex',
-                textDecoration: 'none',
-                border: 1,
-                borderColor: alpha(theme.palette.primary.main, 0.28),
-                borderRadius: 1,
-                px: 1.25, py: 0.5,
-                width: 'fit-content',
-                maxWidth: '100%',
-                color: theme.palette.primary.dark,
-                bgcolor: alpha(theme.palette.primary.main, 0.04),
-                transition: 'background-color 120ms ease, border-color 120ms ease',
-                '&:hover': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  borderColor: theme.palette.primary.main,
-                },
-              }}
-            >
-              <LinkOutlinedIcon sx={{ fontSize: 15, flexShrink: 0 }} />
-              <Box
-                sx={{
-                  fontSize: 13, fontWeight: 600,
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  minWidth: 0,
-                }}
-                title={url}
-              >
-                {name}
-              </Box>
-              <Box sx={{ fontSize: 11, fontWeight: 600, color: theme.palette.text.disabled, flexShrink: 0 }}>
-                Open ↗
-              </Box>
-            </Stack>
-          )
+          return <AttachmentLink key={`${v}::${i}`} url={url} name={name} theme={theme} />
         })}
       </Stack>
     )
@@ -742,6 +700,71 @@ function valueLooksMeaningful(v) {
 // Pull the last path segment out of a URL and strip any query string —
 // used to show a friendly filename instead of the full download URL on
 // attachment chips.
+// One attachment row. Stored attachments are file-API URLs that need the
+// bearer token, so a plain <a href target="_blank"> lands on a 401 — open it
+// through an authenticated fetch instead.
+function AttachmentLink({ url, name, theme }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const open = async () => {
+    if (!url) return
+    setError('')
+    setBusy(true)
+    try {
+      await viewFileUrl(url, name)
+    } catch (e) {
+      setError(e?.message || "Couldn't open the file")
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Stack
+      component="button"
+      type="button"
+      onClick={open}
+      disabled={busy || !url}
+      direction="row"
+      alignItems="center"
+      spacing={1}
+      title={error || url}
+      sx={{
+        display: 'inline-flex',
+        font: 'inherit',
+        textAlign: 'left',
+        cursor: 'pointer',
+        border: 1,
+        borderColor: error ? theme.palette.error.main : alpha(theme.palette.primary.main, 0.28),
+        borderRadius: 1,
+        px: 1.25, py: 0.5,
+        width: 'fit-content',
+        maxWidth: '100%',
+        color: error ? theme.palette.error.main : theme.palette.primary.dark,
+        bgcolor: alpha(theme.palette.primary.main, 0.04),
+        transition: 'background-color 120ms ease, border-color 120ms ease',
+        '&:hover': {
+          bgcolor: alpha(theme.palette.primary.main, 0.1),
+          borderColor: theme.palette.primary.main,
+        },
+      }}
+    >
+      <LinkOutlinedIcon sx={{ fontSize: 15, flexShrink: 0 }} />
+      <Box
+        sx={{
+          fontSize: 13, fontWeight: 600,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          minWidth: 0,
+        }}
+      >
+        {name}
+      </Box>
+      <Box sx={{ fontSize: 11, fontWeight: 600, color: theme.palette.text.disabled, flexShrink: 0 }}>
+        {busy ? 'Opening…' : error ? 'Failed' : 'View ↗'}
+      </Box>
+    </Stack>
+  )
+}
+
 function filenameFromUrl(url) {
   if (!url) return ''
   try {

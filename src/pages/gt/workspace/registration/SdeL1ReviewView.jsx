@@ -10,7 +10,8 @@ import InsertDriveFileRoundedIcon from '@mui/icons-material/InsertDriveFileRound
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import { alpha, useTheme } from '@mui/material/styles'
 import { DECISION } from '../../../../apis/stageActions'
-import { downloadFile } from '../../../../apis/files'
+import { downloadFile, viewFile } from '../../../../apis/files'
+import ViewFileButton from '../../../../components/ViewFileButton'
 import { decodeFilename } from '../../../../fileFieldLabels'
 import { toFormValues as iaToFormValues } from '../../../../apis/industryAssociations'
 import { useApproveIA, useFilesByIa } from '../../../../queries'
@@ -740,6 +741,7 @@ function FileRow({ iaId, file }) {
           {ext}{size ? ` · ${size}` : ''}
         </Typography>
       </Box>
+      <ViewFileButton label={`View ${label}`} onView={() => viewFile(iaId, 'registration', iaId, filename)} />
       <IconButton size="small" onClick={onDownload} disabled={busy} aria-label={`Download ${label}`}>
         {busy ? <CircularProgress size={14} /> : <DownloadRoundedIcon fontSize="small" />}
       </IconButton>

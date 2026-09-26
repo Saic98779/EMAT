@@ -1,8 +1,8 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { isValidElement, memo, useCallback, useMemo, useState } from 'react'
 import {
   Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogContentText, DialogTitle, Divider, IconButton, Stack, TextField,
-  Typography,
+  DialogContentText, DialogTitle, Divider, IconButton, Stack, Table, TableBody,
+  TableCell, TableHead, TableRow, TextField, Typography,
 } from '@mui/material'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
@@ -10,7 +10,8 @@ import InsertDriveFileRoundedIcon from '@mui/icons-material/InsertDriveFileRound
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import { alpha, useTheme } from '@mui/material/styles'
 import { DECISION, REVIEWER_ROLES } from '../../../../apis/stageActions'
-import { downloadFile } from '../../../../apis/files'
+import { downloadFile, viewFile } from '../../../../apis/files'
+import ViewFileButton from '../../../../components/ViewFileButton'
 import { decodeFilename } from '../../../../fileFieldLabels'
 import {
   buildIaSeed,
@@ -77,28 +78,29 @@ export default function AppraisalReviewView({
 
   // Trim schema sections to what makes sense for this reviewer to *read*.
   // For CE, drop the sections they're about to author via the decision
-  // bar (Section 12 "Cluster Expert Comments") and strip any `ceOnly`
+  // bar ("Cluster Expert Comments") and strip any `ceOnly`
   // fields that live inside other sections (e.g. the Terms-of-Assistance
   // section carries `cluster_expert_terms_comments` which is CE-owned).
-  // For everyone else, hide Section 12 while it's still empty — client
+  // For everyone else, hide that section while it's still empty — client
   // UAT (2026-09-25 #16) flagged that SDE reviews *before* the CE has
   // commented, and an empty "Cluster Expert Comments" section on that
   // screen reads like a broken form. Once CE fills it, we still want
   // HO Maker etc. to see it, so gate on content-presence rather than
   // hiding it outright.
+  const CE_SECTION_TITLE = 'Cluster Expert Comments'
   const ceCommentsFilled = !!String(seed?.cluster_expert_comments || '').trim()
   const sections = useMemo(() => {
     const all = appraisalSchema?.sections || []
     if (viewerRole === REVIEWER_ROLES.CLUSTER_EXPERT) {
       return all
-        .filter((sec) => sec.n !== 12)
+        .filter((sec) => sec.title !== CE_SECTION_TITLE)
         .map((sec) => ({
           ...sec,
           fields: (sec.fields || []).filter((f) => !f.ceOnly),
         }))
     }
     if (ceCommentsFilled) return all
-    return all.filter((sec) => sec.n !== 12)
+    return all.filter((sec) => sec.title !== CE_SECTION_TITLE)
   }, [viewerRole, ceCommentsFilled])
   const [openSection, setOpenSection] = useState(() => sections[0]?.n ?? null)
   const toggleSection = (n) => setOpenSection((prev) => (prev === n ? null : n))
@@ -652,12 +654,15 @@ function ReviewSection({ section, values, open, onToggle }) {
 function FieldRow({ label, value, full }) {
   const theme = useTheme()
   const empty = value === '' || value == null
+  // Table-shaped values (repeaters) can't sit inside a <p>.
+  const block = isValidElement(value)
   return (
     <Box sx={{ gridColumn: full ? { md: '1 / -1' } : 'auto', minWidth: 0 }}>
       <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: theme.palette.text.disabled, letterSpacing: '0.03em', textTransform: 'uppercase' }}>
         {label}
       </Typography>
       <Typography
+        component={block ? 'div' : 'p'}
         sx={{
           mt: 0.25,
           fontSize: 13.5,
@@ -693,10 +698,7 @@ function formatValue(f, raw) {
   if (Array.isArray(raw)) {
     if (raw.length === 0) return ''
     if (f.type === 'repeater') {
-      return raw
-        .filter((r) => r && typeof r === 'object')
-        .map((r) => Object.values(r).filter(Boolean).join(' · '))
-        .join(' • ') || ''
+      return raw.some((r) => r && typeof r === 'object') ? <RepeaterTable f={f} rows={raw} /> : ''
     }
     if (f.type === 'checkboxes') {
       const opts = f.options || []
@@ -728,6 +730,56 @@ function formatValue(f, raw) {
   if (f.type === 'date') return formatDate(raw)
   return String(raw)
 }
+
+// Read-only table for repeater fields (Annexure V / VI etc.) — one column
+// per schema column, plus S.No and a totals row when the schema asks.
+function RepeaterTable({ f, rows }) {
+  const cols = f.columns || []
+  const list = rows.filter((r) => r && typeof r === 'object')
+  if (list.length === 0) return ''
+  const totals = Array.isArray(f.totals) ? f.totals : []
+  const cell = (c, v) => {
+    if (v == null || v === '') return '—'
+    return c.type === 'number' && /(cost|support|amount)/i.test(c.name)
+      ? `₹${INR.format(Number(v) || 0)}`
+      : String(v)
+  }
+  const sx = { fontSize: 13, px: 1, py: 0.75, verticalAlign: 'top' }
+  return (
+    <Box component="span" sx={{ display: 'block', overflowX: 'auto', mt: 0.5 }}>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            {f.serial && <TableCell sx={{ ...sx, fontWeight: 600 }}>S.No</TableCell>}
+            {cols.map((c) => <TableCell key={c.name} sx={{ ...sx, fontWeight: 600 }}>{c.label}</TableCell>)}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {list.map((r, i) => (
+            <TableRow key={i}>
+              {f.serial && <TableCell sx={sx}>{i + 1}</TableCell>}
+              {cols.map((c) => <TableCell key={c.name} sx={{ ...sx, whiteSpace: 'pre-wrap' }}>{cell(c, r[c.name])}</TableCell>)}
+            </TableRow>
+          ))}
+          {totals.length > 0 && (
+            <TableRow>
+              {f.serial && <TableCell sx={sx} />}
+              {cols.map((c, ci) => (
+                <TableCell key={c.name} sx={{ ...sx, fontWeight: 700 }}>
+                  {totals.includes(c.name)
+                    ? `₹${INR.format(list.reduce((s, r) => s + (Number(r[c.name]) || 0), 0))}`
+                    : ci === 0 ? 'Total' : ''}
+                </TableCell>
+              ))}
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </Box>
+  )
+}
+
+const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 function looksLikeOpaqueId(raw) {
@@ -877,6 +929,7 @@ function FileRow({ iaId, file }) {
           {ext}{size ? ` · ${size}` : ''}
         </Typography>
       </Box>
+      <ViewFileButton label={`View ${label}`} onView={() => viewFile(iaId, 'registration', iaId, filename)} />
       <IconButton size="small" onClick={onDownload} disabled={busy} aria-label={`Download ${label}`}>
         {busy ? <CircularProgress size={14} /> : <DownloadRoundedIcon fontSize="small" />}
       </IconButton>

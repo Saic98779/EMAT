@@ -7,7 +7,8 @@ import { makeInPrincipleSchema } from '../../../formSchemas'
 import FormRenderer, { fieldError } from '../../../components/FormRenderer'
 import { useBranchesByState, useFilesByIa, useSdesByBranch } from '../../../queries'
 import { toFormValues as iaToFormValues } from '../../../apis/industryAssociations'
-import { downloadFile } from '../../../apis/files'
+import { downloadFile, viewFile } from '../../../apis/files'
+import ViewFileButton from '../../../components/ViewFileButton'
 import { decodeFilename } from '../../../fileFieldLabels'
 import { STAGE } from '../../../apis/registrationStages'
 import { STATUS } from '../../../apis/workflow'
@@ -358,6 +359,7 @@ function RegistrationForm({ ws }) {
           <Box sx={stackedLabelSx}>
             <FormRenderer
               schema={sectionSchema}
+              fileScope={{ registrationId: ws.iaId, stage: 'registration', stageId: ws.iaId }}
               values={values}
               setValue={setValue}
               showAllErrors={showAllErrors}
@@ -698,6 +700,7 @@ function UploadedDocumentsPanel({ iaId }) {
                     </Typography>
                   )}
                 </Box>
+                <ViewFileButton text onView={() => viewFile(iaId, 'registration', iaId, filename)} />
                 <Button
                   size="small"
                   variant="text"
