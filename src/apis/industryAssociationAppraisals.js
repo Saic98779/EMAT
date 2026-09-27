@@ -207,12 +207,10 @@ export function toCreatePayload(values = {}, registrationId = null) {
     activitiesLastYear: str(values.activities_last_year),
 
     // ── Section 11 — DIA Specific ─────────────────────────────────────────
-    // Basis of selection is now a free-text string on Stage 5 too
-    // (client UAT 2026-09-25 #68). Send as `selectionCriteriaText` and
-    // mirror in the legacy list column so the existing column keeps
-    // working during backend migration.
-    selectionCriteriaText: str(values.basis_of_selection),
-    selectionCriteria: str(values.basis_of_selection) ? [str(values.basis_of_selection)] : [],
+    // Basis of selection — backend migrated the column from
+    // `List<String>` to a plain string on 2026-09-25. Send raw string;
+    // schema-side cap is now 2000 chars to match the DB.
+    selectionCriteria: str(values.basis_of_selection),
     formalizationComments: str(values.ready_formalization),
     referralArrangementComments: str(values.ready_referral),
     bseReadinessComments: str(values.ready_bse),
@@ -256,13 +254,23 @@ export function toCreatePayload(values = {}, registrationId = null) {
     utilizedAmount: num(values.budget_utilized),
     availableBudget: computeAvailable(values),
 
-    // ── Terms ─────────────────────────────────────────────────────────────
+    // ── Section 13 — Terms of Assistance ─────────────────────────────────
     // Backend types this as List<String> — one entry per term text box.
+    // Contract on update:
+    //   • omit / null → backend keeps existing list unchanged
+    //   • [] → backend clears the list
+    //   • non-empty array → backend replaces the list wholesale
     termsAndConditions: toTermsList(values.terms),
 
     // ── Annexures V & VI ─────────────────────────────────────────────────
     // Only sent when the form actually holds the list, so a payload built
     // from a partial values object never wipes saved annexure rows.
+    // Contract per LATEST_CHANGES_FOR_FRONTEND §2:
+    //   • omitted / null → existing rows preserved
+    //   • [] → backend deletes all rows
+    //   • non-empty array → backend deletes existing and inserts these
+    // Response ids get regenerated on each non-empty update, so we
+    // deliberately don't round-trip `id` on the way up.
     ...(Array.isArray(values.annexure_v) ? { annexureVList: toAnnexureVList(values.annexure_v) } : null),
     ...(Array.isArray(values.annexure_vi) ? { annexureVIList: toAnnexureVIList(values.annexure_vi) } : null),
     // ── Section 15 — Delegation of Power ─────────────────────────────────
@@ -378,11 +386,7 @@ export function toFormValues(dto = {}) {
     cluster_expert_comments: clusterExpert.general,
     cluster_expert_terms_comments: clusterExpert.terms,
 
-    // ── Annexures V & VI ─────────────────────────────────────────────
-    annexure_v: fromAnnexureVList(dto.annexureVList),
-    annexure_vi: fromAnnexureVIList(dto.annexureVIList),
-
-    // ── Terms, Budget, DoP ───────────────────────────────────────────
+    // ── Section 14 — Terms of Assistance ─────────────────────────────
     terms: fromTermsList(dto.termsAndConditions),
     financial_year: (dto.financialYear ?? '').slice(0, 10),
     budget_allocated: dto.budgetAllocated ?? '',
@@ -392,6 +396,13 @@ export function toFormValues(dto = {}) {
     // ── Section 16 — Recommendation ──────────────────────────────────
     recommendation: dto.recommendation ?? '',
     recommendation_remarks: dto.recommendationRemarks ?? '',
+
+    // ── Annexures V & VI ─────────────────────────────────────────────
+    // Backend returns arrays; response ids are ENC-encrypted and are
+    // regenerated on every non-empty PUT, so we drop them here and let
+    // FormRenderer's Repeater synthesise its own row keys.
+    annexure_v: fromAnnexureVList(dto.annexureVList),
+    annexure_vi: fromAnnexureVIList(dto.annexureVIList),
   }
 
   // Overlay IA-mirror fields only when the appraisal has actual data,
@@ -517,11 +528,11 @@ export function buildIaSeed(iaDto, branchesList = null) {
     website_url: r.websiteUrl ?? '',
     paid_services: yn(r.paidServicesAvailable),
     paid_services_details: r.paidServicesDetails ?? '',
-    // Basis of selection now a free-text string. Prefer the string
-    // column, fall back to joining the legacy array so older records
-    // still hydrate meaningfully.
-    basis_of_selection: typeof r.selectionCriteriaText === 'string'
-      ? r.selectionCriteriaText
+    // Basis of selection — backend column is now a plain string. Fall
+    // back to joining the legacy array for records written before the
+    // migration.
+    basis_of_selection: typeof r.selectionCriteria === 'string'
+      ? r.selectionCriteria
       : (Array.isArray(r.selectionCriteria) ? r.selectionCriteria.filter(Boolean).join(', ') : ''),
     grant_proposed: r.grantProposed ?? '',
     grant_details: r.grantDetails ?? '',

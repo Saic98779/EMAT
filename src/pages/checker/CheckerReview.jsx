@@ -13,7 +13,7 @@ import UndoRoundedIcon from '@mui/icons-material/UndoRounded'
 import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined'
 import { PageHeader } from '../../components/shared'
 import { useContentRecord, useUpdateContentStatus } from '../../queries'
-import { CONTENT_STATUS } from '../../apis/contentStatus'
+import { CONTENT_STATUS, deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
 import { CONTENT_REVIEW_TYPES } from './contentReviewConfig'
 import { viewFileUrl } from '../../apis/files'
 
@@ -38,6 +38,10 @@ import { viewFileUrl } from '../../apis/files'
 //                 checker queue).
 //   overline    — overline text above the title (defaults to the content
 //                 type's overline from config).
+// `mode` — 'checker' (default) writes checkerStatus, 'maker' writes
+// makerStatus. Both roles share this shell; the only meaningful
+// difference is which of the two backend fields their decision lands
+// on. See commitDecide below for the field-selection + mirror logic.
 export default function CheckerReview({
   readOnly = false,
   backTo = '/checker',
@@ -49,6 +53,7 @@ export default function CheckerReview({
   // to surface a workflow action (e.g. the PMU's "Edit & Resubmit"
   // button on REVERT records). Receives the DTO so it can gate itself.
   heroAction = null,
+  mode = 'checker',
 } = {}) {
   const navigate = useNavigate()
   const { type, id } = useParams()
@@ -64,7 +69,9 @@ export default function CheckerReview({
   if (!cfg) return <NotFound msg={`No review config for content type "${type}".`} backTo={backTo} />
 
   const dto = recordQ.data
-  const currentStatus = dto?.status || null
+  // Single derived status for display + banner tone. Reads both
+  // makerStatus and checkerStatus and folds them into one bucket.
+  const currentStatus = dto ? deriveStatus(dto) : null
 
   const requestDecide = (status) => {
     // Remarks are mandatory for revert + reject.
@@ -90,10 +97,31 @@ export default function CheckerReview({
   const commitDecide = async () => {
     if (!confirm || !id) return
     try {
+      // Field-selection logic:
+      //   • Maker mode  → sets `makerStatus`. Once backend accepts null
+      //     on the counterpart, we should send `checkerStatus: null` so
+      //     the item lands in Checker's queue as WITH_CHECKER. Today
+      //     (2026-09-26) backend rejects null, so we mirror the maker's
+      //     decision onto checkerStatus — that auto-signs on the
+      //     checker's behalf, which is undesirable but is the least
+      //     surprising fallback until backend ships the null fix.
+      //   • Checker mode → sets `checkerStatus`, preserving whatever
+      //     makerStatus the maker already wrote (or, if nobody wrote
+      //     one because backend still enforces both non-null, mirrors
+      //     the decision onto makerStatus too).
+      let makerStatus, checkerStatus
+      if (mode === 'maker') {
+        makerStatus = confirm.status
+        checkerStatus = dto?.checkerStatus || confirm.status
+      } else {
+        makerStatus = dto?.makerStatus || confirm.status
+        checkerStatus = confirm.status
+      }
       await patchStatus.mutateAsync({
         path: type,
         id,
-        status: confirm.status,
+        makerStatus,
+        checkerStatus,
         remarks: remarks.trim() || undefined,
       })
       setToast({ severity: 'success', msg: `${confirm.label} · saved.` })
@@ -131,7 +159,7 @@ export default function CheckerReview({
       ) : dto ? (
         <>
           <ReviewHero dto={dto} cfg={cfg} action={typeof heroAction === 'function' ? heroAction(dto) : heroAction} />
-          {dto.remark && <RemarkBanner status={dto.status} remark={dto.remark} />}
+          {dto.remark && <RemarkBanner status={deriveStatus(dto)} remark={dto.remark} />}
           <Stack spacing={2.5} sx={{ mt: 3 }}>
             {cfg.sections.map((sec) => (
               <ReviewSection key={sec.title} title={sec.title} fields={sec.fields} dto={dto} />
@@ -184,7 +212,7 @@ export default function CheckerReview({
 const ReviewHero = memo(function ReviewHero({ dto, cfg, action = null }) {
   const theme = useTheme()
   const title = primaryTitle(dto, cfg)
-  const currentStatus = dto?.status || null
+  const currentStatus = dto ? deriveStatus(dto) : null
 
   return (
     <Box
@@ -211,7 +239,7 @@ const ReviewHero = memo(function ReviewHero({ dto, cfg, action = null }) {
           <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 0.5 }}>
             <MetaBit label="Submitted by" value={dto.createdBy || 'Unknown'} />
             <MetaBit label="Submitted on" value={formatDateTime(dto.createdAt) || '—'} />
-            {dto.status && dto.approvedDate && (
+            {(dto.checkerStatus || dto.makerStatus) && dto.approvedDate && (
               <MetaBit label="Decision on" value={formatDate(dto.approvedDate)} />
             )}
           </Stack>
@@ -651,10 +679,16 @@ function statusVisuals(status, theme) {
   // the label (see requestDecide). Use a safe access pattern.
   const t = theme || { palette: { success: {}, error: {}, warning: {}, info: {} } }
   switch (status) {
-    case 'APPROVED': return { label: 'Approved', color: t.palette.success }
-    case 'REJECT':   return { label: 'Rejected', color: t.palette.error }
-    case 'REVERT':   return { label: 'Reverted', color: t.palette.warning }
-    default:         return { label: 'Pending',  color: t.palette.info }
+    // Both the raw enum values (APPROVED / REJECT / REVERT — legacy
+    // callers) and the two new derived values (WITH_CHECKER / PENDING)
+    // land here. Kept in one switch so the pill renders the right chip
+    // regardless of which one the caller passes.
+    case 'APPROVED':     return { label: 'Approved',        color: t.palette.success }
+    case 'REJECT':       return { label: 'Rejected',        color: t.palette.error }
+    case 'REVERT':       return { label: 'Reverted',        color: t.palette.warning }
+    case 'WITH_CHECKER': return { label: 'With HO Checker', color: t.palette.info }
+    case 'PENDING':      return { label: 'Pending',         color: t.palette.info }
+    default:             return { label: 'Pending',         color: t.palette.info }
   }
 }
 

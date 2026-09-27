@@ -3,6 +3,7 @@ import { Button } from '@mui/material'
 import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import CheckerReview from '../checker/CheckerReview'
 import { CONTENT_REVIEW_TYPES } from '../checker/contentReviewConfig'
+import { deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
 
 // PmuSubmissionView
 // ────────────────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ export default function PmuSubmissionView() {
       overline={cfg?.overline || 'Content · DIA'}
       title="Submission details"
       subtitle="Read-only view of your submitted entry and its current status."
-      heroAction={(dto) => (dto?.status === 'REVERT' ? <ResubmitButton type={type} id={id} /> : null)}
+      heroAction={(dto) => (deriveStatus(dto) === DERIVED_STATUS.REVERT ? <ResubmitButton type={type} id={id} /> : null)}
     />
   )
 }

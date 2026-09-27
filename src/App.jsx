@@ -272,6 +272,14 @@ export default function App() {
         <Route path="/sde/bse/:uuid/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseReview /></DenyRawRoles>} />
         <Route path="/sde/panel-submissions" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><PanelSubmissionQueue /></DenyRawRoles>} />
         <Route path="/sde/panel-submissions/:uuid" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><PanelSubmissionUpload /></DenyRawRoles>} />
+        {/* HO Maker's Content Approvals — reuses the same CheckerQueue
+            / CheckerReview shells with mode="maker" so the write-side
+            targets makerStatus instead of checkerStatus, and the
+            pending filter shows records where nobody has decided yet.
+            Gated to SIDBI_HO_MAKER only — SDE / Cluster Expert don't
+            handle DIA content approvals. */}
+        <Route path="/sde/content-approvals" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><CheckerQueue mode="maker" /></DenyRawRoles>} />
+        <Route path="/sde/content-approvals/:type/:id" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><CheckerReview mode="maker" backTo="/sde/content-approvals" backLabel="Approval queue" title="Review submission" overline="Content Approvals" /></DenyRawRoles>} />
       </Route>
 
       {/* BSE — field officer */}

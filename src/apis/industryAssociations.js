@@ -189,12 +189,11 @@ export function toPayload(v = {}) {
     adverseRemarksAvailable: bool(v.adverse_remarks),
     adverseRemarks: v.adverse_remarks === 'yes' ? str(v.adverse_details) : null,
     webReport: null,
-    // Basis of selection — now free-text. Send as a single-element array
-    // so the existing backend `selectionCriteria: List<String>` column
-    // still round-trips; and mirror it on `selectionCriteriaText` for
-    // whenever backend adds a proper text column.
-    selectionCriteria: str(v.basis_of_selection) ? [str(v.basis_of_selection)] : [],
-    selectionCriteriaText: str(v.basis_of_selection),
+    // Basis of selection — backend flipped this from `List<String>` to
+    // a plain `string` on 2026-09-25 (LATEST_CHANGES_FOR_FRONTEND.md
+    // §3). Send the raw string; column now caps at 2000 chars on the
+    // DB side (frontend schema enforces the same cap).
+    selectionCriteria: str(v.basis_of_selection),
     willingnessComments: str(v.willingness_comments),
     workedWithSidbiBefore: bool(v.worked_before),
     grantProposed: num(v.grant_proposed),
@@ -290,11 +289,13 @@ export function toFormValues(dto = {}) {
     paid_services_details: dto.paidServicesDetails ?? '',
     adverse_remarks: yn(dto.adverseRemarksAvailable),
     adverse_details: dto.adverseRemarks ?? '',
-    // Basis of selection — now a single free-text string. Prefer the new
-    // string column, fall back to joining the legacy checkbox array so
-    // older records still show their selection when reloaded.
-    basis_of_selection: typeof dto.selectionCriteriaText === 'string'
-      ? dto.selectionCriteriaText
+    // Basis of selection — post-migration backend returns a plain
+    // string. Fall back to joining the legacy array shape for records
+    // written before the migration (safe to keep even after the
+    // migration completes since backend won't return the array shape
+    // once the column is a scalar; the array branch just doesn't fire).
+    basis_of_selection: typeof dto.selectionCriteria === 'string'
+      ? dto.selectionCriteria
       : (Array.isArray(dto.selectionCriteria) ? dto.selectionCriteria.filter(Boolean).join(', ') : ''),
     willingness_comments: dto.willingnessComments ?? '',
     worked_before: yn(dto.workedWithSidbiBefore),

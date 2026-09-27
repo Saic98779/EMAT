@@ -9,6 +9,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 import { PageHeader } from '../../components/shared'
 import { useContentRecord } from '../../queries'
 import { CONTENT_REVIEW_TYPES } from '../checker/contentReviewConfig'
+import { deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
 
 // PmuResubmit
 // ────────────────────────────────────────────────────────────────────────
@@ -66,12 +67,14 @@ export default function PmuResubmit() {
 
   // Guard: only REVERT records can be edited. If the checker has already
   // approved / rejected, editing shouldn't be possible; bounce back to
-  // the read-only view.
-  if (dto.status !== 'REVERT') {
+  // the read-only view. Uses the derived status so we correctly handle
+  // the new maker/checker two-field record shape.
+  const dtoStatus = deriveStatus(dto)
+  if (dtoStatus !== DERIVED_STATUS.REVERT) {
     return (
       <Box sx={{ maxWidth: 720, mx: 'auto', pt: 4 }}>
         <Alert severity="info" sx={{ mb: 2 }}>
-          This submission is <b>{dto.status || 'pending'}</b> — it can't be edited.
+          This submission is <b>{dtoStatus.toLowerCase()}</b> — it can't be edited.
           You can only edit submissions the checker has reverted.
         </Alert>
         <Button
