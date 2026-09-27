@@ -25,7 +25,7 @@ import { PageHeader } from '../../components/shared'
 import { useContentList } from '../../queries'
 import { CONTENT_REVIEW_TYPES, CONTENT_REVIEW_ORDER } from './contentReviewConfig'
 import { StatusPill } from './CheckerReview'
-import { deriveStatus, DERIVED_STATUS, isPendingForChecker, isPendingForMaker } from '../../apis/contentStatus'
+import { CONTENT_STATUS, deriveStatus, DERIVED_STATUS, isPendingForChecker, isPendingForMaker } from '../../apis/contentStatus'
 
 // CheckerQueue
 // ────────────────────────────────────────────────────────────────────────
@@ -154,13 +154,24 @@ function QueueBody({ type, cfg, mode = 'checker' }) {
   const [q, setQ] = useState('')
   const query = useContentList(type)
 
-  const rows = query.data || []
+  // Scope the raw list to what THIS role should ever see:
+  //   • Checker workspace → only rows Maker has approved. Fresh
+  //     submissions (makerStatus === null), maker-rejected, and
+  //     maker-reverted rows never appear here — those are Maker's
+  //     job or already terminal. This gates *every* filter tab
+  //     (Pending, All, Approved, Rejected) so Checker never sees a
+  //     submission Maker hasn't touched.
+  //   • Maker workspace → everything shows (Maker is the first
+  //     line of review and is the audit trail for their own history).
+  const rawRows = query.data || []
+  const rows = mode === 'checker'
+    ? rawRows.filter((r) => r?.makerStatus === CONTENT_STATUS.APPROVED)
+    : rawRows
+
   // Pending predicate depends on which workspace this is:
   //   • Maker  → rows nobody has decided yet (deriveStatus === PENDING)
   //   • Checker → rows the maker approved but the checker hasn't
-  //     signed off on, plus fresh rows if the backend still requires
-  //     both fields non-null (that means the two roles briefly share
-  //     the same queue until the backend null-fix lands).
+  //     signed off on (plus fresh-resubmit-after-revert cycles).
   const pendingPred = mode === 'maker' ? isPendingForMaker : checkerPendingFilter
   const counts = useMemo(() => ({
     pending:  rows.filter(pendingPred).length,

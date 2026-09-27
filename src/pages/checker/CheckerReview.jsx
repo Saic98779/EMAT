@@ -15,6 +15,7 @@ import { PageHeader } from '../../components/shared'
 import { useContentRecord, useUpdateContentStatus } from '../../queries'
 import { CONTENT_STATUS, deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
 import { CONTENT_REVIEW_TYPES } from './contentReviewConfig'
+import { wasResubmitted } from './CheckerQueue'
 import { viewFileUrl } from '../../apis/files'
 
 // CheckerReview
@@ -167,15 +168,19 @@ export default function CheckerReview({
       )}
 
       {dto && !readOnly && (
-        <DecisionBar
-          currentStatus={currentStatus}
-          remarks={remarks}
-          setRemarks={(v) => { setRemarks(v); if (v.trim()) setRemarksError(false) }}
-          remarksError={remarksError}
-          onDecide={requestDecide}
-          busy={patchStatus.isPending}
-          mode={mode}
-        />
+        canDecide({ dto, mode })
+          ? (
+            <DecisionBar
+              currentStatus={currentStatus}
+              remarks={remarks}
+              setRemarks={(v) => { setRemarks(v); if (v.trim()) setRemarksError(false) }}
+              remarksError={remarksError}
+              onDecide={requestDecide}
+              busy={patchStatus.isPending}
+              mode={mode}
+            />
+          )
+          : <DecisionRecordedBanner dto={dto} mode={mode} />
       )}
 
       <ConfirmDialog
@@ -550,6 +555,57 @@ function renderValue(field, value, theme) {
   return <Typography sx={{ fontSize: 13.5, color: theme.palette.text.primary }}>{String(value)}</Typography>
 }
 
+// ─── Decision availability ─────────────────────────────────────────────
+// A reviewer can decide when their own status field is empty, OR when
+// the row was reverted and GT PMU has resubmitted since (a fresh cycle).
+// Otherwise the "Decision recorded" banner takes the DecisionBar's slot
+// so the reviewer isn't offered buttons that would just re-write the
+// same decision.
+function canDecide({ dto, mode }) {
+  if (!dto) return false
+  const mine = mode === 'maker' ? dto.makerStatus : dto.checkerStatus
+  if (mine == null) return true
+  return wasResubmitted(dto)
+}
+
+// Read-only badge shown in place of the DecisionBar once this reviewer
+// has already acted. Sits inline (not fixed) so the page footer isn't
+// permanently taken up after the decision.
+function DecisionRecordedBanner({ dto, mode }) {
+  const theme = useTheme()
+  const mine = mode === 'maker' ? dto.makerStatus : dto.checkerStatus
+  const label = mine === CONTENT_STATUS.APPROVED ? 'You approved this submission.'
+              : mine === CONTENT_STATUS.REJECT   ? 'You rejected this submission.'
+              : mine === CONTENT_STATUS.REVERT   ? 'You sent this back for changes.'
+              : 'Your decision is recorded.'
+  const tone = mine === CONTENT_STATUS.APPROVED ? theme.palette.success
+             : mine === CONTENT_STATUS.REJECT   ? theme.palette.error
+             : mine === CONTENT_STATUS.REVERT   ? theme.palette.warning
+             : theme.palette.info
+  const followUp = mine === CONTENT_STATUS.APPROVED && mode === 'maker'
+        ? ' Awaiting HO Checker sign-off.'
+      : mine === CONTENT_STATUS.APPROVED && mode === 'checker'
+        ? ' Submission is now live.'
+      : mine === CONTENT_STATUS.REVERT
+        ? ' Waiting for the submitter to revise and resubmit.'
+      : ''
+  return (
+    <Box
+      sx={{
+        mt: 3, p: 2, borderRadius: 2,
+        border: 1, borderColor: alpha(tone.main, 0.35),
+        bgcolor: alpha(tone.main, 0.06),
+        display: 'flex', alignItems: 'center', gap: 1.25,
+      }}
+    >
+      <StatusPill status={mine} viewerMode={mode} />
+      <Typography sx={{ fontSize: 13.5, color: theme.palette.text.primary }}>
+        <b>{label}</b>{followUp}
+      </Typography>
+    </Box>
+  )
+}
+
 // ─── Decision bar ──────────────────────────────────────────────────────
 function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecide, busy, mode }) {
   const theme = useTheme()
@@ -612,16 +668,9 @@ function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecid
           />
         </Stack>
       </Stack>
-      {(remarksError || currentStatus) && (
-        <Typography
-          sx={{
-            mt: 0.75, fontSize: 11.5,
-            color: remarksError ? theme.palette.error.main : theme.palette.text.disabled,
-          }}
-        >
-          {remarksError
-            ? 'Remarks are required to revert or reject.'
-            : <>Currently <StatusPill status={currentStatus} viewerMode={mode} inline /> — a new decision replaces the previous one.</>}
+      {remarksError && (
+        <Typography sx={{ mt: 0.75, fontSize: 11.5, color: theme.palette.error.main }}>
+          Remarks are required to revert or reject.
         </Typography>
       )}
     </Paper>
