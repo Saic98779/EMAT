@@ -409,6 +409,14 @@ export function useCreateAppraisal() {
       if (regId) {
         qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(regId), refetchType: 'all' })
         qc.invalidateQueries({ queryKey: keys.ias.detail(regId), refetchType: 'all' })
+        // Backend writes a stage-history row when `stageId` rides on the
+        // create — without invalidating this cache, the workspace's
+        // stage tracker keeps rendering the just-submitted sub-stage as
+        // IN_PROGRESS instead of COMPLETED until the next natural
+        // refetch, because deriveSubStage falls through to the
+        // currentStage-matching branch when no matching history entry
+        // is found.
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(regId), refetchType: 'all' })
       }
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
@@ -426,6 +434,8 @@ export function useUpdateAppraisal() {
       if (regId) {
         qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(regId), refetchType: 'all' })
         qc.invalidateQueries({ queryKey: keys.ias.detail(regId), refetchType: 'all' })
+        // Stage-history refetch — see comment on useCreateAppraisal.
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(regId), refetchType: 'all' })
       }
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })

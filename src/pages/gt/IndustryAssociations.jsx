@@ -33,8 +33,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // with `TRANSITIONS` in `src/apis/stageActions.js`. Anything not in this
 // set is either upstream of CE or already past their turn.
 const CE_ACTIONABLE_STAGES = new Set([
-  'ACTION_PLAN_SUBMITTED',
-  'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
+  'SUSTAINABILITY_MATRIX_SUBMITTED',      // CE approve/revert/reject (added 2026-09-27)
+  'ACTION_PLAN_SUBMITTED',                // CE approve/revert on the action plan
+  'DETAILED_APPRAISAL_APPROVAL_BY_SDE',   // CE comments before HO Maker
 ])
 
 // Timestamp used to sort the list — accept either `raw.createdAt` (backend
@@ -89,15 +90,18 @@ function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
   const ws = (tab) => `${basePath}/${ia.id}/workspace/${tab}`
   const workspaceBase = basePath.startsWith('/gt') ? '/gt' : '/sde'
 
-  // Cluster Expert routing — CE reviews the Action Plan (stage 4) and
-  // adds L2 comments (stage 5). Route to whichever tab owns the CURRENT
-  // sub-stage rather than always sending them to /appraisal; otherwise a
-  // CE with an ACTION_PLAN_SUBMITTED row gets dropped on the appraisal
-  // tab, which is locked until CE approves the plan.
+  // Cluster Expert routing — CE reviews the Sustainability Matrix
+  // (stage 3, added 2026-09-27), the Action Plan (stage 4), and adds L2
+  // comments (stage 5). Route to whichever tab owns the CURRENT
+  // sub-stage rather than always sending them to /appraisal; otherwise
+  // CE gets dropped on the appraisal tab, which is locked until earlier
+  // stages clear.
   if (isClusterExpert) {
-    const ceTab = ia.currentStage === 'ACTION_PLAN_SUBMITTED'
-      ? 'action-plan'
-      : (ia.appraisal ? 'appraisal' : 'overview')
+    const ceTab = ia.currentStage === 'SUSTAINABILITY_MATRIX_SUBMITTED'
+      ? 'sustainability'
+      : ia.currentStage === 'ACTION_PLAN_SUBMITTED'
+        ? 'action-plan'
+        : (ia.appraisal ? 'appraisal' : 'overview')
     return (
       <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
         onClick={go(`${workspaceBase}/ias/${ia.id}/workspace/${ceTab}`)} sx={ACTION_SX}>

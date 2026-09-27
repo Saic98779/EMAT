@@ -427,7 +427,13 @@ const CURRENT_STAGE_TO_STATUS = {
   IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REJECTED:        { status: 'Rejected (L1)',                    stage: 0 },
   IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REVERTED:        { status: 'Changes Requested',                stage: 0 },
 
-  SUSTAINABILITY_MATRIX_SUBMITTED:                 { status: 'Sustainability · Submitted',       stage: 1 },
+  SUSTAINABILITY_MATRIX_SUBMITTED:                 { status: 'Sustainability · With CE',         stage: 1 },
+  // CE decision sub-stages added by backend 2026-09-27 (ids 22/21/23)
+  // — sustainability now has an individual CE approval affordance
+  // (previously implicit-on-submit).
+  SUSTAINABILITY_MATRIX_APPROVED:                  { status: 'Sustainability · Approved',        stage: 1 },
+  SUSTAINABILITY_MATRIX_REVERTED:                  { status: 'Sustainability · Changes Requested', stage: 1 },
+  SUSTAINABILITY_MATRIX_REJECTED:                  { status: 'Rejected (Sustainability)',        stage: 1 },
 
   ACTION_PLAN_SUBMITTED:                           { status: 'Action Plan · With CE',            stage: 1 },
   CLUSTER_EXPERT_APPROVED:                         { status: 'Detailed Pending',                 stage: 1 },
@@ -457,6 +463,9 @@ const CURRENT_STAGE_TO_STATUS = {
 const L1_APPROVED_SUBSTAGES = new Set([
   'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
   'SUSTAINABILITY_MATRIX_SUBMITTED',
+  'SUSTAINABILITY_MATRIX_APPROVED',
+  'SUSTAINABILITY_MATRIX_REVERTED',
+  'SUSTAINABILITY_MATRIX_REJECTED',
   'ACTION_PLAN_SUBMITTED',
   'CLUSTER_EXPERT_APPROVED',
   'CLUSTER_EXPERT_REVERTED',

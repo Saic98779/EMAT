@@ -36,18 +36,6 @@ import { useAuth } from '../auth'
 // none of these are filled, either the seed never ran or the parent IA
 // is a matrix-only stub with no In-Principle profile. Either way, POSTing
 // would create a garbage row of all-nulls on the backend.
-// L1 → appraisal seed: `secretariatStaff` is an array of
-// `{ name, contact, email }`. Render as a compact multi-line string so
-// the appraisal's single-line "details" field shows something useful
-// without dropping data.
-function seedSecretariatDetails(staff) {
-  if (!Array.isArray(staff) || staff.length === 0) return ''
-  return staff
-    .filter((r) => r && (r.name || r.contact || r.email))
-    .map((r) => [r.name, r.contact, r.email].filter(Boolean).join(' · '))
-    .join('\n')
-}
-
 function valuesLookHydrated(values) {
   const anchors = [
     'apex_name', 'apex_designation', 'apex_email', 'nodal_name',
@@ -325,17 +313,10 @@ export default function AppraisalForm({
     // actually starting. Explicit `data` check is the sturdy version.
     if (iaQ.data?.state && !branchesQ.data) return
     const ia = iaQ.data
-    const r = ia?.raw || {}
-    // Shared IA→appraisal seed. Also flatten the array-shaped L1
-    // secretariat_staff into the free-text `secretariat_details` field
-    // the appraisal uses — that transform is form-specific and lives
-    // here, not in the shared helper.
-    const seed = ia
-      ? {
-          ...buildIaSeed(ia, branchesQ.data),
-          secretariat_details: seedSecretariatDetails(r.secretariatStaff),
-        }
-      : {}
+    // Shared IA→appraisal seed handles secretariat_details from IA's
+    // `secretariatStaff` string field directly (client UAT 2026-09-25
+    // flattened this from a structured array to a single textarea).
+    const seed = ia ? buildIaSeed(ia, branchesQ.data) : {}
     // Group already-uploaded files under their slot slug so the appraisal
     // form shows chips for what's on the server, not an empty picker.
     const filesBySlot = {}
@@ -529,6 +510,7 @@ export default function AppraisalForm({
         values={values}
         setValue={setValue}
         showAllErrors={showAllErrors}
+        setShowAllErrors={setShowAllErrors}
         submit={submit}
         busy={busy}
         canSave={canSave}
@@ -582,7 +564,7 @@ export default function AppraisalForm({
 // with Prev / Continue / Submit. Keeps the workspace visually consistent
 // across L1 and L2 forms.
 function StepperLayout({
-  schema, values, setValue, showAllErrors, submit, busy, canSave, submitLabel,
+  schema, values, setValue, showAllErrors, setShowAllErrors, submit, busy, canSave, submitLabel,
   viewSustainability, sustainOpen, setSustainOpen, existing, registrationId,
   readOnly = false, renderFooter = null,
 }) {
@@ -617,11 +599,19 @@ function StepperLayout({
   const goTo = useCallback((i) => setActiveIndex(i), [])
   const onSubmit = useCallback(() => {
     if (!canSubmit) {
+      // Flip on the "show ALL errors" flag so every required-but-empty
+      // field renders its red inline error, not just the ones the user
+      // touched. Without this the user gets bounced to the first
+      // incomplete section with no visual cue about which fields are
+      // missing — the same "why is the button disabled?" UX bug the
+      // stepper's warning-coloured dots try (but fail) to answer alone.
+      if (typeof setShowAllErrors === 'function') setShowAllErrors(true)
       const firstBad = sections.findIndex((s) => completion[s.n] !== 'done')
       if (firstBad >= 0) setActiveIndex(firstBad)
+      return
     }
     submit()
-  }, [canSubmit, sections, completion, submit])
+  }, [canSubmit, sections, completion, submit, setShowAllErrors])
 
   return (
     <>

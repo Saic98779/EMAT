@@ -142,7 +142,10 @@ export const makeInPrincipleSchema = ({
         rows: 2, max: 500,
         help: 'Enter the complete postal address as it should appear on official correspondence.' },
       { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true, help: 'Within the selected State' },
-      { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE },
+      // Cap at 6 chars — regex already enforces "must be 6 digits", this
+      // just stops the browser accepting more keystrokes and prevents the
+      // FormRenderer default 500-char rule from firing on this field.
+      { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE, min: 6, max: 6 },
     ] },
     { n: 3, title: 'Apex Office Holder Details of IA', fields: [
       { name: '_apex_contact', label: 'Contact', type: 'subheading', span: 12 },
@@ -612,11 +615,15 @@ export const appraisalSchema = {
       { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
       { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
       { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
-      { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3 },
+      // Ranking is typically a short grade string ("A+", "B", "AAA") —
+      // override the FormRenderer default 3-char minimum.
+      { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3, min: 1 },
       { name: 'cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
 
       { name: '_dd_ia_darpan', label: 'NGO Darpan', type: 'subheading', span: 12 },
-      { name: 'ngo_darpan_no', label: 'NGO Darpan Number', type: 'text', span: 6 },
+      // NGO Darpan numbers are short alphanumeric IDs — override the
+      // FormRenderer default 3-char minimum + 500-char maximum.
+      { name: 'ngo_darpan_no', label: 'NGO Darpan Number', type: 'text', span: 6, min: 1 },
       { name: 'ngo_darpan_file', label: 'NGO Darpan copy (upload)', type: 'file', span: 6 },
 
       { name: '_dd_ia_nabard', label: 'NABARD Blacklist', type: 'subheading', span: 12 },
@@ -662,7 +669,8 @@ export const appraisalSchema = {
       { name: '_dd_owner_cibil', label: 'IA Beneficial Owner/s — CIBIL (extant KYC policy)', type: 'subheading', span: 12 },
       { name: 'owner_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
       { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
-      { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3 },
+      // Ranking/score is a short grade string — see cibil_ranking above.
+      { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3, min: 1 },
       { name: 'owner_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
       { name: 'owner_cibil_file', label: 'CIBIL Report (upload)', type: 'file', span: 12 },
 
@@ -718,11 +726,13 @@ export const appraisalSchema = {
       { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
       // Sector #1 required — client UAT (2026-09-25 #67): sectoral IAs
       // may deal in only one sector, so #2 / #3 stay optional.
-      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true },
+      // Sector name fields — override the FormRenderer default 3-char
+      // minimum so short codes / numbers ("IT", "1", "R&D") are accepted.
+      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true, min: 1 },
       { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4 },
+      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1 },
       { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4 },
+      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1 },
       { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope', label: 'Scope for financing — description (50–75 words)', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5',

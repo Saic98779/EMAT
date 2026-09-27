@@ -527,7 +527,14 @@ export function buildIaSeed(iaDto, branchesList = null) {
     it_infra: yn(r.itInfrastructureAvailable),
     it_infra_details: r.infrastructureType ?? '',
     secretariat_staff: yn(r.secretariatStaffAvailable),
-    secretariat_details: r.secretariatStaffDetail ?? '',
+    // IA registration DTO uses `secretariatStaff` (free-text description
+    // — client UAT 2026-09-25 flattened this from a structured list to
+    // one textarea). The APPRAISAL DTO uses `secretariatStaffDetail` for
+    // the same value — different field name on each endpoint, don't
+    // conflate them. Seed the L2 form from IA's string first; appraisal
+    // overlays its own `secretariatStaffDetail` on top via putStr in
+    // `toFormValues` when the appraiser has edited it.
+    secretariat_details: r.secretariatStaff ?? '',
     website: yn(r.websiteAvailable),
     // Autofetched from the parent IA — client UAT (2026-09-25 #64):
     // when website is Yes, seed the URL from the In-Principle record.

@@ -52,6 +52,21 @@ const TRANSITIONS = [
     ],
   },
 
+  // ── Sustainability Matrix — Cluster Expert reviews ─────────────────
+  // Backend added sub-stage ids 22/21/23 on 2026-09-27 so CE can now
+  // approve / revert / reject the sustainability matrix individually
+  // (previously implicit-on-submit). CE writes stageId via the existing
+  // PUT /sustainability-matrix/{id} endpoint (no new controller).
+  {
+    at: 'SUSTAINABILITY_MATRIX_SUBMITTED',
+    role: REVIEWER_ROLES.CLUSTER_EXPERT,
+    decisions: [
+      { kind: DECISION.APPROVE, to: 'SUSTAINABILITY_MATRIX_APPROVED', label: 'Approve sustainability' },
+      { kind: DECISION.REVERT,  to: 'SUSTAINABILITY_MATRIX_REVERTED', label: 'Send back to GT' },
+      { kind: DECISION.REJECT,  to: 'SUSTAINABILITY_MATRIX_REJECTED', label: 'Reject' },
+    ],
+  },
+
   // ── Action Plan — Cluster Expert reviews ────────────────────────────
   {
     at: 'ACTION_PLAN_SUBMITTED',

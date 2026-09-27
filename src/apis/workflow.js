@@ -106,13 +106,14 @@ const STAGE_TEMPLATE = {
 
   [STAGE.SUSTAINABILITY_MATRIX]: {
     subStages: [
-      // Backend has NO CE-approval step for the sustainability matrix —
-      // once submitted, this stage is done. If backend later adds
-      // /sustainability-matrix/{id}/status, add the CE approval key here.
       { label: 'Sustainability Matrix Submission', keys: ['SUSTAINABILITY_MATRIX_SUBMITTED'] },
+      // CE approval added 2026-09-27 (backend sub-stage ids 21/22/23).
+      // Composite id 20 also completes this row — once both tracks are
+      // green backend advances everything to the composite in one write.
+      { label: 'Cluster Expert Approval', keys: ['SUSTAINABILITY_MATRIX_APPROVED', 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED'] },
     ],
-    rejectionKeys: [],
-    revertKeys: [],
+    rejectionKeys: ['SUSTAINABILITY_MATRIX_REJECTED'],
+    revertKeys:    ['SUSTAINABILITY_MATRIX_REVERTED'],
   },
 
   [STAGE.ACTION_PLAN]: {
@@ -164,10 +165,19 @@ const STAGE_TEMPLATE = {
 
 function deriveStage(stageKey, ia, allStages, history, eligibility) {
   const tmpl = STAGE_TEMPLATE[stageKey] || { subStages: [], rejectionKeys: [], revertKeys: [] }
-  const stageHistory = (history || []).filter((h) => h.stage === stageKey)
+  // scopedHistory (entries whose h.stage matches this stage) drives the
+  // "latest reject/revert comment" lookup below. Sub-stage matching uses
+  // the UNSCOPED history because backend can write cross-stage sub-stages
+  // (e.g. the composite SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED
+  // — its own top-level stage — is also a completion signal for both
+  // SUSTAINABILITY_MATRIX and ACTION_PLAN sub-rows). Sub-stage enum
+  // strings are globally unique per backend, so matching by subStage
+  // across all stages doesn't cross-contaminate.
+  const scopedHistory = (history || []).filter((h) => h.stage === stageKey)
+  const fullHistory   = history || []
 
   const subStages = tmpl.subStages.map((row, i) =>
-    deriveSubStage({ row, index: i, stageKey, ia, allStages, stageHistory, eligibility }),
+    deriveSubStage({ row, index: i, stageKey, ia, allStages, stageHistory: fullHistory, eligibility }),
   )
 
   const currentStage = ia?.currentStage || ''
@@ -199,7 +209,7 @@ function deriveStage(stageKey, ia, allStages, history, eligibility) {
     progress: { completed, total: subStages.length },
     // Surface the latest reviewer comment for the card body (mock shows it
     // when a stage was reverted / rejected).
-    comment: latestCommentFor(stageHistory, [...tmpl.rejectionKeys, ...tmpl.revertKeys])
+    comment: latestCommentFor(scopedHistory, [...tmpl.rejectionKeys, ...tmpl.revertKeys])
       || (status === STATUS.IN_PROGRESS ? ia?.comments : null)
       || null,
     subStages,
