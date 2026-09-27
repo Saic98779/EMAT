@@ -4,6 +4,7 @@ import {
   PmuFormShell, PmuSection, FieldRow, FieldCell,
   EMAIL_RE, PHONE_RE,
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
+  CHAR_LIMITS, capChars,
 } from './_shared'
 import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
@@ -28,38 +29,38 @@ const CURRENCY_ADORNMENT = {
 // Field spec — keeps the mapping from UI key → backend field name + type
 // in one place. Used both by the render loop and buildPayload.
 const FIELDS = {
-  providerName:          { backend: 'bdsProviderName',                label: 'BDS provider name',              required: true },
+  providerName:          { backend: 'bdsProviderName',                label: 'BDS provider name',              required: true, cap: CHAR_LIMITS.SHORT },
   doi:                   { backend: 'doi',                            label: 'Date of incorporation',          required: true, type: 'date' },
   constitution:          { backend: 'constitution',                   label: 'Constitution',                   required: true, type: 'select', options: CONSTITUTION_OPTIONS },
-  address:               { backend: 'address',                        label: 'Address',                        required: true, multiline: true },
-  state:                 { backend: 'state',                          label: 'State',                          required: true },
-  district:              { backend: 'district',                       label: 'District',                       required: true },
-  pinCode:               { backend: 'pinCode',                        label: 'PIN code',                       required: true, validate: 'pin' },
+  address:               { backend: 'address',                        label: 'Address',                        required: true, multiline: true, cap: CHAR_LIMITS.LONG },
+  state:                 { backend: 'state',                          label: 'State',                          required: true, cap: CHAR_LIMITS.SHORT },
+  district:              { backend: 'district',                       label: 'District',                       required: true, cap: CHAR_LIMITS.SHORT },
+  pinCode:               { backend: 'pinCode',                        label: 'PIN code',                       required: true, validate: 'pin', cap: CHAR_LIMITS.SHORT },
   iaNature:              { backend: 'iaNature',                       label: 'Nature of IA',                   required: true, type: 'select', options: IA_NATURE_OPTIONS },
   noOfOffices:           { backend: 'noOfOffices',                    label: 'Number of offices',              required: true, type: 'number' },
   identifiedClusterFlag: { backend: 'catTo242IdenClusterFlag',        label: 'Catering to any of the 242 identified clusters', required: true, type: 'yesNo' },
-  clusterName:           { backend: 'clusterName',                    label: 'Cluster name', showIf: (v) => v.identifiedClusterFlag === 'Yes' },
-  otherClusterIA:        { backend: 'otherClusterIndusIa',            label: 'Other cluster / industry association' },
+  clusterName:           { backend: 'clusterName',                    label: 'Cluster name', showIf: (v) => v.identifiedClusterFlag === 'Yes', cap: CHAR_LIMITS.SHORT },
+  otherClusterIA:        { backend: 'otherClusterIndusIa',            label: 'Other cluster / industry association', cap: CHAR_LIMITS.SHORT },
   totIaMembers:          { backend: 'totIaMembers',                   label: 'Total IA members',               type: 'number' },
   totMsmeIaMembers:      { backend: 'totMsmeIaMembers',               label: 'Total MSME IA members',          type: 'number' },
-  sector:                { backend: 'sector',                         label: 'Sector',                         required: true },
+  sector:                { backend: 'sector',                         label: 'Sector',                         required: true, cap: CHAR_LIMITS.SHORT },
   ownAssociationIaFlag:  { backend: 'ownAssociationIaFlag',           label: 'Runs own association / IA',      type: 'yesNo' },
   itInfra:               { backend: 'availOfItInfra',                 label: 'IT infrastructure available',    type: 'yesNo' },
   secretariatStaff:      { backend: 'availOfSecretariatStaffFlag',    label: 'Secretariat staff available',    type: 'yesNo' },
-  mainExecutiveName:     { backend: 'mainExecutiveName',              label: 'Main executive name',            required: true },
-  executiveContactNo:    { backend: 'executiveContactNo',             label: 'Executive contact number',       required: true, validate: 'phone' },
-  nodalContactName:      { backend: 'nodalContactName',               label: 'Nodal contact name',             required: true },
-  contactNumber:         { backend: 'contactNumber',                  label: 'Nodal contact number',           required: true, validate: 'phone' },
-  emailId:               { backend: 'emailId',                        label: 'Email ID',                       required: true, validate: 'email' },
-  areaOfExpertise:       { backend: 'areaOfExpertise',                label: 'Area of expertise',              required: true, multiline: true },
+  mainExecutiveName:     { backend: 'mainExecutiveName',              label: 'Main executive name',            required: true, cap: CHAR_LIMITS.MEDIUM },
+  executiveContactNo:    { backend: 'executiveContactNo',             label: 'Executive contact number',       required: true, validate: 'phone', cap: CHAR_LIMITS.SHORT },
+  nodalContactName:      { backend: 'nodalContactName',               label: 'Nodal contact name',             required: true, cap: CHAR_LIMITS.MEDIUM },
+  contactNumber:         { backend: 'contactNumber',                  label: 'Nodal contact number',           required: true, validate: 'phone', cap: CHAR_LIMITS.SHORT },
+  emailId:               { backend: 'emailId',                        label: 'Email ID',                       required: true, validate: 'email', cap: CHAR_LIMITS.SHORT },
+  areaOfExpertise:       { backend: 'areaOfExpertise',                label: 'Area of expertise',              required: true, multiline: true, cap: CHAR_LIMITS.LONG },
   totLeadCasesGen:       { backend: 'totLeadCasesGen',                label: 'Total lead cases generated',     type: 'number' },
   casesSanctionedAmt:    { backend: 'casesSanctionedAmt',             label: 'Cases sanctioned amount',        type: 'currency' },
   casesDisbursedAmt:     { backend: 'casesDisbursedAmt',              label: 'Cases disbursed amount',         type: 'currency' },
-  sidbiRoMappedWith:     { backend: 'associateNameSidbiRoMappedWith', label: 'SIDBI regional office mapped with' },
-  sidbiBoMappedWith:     { backend: 'associateNameSidbiBoMappedWith', label: 'SIDBI branch office mapped with' },
-  sidbiBseName:          { backend: 'sidbiBseName',                   label: 'SIDBI BSE name' },
-  bseContactNumber:      { backend: 'bseContactNumber',               label: 'BSE contact number',             validate: 'phone' },
-  bseEmailId:            { backend: 'bseEmailId',                     label: 'BSE email ID',                   validate: 'email' },
+  sidbiRoMappedWith:     { backend: 'associateNameSidbiRoMappedWith', label: 'SIDBI regional office mapped with', cap: CHAR_LIMITS.SHORT },
+  sidbiBoMappedWith:     { backend: 'associateNameSidbiBoMappedWith', label: 'SIDBI branch office mapped with', cap: CHAR_LIMITS.SHORT },
+  sidbiBseName:          { backend: 'sidbiBseName',                   label: 'SIDBI BSE name', cap: CHAR_LIMITS.SHORT },
+  bseContactNumber:      { backend: 'bseContactNumber',               label: 'BSE contact number',             validate: 'phone', cap: CHAR_LIMITS.SHORT },
+  bseEmailId:            { backend: 'bseEmailId',                     label: 'BSE email ID',                   validate: 'email', cap: CHAR_LIMITS.SHORT },
 }
 
 const SECTIONS = [
@@ -209,6 +210,7 @@ function RhfField({ name, spec }) {
       {...common}
       multiline={!!spec.multiline}
       minRows={spec.multiline ? 2 : undefined}
+      inputProps={spec.cap ? capChars(spec.cap) : undefined}
     />
   )
 }
@@ -227,6 +229,7 @@ function buildRules(spec) {
       if (spec.validate === 'phone' && !PHONE_RE.test(s)) return 'Enter a valid phone number.'
       if (spec.validate === 'pin' && !PIN_RE.test(s)) return 'PIN must be 6 digits.'
       if (spec.type === 'number' && Number(s) < 0) return 'Must be zero or more.'
+      if (spec.cap && s.length > spec.cap) return `Max ${spec.cap} characters.`
       return true
     },
   }

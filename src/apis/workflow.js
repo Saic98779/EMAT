@@ -106,10 +106,10 @@ const STAGE_TEMPLATE = {
 
   [STAGE.SUSTAINABILITY_MATRIX]: {
     subStages: [
+      // Backend has NO CE-approval step for the sustainability matrix —
+      // once submitted, this stage is done. If backend later adds
+      // /sustainability-matrix/{id}/status, add the CE approval key here.
       { label: 'Sustainability Matrix Submission', keys: ['SUSTAINABILITY_MATRIX_SUBMITTED'] },
-      // The composite "both done" key completes this stage in the tracker
-      // too — parallel tracks share a single "both approved" sub-stage.
-      { label: 'Cluster Expert Approval', keys: ['SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED'] },
     ],
     rejectionKeys: [],
     revertKeys: [],

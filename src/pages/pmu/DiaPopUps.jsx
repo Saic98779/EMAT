@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
   RhfTextField, RhfFileField, SHRINK_LABEL, useForm, useWatch,
+  CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
   createContent, updateContent, uploadContentAttachments, DIA_ENDPOINTS,
@@ -95,13 +96,14 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
       <PmuSection first title="Pop-up details">
         <FieldRow>
           <FieldCell>
-            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the pop-up"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
@@ -136,7 +138,6 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
   )
 }
 
-const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }
 const REQUIRED_DATE = { required: 'Required.' }
 
 function EndDateField() {

@@ -348,7 +348,7 @@ const ReviewSection = memo(function ReviewSection({ title, fields, dto }) {
 
 function FieldCell({ field, value }) {
   const theme = useTheme()
-  const isFull = field.type === 'multiline' || field.type === 'questionnaire' || field.type === 'link' || field.full
+  const isFull = field.type === 'multiline' || field.type === 'questionnaire' || field.type === 'link' || field.type === 'activities' || field.full
   return (
     <Box
       sx={{
@@ -438,6 +438,72 @@ function renderValue(field, value, theme) {
       <Typography sx={{ fontSize: 13.5, fontWeight: 600, color: theme.palette.text.primary }}>
         {truthy ? 'Yes' : isBool ? 'No' : String(value)}
       </Typography>
+    )
+  }
+
+  if (field.type === 'activities') {
+    // Action Plan (Annexure IV) — Year-1 activities table. Renders each
+    // activity as a numbered block with the sheet's key columns so the
+    // reviewer can scan cost split + expected impact per row.
+    const rows = Array.isArray(value) ? value : []
+    if (!rows.length) return <Typography sx={{ fontSize: 13.5, color: theme.palette.text.disabled }}>No activities recorded.</Typography>
+    const fmtMoney = (v) => (v == null || v === '' ? '—' : `₹ ${Number(v).toLocaleString('en-IN')}`)
+    const fmtPct   = (v) => (v == null || v === '' ? '—' : `${Number(v)}%`)
+    const fmtInt   = (v) => (v == null || v === '' ? '—' : Number(v).toLocaleString('en-IN'))
+    return (
+      <Stack spacing={1.5}>
+        {rows.slice().sort((a, b) => (a.activityNo ?? 0) - (b.activityNo ?? 0)).map((a, i) => (
+          <Box
+            key={`activity-${a.activityNo ?? i}`}
+            sx={{
+              p: 1.5,
+              borderRadius: 1.5,
+              border: 1,
+              borderColor: alpha(theme.palette.text.primary, 0.09),
+              bgcolor: alpha(theme.palette.text.primary, 0.02),
+            }}
+          >
+            <Stack direction="row" alignItems="baseline" spacing={1}>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: theme.palette.text.disabled }}>
+                Activity {a.activityNo ?? i + 1}
+              </Typography>
+              <Typography sx={{ fontSize: 10.5, color: theme.palette.text.disabled }}>
+                {a.monthToBeHeld || '—'}
+              </Typography>
+            </Stack>
+            <Typography sx={{ mt: 0.25, fontSize: 13.5, fontWeight: 700, color: theme.palette.text.primary }}>
+              {a.nameOfActivity || '—'}
+            </Typography>
+            {a.technicalServiceProvider && (
+              <Typography sx={{ mt: 0.25, fontSize: 12.5, color: theme.palette.text.secondary }}>
+                TSP: {a.technicalServiceProvider}
+              </Typography>
+            )}
+            <Box
+              sx={{
+                mt: 1,
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
+                gap: 1,
+              }}
+            >
+              <ActivityStat label="Total cost"    value={fmtMoney(a.totalCost)} theme={theme} />
+              <ActivityStat label="SIDBI"         value={fmtPct(a.percentSupportBySidbi)} theme={theme} />
+              <ActivityStat label="Others"        value={fmtPct(a.percentSupportByOthers)} theme={theme} />
+              <ActivityStat label="IA share"      value={fmtPct(a.percentContributionByIa)} theme={theme} />
+              <ActivityStat label="Members"       value={fmtInt(a.expectedParticipantMembers)} theme={theme} />
+              <ActivityStat label="Non-members"   value={fmtInt(a.expectedParticipantNonMembers)} theme={theme} />
+            </Box>
+            {(a.expectedOutput || a.expectedOutcome || a.expectedIncomeGeneratingActivity) && (
+              <Box sx={{ mt: 1 }}>
+                {a.expectedOutput && <ActivityLine label="Expected output" value={a.expectedOutput} theme={theme} />}
+                {a.expectedOutcome && <ActivityLine label="Expected outcome" value={a.expectedOutcome} theme={theme} />}
+                {a.expectedIncomeGeneratingActivity && <ActivityLine label="Expected IGA" value={a.expectedIncomeGeneratingActivity} theme={theme} />}
+              </Box>
+            )}
+          </Box>
+        ))}
+      </Stack>
     )
   }
 
@@ -678,6 +744,28 @@ export function StatusPill({ status, viewerMode, inline = false, big = false }) 
         ...(inline ? { mx: 0.5, verticalAlign: 'middle' } : {}),
       }}
     />
+  )
+}
+
+// Activities-table helpers (Action Plan review)
+function ActivityStat({ label, value, theme }) {
+  return (
+    <Box>
+      <Typography sx={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: theme.palette.text.disabled }}>
+        {label}
+      </Typography>
+      <Typography sx={{ fontSize: 13, fontWeight: 600, color: theme.palette.text.primary }}>
+        {value}
+      </Typography>
+    </Box>
+  )
+}
+function ActivityLine({ label, value, theme }) {
+  return (
+    <Typography sx={{ fontSize: 12.5, color: theme.palette.text.secondary, mt: 0.5, whiteSpace: 'pre-wrap' }}>
+      <Box component="span" sx={{ fontWeight: 700, color: theme.palette.text.disabled, mr: 0.5 }}>{label}:</Box>
+      {value}
+    </Typography>
   )
 }
 

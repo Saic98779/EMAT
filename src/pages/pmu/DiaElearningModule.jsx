@@ -4,6 +4,7 @@ import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, URL_RE,
   RhfTextField, RhfFileField, useForm,
+  CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
   createContent, updateContent, uploadContentAttachments, DIA_ENDPOINTS,
@@ -114,10 +115,10 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
       <PmuSection first title="Module identity">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="moduleName" fullWidth required label="Module name" rules={REQUIRED_TEXT} />
+            <RhfTextField name="moduleName" fullWidth required label="Module name" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
         </FieldRow>
       </PmuSection>
@@ -128,21 +129,24 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance / rationale of the topic"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="brief" fullWidth required multiline minRows={3}
               label="Brief of the content"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="mainContent" fullWidth required multiline minRows={6}
               label="Main content"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
         </FieldRow>
@@ -156,8 +160,15 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
               fullWidth label="Link"
               placeholder="https://…"
               InputProps={LINK_ADORNMENT}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
               rules={{
-                validate: (v) => (!v || URL_RE.test(String(v).trim())) ? true : 'Enter a valid URL.',
+                validate: (v) => {
+                  const s = String(v || '').trim()
+                  if (!s) return true
+                  if (!URL_RE.test(s)) return 'Enter a valid URL.'
+                  if (s.length > CHAR_LIMITS.MEDIUM) return `Max ${CHAR_LIMITS.MEDIUM} characters.`
+                  return true
+                },
               }}
             />
           </FieldCell>
@@ -166,7 +177,8 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
               name="placement"
               fullWidth required label="Placement of the module"
               placeholder="e.g. Course A, Chapter 3, Lesson 2"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.SHORT)}
+              inputProps={capChars(CHAR_LIMITS.SHORT)}
             />
           </FieldCell>
           <FieldCell>
@@ -187,5 +199,3 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
     </PmuFormShell>
   )
 }
-
-const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }

@@ -10,6 +10,7 @@ import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, FileDropField, todayIso,
   RhfTextField, RhfSelectField, RhfFileField, SHRINK_LABEL, CHIP_RENDER_VALUE,
   useForm, useFieldArray, useWatch,
+  CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
   createContent, updateContent, uploadContentAttachments,
@@ -166,7 +167,7 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
       <PmuSection first title="Survey details">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
             <RhfSelectField
@@ -178,7 +179,8 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
@@ -284,7 +286,15 @@ function QuestionCard({ index, onRemove, removable }) {
         <FieldCell span={{ xs: 12, md: 8 }}>
           <RhfTextField
             name={`${base}.text`} fullWidth required label="Question"
-            rules={{ validate: (v) => (String(v || '').trim() ? true : 'Enter the question.') }}
+            inputProps={capChars(CHAR_LIMITS.LONG)}
+            rules={{
+              validate: (v) => {
+                const s = String(v || '').trim()
+                if (!s) return 'Enter the question.'
+                if (s.length > CHAR_LIMITS.LONG) return `Max ${CHAR_LIMITS.LONG} characters.`
+                return true
+              },
+            }}
           />
         </FieldCell>
         <FieldCell span={{ xs: 12, md: 4 }}>
@@ -321,7 +331,15 @@ function OptionsList({ base }) {
               name={`${base}.options.${i}`}
               fullWidth size="small"
               label={`Option ${String.fromCharCode(65 + i)}`}
-              rules={{ validate: (v) => (String(v || '').trim() ? true : 'Required.') }}
+              inputProps={capChars(CHAR_LIMITS.SHORT)}
+              rules={{
+                validate: (v) => {
+                  const s = String(v || '').trim()
+                  if (!s) return 'Required.'
+                  if (s.length > CHAR_LIMITS.SHORT) return `Max ${CHAR_LIMITS.SHORT} characters.`
+                  return true
+                },
+              }}
             />
             <IconButton
               size="small"
@@ -363,7 +381,6 @@ function EndDateField() {
   )
 }
 
-const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }
 const REQUIRED_DATE = { required: 'Required.' }
 // Backend types `sample` as Integer — validate as a positive whole number.
 const REQUIRED_POSITIVE_INT = {

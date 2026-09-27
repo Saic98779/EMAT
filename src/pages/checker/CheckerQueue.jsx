@@ -18,6 +18,7 @@ import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsAc
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined'
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
+import PlaylistAddCheckOutlinedIcon from '@mui/icons-material/PlaylistAddCheckOutlined'
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import { PageHeader } from '../../components/shared'
@@ -43,6 +44,7 @@ const TYPE_ICON = {
   'surveys':                          PollOutlinedIcon,
   'bdsp':                             HandshakeOutlinedIcon,
   'bds-service-providers-onboarding': BusinessOutlinedIcon,
+  'action-plans':                     PlaylistAddCheckOutlinedIcon,
 }
 
 // `mode` — 'checker' (default) mounts the HO Checker workspace at

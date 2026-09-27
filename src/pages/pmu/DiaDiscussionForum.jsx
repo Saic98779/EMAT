@@ -6,6 +6,7 @@ import { useTheme } from '@mui/material/styles'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
   RhfTextField, SHRINK_LABEL, useForm, useWatch, Controller,
+  CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
@@ -94,17 +95,18 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
       <PmuSection first title="Thread details">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="theme" fullWidth required label="Theme" rules={REQUIRED_TEXT} />
+            <RhfTextField name="theme" fullWidth required label="Theme" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="relevance"
               fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
         </FieldRow>
@@ -132,7 +134,6 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
   )
 }
 
-const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }
 const REQUIRED_DATE = { required: 'Required.' }
 
 function EndDateField() {

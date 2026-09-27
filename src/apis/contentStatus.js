@@ -57,11 +57,17 @@ export function deriveStatus(row = {}) {
 }
 
 // Convenience predicates for the queue / lists.
-export const isPendingForMaker  = (row) => deriveStatus(row) === DERIVED_STATUS.PENDING
-export const isPendingForChecker = (row) => {
-  const s = deriveStatus(row)
-  return s === DERIVED_STATUS.WITH_CHECKER || s === DERIVED_STATUS.PENDING
-}
+//
+// Maker's queue = rows nobody has decided (PENDING). Once Maker approves,
+// they leave Maker's queue and enter Checker's.
+//
+// Checker's queue = rows Maker has approved but Checker hasn't (WITH_CHECKER).
+// PENDING rows are deliberately NOT here — backend rejects a Checker
+// approval on a null makerStatus (Checker can't sign off before Maker
+// acts), so surfacing them would let Checker click Approve and hit a
+// 400. Wait for Maker first.
+export const isPendingForMaker   = (row) => deriveStatus(row) === DERIVED_STATUS.PENDING
+export const isPendingForChecker = (row) => deriveStatus(row) === DERIVED_STATUS.WITH_CHECKER
 
 // PATCH /<path>/{id}/status — universal helper.
 //

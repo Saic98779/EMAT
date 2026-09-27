@@ -359,6 +359,43 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export const PHONE_RE = /^[+\d][\d\s\-]{6,}$/
 export const URL_RE = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[^\s]*)?$/i
 
+// ── Free-text length caps ──────────────────────────────────────────────
+// Match the IA registration / appraisal caps agreed at client UAT
+// (2026-09-25): keep names/titles short, single-paragraph fields
+// medium, multiline bodies long. Applied via BOTH `inputProps.maxLength`
+// (hard-cap on keystrokes) AND the `rules.validate` fallback (catches
+// programmatic paste / autofill that bypasses the input cap).
+export const CHAR_LIMITS = Object.freeze({
+  SHORT:  200,   // topic, name, theme, subject line, chapter no, module name
+  MEDIUM: 500,   // KYC id, short description, rationale
+  LONG:   2000,  // multiline: message body, content, relevance, announcement
+})
+
+// requiredText / optionalText — build a Controller `rules` object that
+// enforces both "must be filled" (required only) AND "≤ max chars".
+// Pair with `capChars(max)` on the TextField's `inputProps` for the
+// browser-level cap.
+export function requiredText(max = CHAR_LIMITS.MEDIUM) {
+  return {
+    validate: (v) => {
+      const s = String(v ?? '')
+      if (!s.trim()) return 'Required.'
+      if (s.length > max) return `Max ${max} characters.`
+      return true
+    },
+  }
+}
+export function optionalText(max = CHAR_LIMITS.MEDIUM) {
+  return {
+    validate: (v) => {
+      const s = String(v ?? '')
+      return s.length > max ? `Max ${max} characters.` : true
+    },
+  }
+}
+// Convenience for the `inputProps` slot — pairs 1:1 with a rules helper.
+export const capChars = (max = CHAR_LIMITS.MEDIUM) => ({ maxLength: max })
+
 // ── Perf helpers ────────────────────────────────────────────────────
 // Stable references for the inline-object props we hand to TextField
 // so `React.memo` in FormTextField isn't defeated by fresh literals
