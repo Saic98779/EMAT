@@ -158,7 +158,19 @@ export const makeInPrincipleSchema = ({
         options: ['Aadhaar', 'Voter ID card', 'Driving licence', 'Passport', 'Telephone bill', 'Electricity bill', 'Water consumption bill', 'Gas receipt / connection card'] },
       { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter document / bill number',
-        showIf: (v) => !!v.apex_kyc_doc },
+        showIf: (v) => !!v.apex_kyc_doc,
+        // Format check keyed on the selected KYC document type. Bills are
+        // free-form (no standard numbering) so we skip the check there.
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const raw = String(v).trim()
+          const t = values?.apex_kyc_doc
+          if (t === 'Aadhaar' && !/^\d{12}$/.test(raw)) return '12-digit Aadhaar'
+          if (t === 'Voter ID card' && !/^[A-Z]{3}\d{7}$/.test(raw.toUpperCase())) return 'Voter ID (EPIC): 3 letters + 7 digits (e.g. ABC1234567)'
+          if (t === 'Passport' && !/^[A-PR-WYa-pr-wy][0-9]{7}$/.test(raw)) return 'Passport: 1 letter + 7 digits (e.g. A1234567)'
+          if (t === 'Driving licence' && !/^[A-Z0-9-]{8,20}$/i.test(raw)) return 'Driving licence: 8–20 chars, letters/digits/hyphen'
+          return ''
+        } },
       { name: 'apex_kyc_file', label: 'Upload KYC document', type: 'file', span: 4, required: true },
 
       // ID Proof block: same "one-row triple" layout for the ID document
