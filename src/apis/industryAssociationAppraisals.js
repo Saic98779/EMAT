@@ -197,6 +197,10 @@ export function toCreatePayload(values = {}, registrationId = null) {
     itInfrastructureAvailable: bool(values.it_infra),
     infrastructureType: str(values.it_infra_details),
     secretariatStaffAvailable: bool(values.secretariat_staff),
+    // Backend appraisal DTO field is `secretariatStaffDetail` (verified
+    // via OpenAPI 2026-09-27) — NOT `secretariatStaff` like the
+    // registration DTO. This detail was being dropped silently before.
+    secretariatStaffDetail: values.secretariat_staff === 'yes' ? str(values.secretariat_details) : null,
     websiteAvailable: bool(values.website),
     // Client UAT (2026-09-25 #64) — persist the URL from Stage 5 too, so
     // SDE / HO edits on the L2 flow back into the IA record.
@@ -443,6 +447,7 @@ export function toFormValues(dto = {}) {
   putBool('it_infra', dto.itInfrastructureAvailable)
   putStr('it_infra_details', dto.infrastructureType)
   putBool('secretariat_staff', dto.secretariatStaffAvailable)
+  putStr('secretariat_details', dto.secretariatStaffDetail)
   putBool('website', dto.websiteAvailable)
   putBool('paid_services', dto.paidServicesAvailable)
   putStr('paid_services_details', dto.paidServicesDetails)
@@ -522,6 +527,7 @@ export function buildIaSeed(iaDto, branchesList = null) {
     it_infra: yn(r.itInfrastructureAvailable),
     it_infra_details: r.infrastructureType ?? '',
     secretariat_staff: yn(r.secretariatStaffAvailable),
+    secretariat_details: r.secretariatStaffDetail ?? '',
     website: yn(r.websiteAvailable),
     // Autofetched from the parent IA — client UAT (2026-09-25 #64):
     // when website is Yes, seed the URL from the In-Principle record.
@@ -653,16 +659,18 @@ const blank = (v) => v == null || String(v).trim() === ''
 const numOrNull = (v) => (blank(v) || !Number.isFinite(Number(v)) ? null : Number(v))
 const strOrNull = (v) => (blank(v) ? null : String(v).trim())
 
-// Annexure V — cost items. `snNo` is the row's position, re-derived on
-// every save so deleting a middle row doesn't leave gaps.
+// Annexure V — cost items. Row-field naming is camelCase to match the
+// schema columns (`snNo` / `particulars` / `totalCost` / `sidbiSupport`).
+// If the user provided a snNo we preserve it; otherwise derive from the
+// row's position so deleting a middle row doesn't leave gaps.
 function toAnnexureVList(rows) {
   return rows
-    .filter((r) => r && !(blank(r.particulars) && blank(r.total_cost) && blank(r.sidbi_support)))
+    .filter((r) => r && !(blank(r.particulars) && blank(r.totalCost) && blank(r.sidbiSupport)))
     .map((r, i) => ({
-      snNo: i + 1,
+      snNo: blank(r.snNo) ? i + 1 : numOrNull(r.snNo),
       particulars: strOrNull(r.particulars),
-      totalCost: numOrNull(r.total_cost),
-      sidbiSupport: numOrNull(r.sidbi_support),
+      totalCost: numOrNull(r.totalCost),
+      sidbiSupport: numOrNull(r.sidbiSupport),
     }))
 }
 
@@ -672,23 +680,22 @@ function fromAnnexureVList(list) {
     .sort((a, b) => (a?.snNo ?? 0) - (b?.snNo ?? 0))
     .map((r) => ({
       particulars: r?.particulars ?? '',
-      total_cost: r?.totalCost ?? '',
-      sidbi_support: r?.sidbiSupport ?? '',
+      totalCost: r?.totalCost ?? '',
+      sidbiSupport: r?.sidbiSupport ?? '',
     }))
 }
 
 // Annexure VI — indicative items. Rows are kept in entry order.
+// Backend DTO (verified 2026-09-27) has only four columns:
+// indicativeItem, numbers, make, maximumCost. Nothing else round-trips.
 function toAnnexureVIList(rows) {
   return rows
-    .filter((r) => r && !(blank(r.section) && blank(r.indicative_item)))
+    .filter((r) => r && !blank(r.indicativeItem))
     .map((r) => ({
-      section: strOrNull(r.section),
-      sectionNote: strOrNull(r.section_note),
-      indicativeItem: strOrNull(r.indicative_item),
+      indicativeItem: strOrNull(r.indicativeItem),
       numbers: numOrNull(r.numbers),
       make: strOrNull(r.make),
-      maximumCost: numOrNull(r.maximum_cost),
-      maximumCostUnit: strOrNull(r.maximum_cost_unit),
+      maximumCost: numOrNull(r.maximumCost),
     }))
 }
 
@@ -697,13 +704,10 @@ function fromAnnexureVIList(list) {
   return [...list]
     .sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0))
     .map((r) => ({
-      section: r?.section ?? '',
-      section_note: r?.sectionNote ?? '',
-      indicative_item: r?.indicativeItem ?? '',
+      indicativeItem: r?.indicativeItem ?? '',
       numbers: r?.numbers ?? '',
       make: r?.make ?? '',
-      maximum_cost: r?.maximumCost ?? '',
-      maximum_cost_unit: r?.maximumCostUnit ?? '',
+      maximumCost: r?.maximumCost ?? '',
     }))
 }
 

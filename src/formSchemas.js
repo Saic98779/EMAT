@@ -786,19 +786,21 @@ export const appraisalSchema = {
     // Annexures V & VI — nested lists on the appraisal DTO
     // (`annexureVList`, `annexureVIList`); mapping in
     // apis/industryAssociationAppraisals.js. The backend replaces the whole
-    // list on every PUT, so rows carry no id client-side.
+    // list on every PUT, so rows carry no id client-side. Column names
+    // are camelCase to match `toAnnexureVList` / `fromAnnexureVList` /
+    // `toAnnexureVIList` / `fromAnnexureVIList` in that adapter.
     { n: 12, title: 'Annexure V — Cost & SIDBI Support', desc: 'Item-wise cost of the proposal and the SIDBI support sought against each item.', fields: [
       { name: 'annexure_v', label: 'Cost items', type: 'repeater', serial: true, addLabel: 'Add item',
-        totals: ['total_cost', 'sidbi_support'],
+        totals: ['totalCost', 'sidbiSupport'],
         columns: [
           { name: 'particulars', label: 'Particulars', type: 'text', width: '50%', required: true },
-          { name: 'total_cost', label: 'Total Cost (₹)', type: 'number', required: true, validate: nonNegative },
-          { name: 'sidbi_support', label: 'SIDBI Support (₹)', type: 'number', required: true,
+          { name: 'totalCost', label: 'Total Cost (₹)', type: 'number', required: true, validate: nonNegative },
+          { name: 'sidbiSupport', label: 'SIDBI Support (₹)', type: 'number', required: true,
             validate: (v, row) => {
               const e = nonNegative(v)
               if (e) return e
-              const cost = Number(row.total_cost)
-              if (row.total_cost !== '' && row.total_cost != null && Number.isFinite(cost) && Number(v) > cost) {
+              const cost = Number(row.totalCost)
+              if (row.totalCost !== '' && row.totalCost != null && Number.isFinite(cost) && Number(v) > cost) {
                 return 'Cannot exceed Total Cost'
               }
               return ''
@@ -806,24 +808,25 @@ export const appraisalSchema = {
         ],
         validate: (rows) => {
           if (!Array.isArray(rows) || rows.length === 0) return ''
-          const support = rows.reduce((s, r) => s + (Number(r?.sidbi_support) || 0), 0)
+          const support = rows.reduce((s, r) => s + (Number(r?.sidbiSupport) || 0), 0)
           return support > 1400000 ? 'Total SIDBI support cannot exceed ₹14,00,000' : ''
         } },
     ] },
-    { n: 13, title: 'Annexure VI — Indicative List of Items', desc: 'Items the IA proposes to procure, grouped by section, with the maximum admissible cost.', fields: [
-      { name: 'annexure_vi', label: 'Items', type: 'repeater', layout: 'cards', serial: true, addLabel: 'Add item',
+    { n: 13, title: 'Annexure VI — Indicative List of Items', desc: 'Items the IA proposes to procure, with the maximum admissible cost.', fields: [
+      // Backend schema (verified via OpenAPI 2026-09-27) has ONLY these
+      // four columns: indicativeItem, numbers, make, maximumCost.
+      // Earlier drafts carried `section`, `sectionNote`, `maximumCostUnit`
+      // — none of those exist on the backend DTO (would be silently
+      // dropped by Jackson on save and never hydrate on read). Removed.
+      { name: 'annexure_vi', label: 'Items', type: 'repeater', serial: true, addLabel: 'Add item',
         // Optional — not every proposal procures equipment.
         optional: true,
         columns: [
-          { name: 'section', label: 'Section', type: 'text', span: 6, required: true, placeholder: 'e.g. IT Infrastructure' },
-          { name: 'indicative_item', label: 'Indicative item', type: 'text', span: 6, required: true, placeholder: 'e.g. Desktop computer' },
-          { name: 'numbers', label: 'Numbers', type: 'number', span: 3,
+          { name: 'indicativeItem', label: 'Indicative item', type: 'text', required: true, placeholder: 'e.g. Desktop computer' },
+          { name: 'numbers', label: 'Qty', type: 'number', width: 100,
             validate: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 ? '' : 'Whole number, at least 1') },
-          { name: 'make', label: 'Make', type: 'text', span: 3 },
-          { name: 'maximum_cost', label: 'Maximum cost (₹)', type: 'number', span: 3, validate: nonNegative },
-          { name: 'maximum_cost_unit', label: 'Cost basis', type: 'select', span: 3,
-            options: ['Per unit', 'Lump sum', 'Per month', 'Per year'] },
-          { name: 'section_note', label: 'Section note', type: 'textarea', span: 12, placeholder: 'Optional — conditions or specifications for this section' },
+          { name: 'make', label: 'Make', type: 'text' },
+          { name: 'maximumCost', label: 'Max cost (₹)', type: 'number', validate: nonNegative },
         ] },
     ] },
     { n: 14, title: 'Terms of Assistance', desc: 'List each term or condition of assistance separately.', fields: [
