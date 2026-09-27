@@ -28,9 +28,15 @@ function RegistrationFooter({
   const isLast = activeIndex === sectionCount - 1
   const isFirst = activeIndex === 0
 
+  const missingCount = Math.max(0, sectionCount - completedCount)
+  // Kept clickable when the form isn't ready — clicking still fires
+  // onSubmit, which now flips showAllErrors on and bounces to the first
+  // incomplete section so every missing required field renders its red
+  // inline error. Blocking the click hides that feedback and leaves the
+  // user staring at a greyed button with no idea what's wrong.
   const submitDisabledReason = canSubmit
     ? ''
-    : `${sectionCount - completedCount} section${sectionCount - completedCount === 1 ? '' : 's'} incomplete`
+    : `${missingCount} section${missingCount === 1 ? '' : 's'} incomplete — click to see what's missing`
 
   return (
     <Box
@@ -88,11 +94,16 @@ function RegistrationFooter({
               size="small"
               variant="contained"
               disableElevation
+              color={canSubmit ? 'primary' : 'warning'}
               onClick={onSubmit}
-              disabled={!canSubmit || submitting}
+              disabled={submitting}
               startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : null}
             >
-              {submitting ? 'Submitting…' : submitLabel}
+              {submitting
+                ? 'Submitting…'
+                : canSubmit
+                  ? submitLabel
+                  : `Show missing (${missingCount})`}
             </Button>
           </span>
         </Tooltip>

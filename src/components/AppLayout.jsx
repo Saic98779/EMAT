@@ -86,6 +86,11 @@ export const NAV = {
     { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
     { icon: 'groups', label: 'BSE Approvals', path: '/sde/bse-approvals', overline: 'Approvals', title: 'BSE Approvals' },
     { icon: 'doc', label: 'Panel Submissions', path: '/sde/panel-submissions', overline: 'Approvals', title: 'BSE Panel Submissions' },
+    // Content Approvals: HO Maker acts first on GT-PMU submissions.
+    // Approving here forwards the record to HO Checker's queue for
+    // final sign-off (per 2026-09-25 backend split into makerStatus +
+    // checkerStatus). Rejecting / reverting stops the chain here.
+    { icon: 'inbox', label: 'Content Approvals', path: '/sde/content-approvals', overline: 'Approvals', title: 'Content Approvals (HO Maker)' },
     { icon: 'payments', label: 'Vendor Disbursements', path: '/sde/vendor-disbursements', overline: 'Approvals', title: 'Vendor Disbursements' },
     { icon: 'doc', label: 'Capacity Building', path: '/sde/capacity-building-officials', overline: 'Approvals', title: 'Capacity Building (IA Officials) Approvals' },
   ],

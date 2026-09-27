@@ -176,6 +176,14 @@ function ActionPlanBody({ ws }) {
           registrationId={ws.iaId}
           dto={dto}
           decisions={decisions}
+          // Composite advancement: if sustainability is already
+          // CE-approved, an APPROVE here should fire stageId=20 (the
+          // SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED composite)
+          // instead of the legacy id=8 — so Detailed Appraisal opens in
+          // one write. Backend confirmed 2026-09-27 the frontend must
+          // send the composite explicitly.
+          otherTrackApproved={ws.workflow?.stages?.find((s) => s.key === STAGE.SUSTAINABILITY_MATRIX)?.status === STATUS.COMPLETED}
+          compositeStageId={stageIdOf(stagesQ.data, 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED')}
         />
       )}
 
@@ -660,7 +668,7 @@ function ReadOnlyPlan({ seeded }) {
 // Same pattern as AppraisalReviewView's DecisionBar — owns its own
 // comment state so typing doesn't re-render the checklist above.
 
-const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dto, decisions }) {
+const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dto, decisions, otherTrackApproved, compositeStageId }) {
   const theme = useTheme()
   const decideM = useDecideActionPlan()
   const [comment, setComment] = useState('')
@@ -676,7 +684,14 @@ const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dt
       setToast({ severity: 'warning', msg: 'Please add a comment telling GT what to change.' })
       return
     }
-    if (d.stageId == null) {
+    // Composite advancement: if sustainability is already CE-approved
+    // and this decision is an APPROVE, fire the composite stageId (20)
+    // instead of the legacy CLUSTER_EXPERT_APPROVED (8) — Detailed
+    // Appraisal unlocks in one write. Backend does not auto-advance;
+    // frontend has to send this explicitly.
+    const shouldComposite = d.kind === DECISION.APPROVE && otherTrackApproved && compositeStageId != null
+    const stageId = shouldComposite ? compositeStageId : d.stageId
+    if (stageId == null) {
       setToast({ severity: 'error', msg: 'Missing destination stage id — reload and try again.' })
       return
     }
@@ -687,10 +702,12 @@ const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dt
         registrationId,
         dto, // echoed so REPLACE-PUT doesn't null booleans or GT's actionPlans
         actionPlanClusterExpertComment: trimmed || null,
-        stageId: d.stageId,
-        stageComments: trimmed || (d.kind === DECISION.APPROVE
-          ? 'Action Plan approved by Cluster Expert'
-          : 'Action Plan sent back to GT for revisions'),
+        stageId,
+        stageComments: trimmed || (
+          shouldComposite ? 'Both tracks approved by Cluster Expert · Detailed Appraisal unlocked'
+          : d.kind === DECISION.APPROVE ? 'Action Plan approved by Cluster Expert'
+          : 'Action Plan sent back to GT for revisions'
+        ),
       })
       setToast({ severity: 'success', msg: `${d.label} · recorded.` })
       setComment('')
@@ -699,7 +716,7 @@ const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dt
     } finally {
       setBusyKind(null)
     }
-  }, [comment, matrixId, registrationId, dto, decideM])
+  }, [comment, matrixId, registrationId, dto, decideM, otherTrackApproved, compositeStageId])
 
   return (
     <>

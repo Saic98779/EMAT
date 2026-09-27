@@ -158,6 +158,11 @@ const ENDPOINT_PII_MAP = [
   //    nested SecretariatStaffDto (`contact` + `email`) inside the
   //    `secretariatStaff` array — hence `contact` is included so the
   //    recursive walker encrypts it when it enters that array.
+  //    2026-09-26: `stageId` encryption re-confirmed against latest
+  //    handoff doc — walker converts a plain int → ENC:... before send.
+  //    2026-09-25: `secretariatStaff` is now a plain string, not an
+  //    object array. `contact` in this entry is a no-op for that field
+  //    but stays here as belt-and-braces for legacy records.
   { method: 'POST', matchPath: (p) => p === '/industry-association-registrations',
     fields: ['apexHolderMobile', 'apexHolderEmail', 'nodalMobile', 'nodalEmail',
              'email', 'sidbeApprovedByUserId', 'stageId',

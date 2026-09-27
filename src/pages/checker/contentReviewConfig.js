@@ -276,6 +276,33 @@ export const CONTENT_REVIEW_TYPES = {
     ],
   },
 
+  'action-plans': {
+    label:    'Action Plan',
+    overline: 'IA · Action Plan (Annexure IV)',
+    createRoute: null,
+    detailRoute: (id) => `/checker/action-plans/${id}`,
+    columns: [
+      { key: 'industryAssociationName', label: 'Industry Association' },
+      { key: 'state',                   label: 'State' },
+    ],
+    sections: [
+      {
+        title: 'Industry Association',
+        fields: [
+          { key: 'industryAssociationName', label: 'Industry Association' },
+          { key: 'state',                   label: 'State' },
+        ],
+      },
+      {
+        title: 'Year-1 activities',
+        fields: [
+          { key: 'activities', label: 'Activities', type: 'activities' },
+        ],
+      },
+      audit(),
+    ],
+  },
+
   'bds-service-providers-onboarding': {
     label:    'PBSP Onboarding',
     overline: 'DIA · Panel BDS Provider',
@@ -370,4 +397,5 @@ export const CONTENT_REVIEW_ORDER = [
   'surveys',
   'bdsp',
   'bds-service-providers-onboarding',
+  'action-plans',
 ]

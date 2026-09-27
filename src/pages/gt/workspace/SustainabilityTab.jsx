@@ -1,19 +1,19 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  Alert, Box, CircularProgress, Snackbar, Stack, Typography,
+  Alert, Box, Button, CircularProgress, Snackbar, Stack, TextField, Typography,
 } from '@mui/material'
 import {
   categorise, DIMENSIONS, PARAM_KEYS, TIERS,
 } from '../../../apis/sustainabilityMatrix'
 import { toCreatePayload as toAppraisalCreatePayload } from '../../../apis/industryAssociationAppraisals'
 import { STAGE } from '../../../apis/registrationStages'
-import { stageIdForStage } from '../../../apis/stageActions'
+import { DECISION, stageIdForStage, stageIdOf } from '../../../apis/stageActions'
 import { STATUS } from '../../../apis/workflow'
 import {
   useAllStages, useAppraisalByRegistration, useCreateAppraisal, useCreateSustainabilityMatrix,
-  useSustainabilityMatrixByAppraisal, keys,
+  useDecideActionPlan, useSustainabilityMatrixByAppraisal, keys,
 } from '../../../queries'
 import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
 import ParameterGroup from './eligibility/ParameterGroup'
@@ -170,6 +170,22 @@ export default function SustainabilityTab() {
     // "Weak" because local answers reset to null after submit.
     const persistedScore = dto.totalScore ?? score
     const persistedTier = TIERS.find((t) => persistedScore >= t.min) || TIERS[TIERS.length - 1]
+    // CE decision affordance — surface Approve/Revert/Reject when the
+    // workflow says CE has decisions available at this sub-stage
+    // (SUSTAINABILITY_MATRIX_SUBMITTED). Backend added the three
+    // sub-stages on 2026-09-27; wired via stageActions.js.
+    const ceDecisions = (ws.decisionsForCurrent || []).filter(
+      (d) => d.kind === DECISION.APPROVE || d.kind === DECISION.REVERT || d.kind === DECISION.REJECT,
+    )
+    const isCeReviewer = ceDecisions.length > 0
+    // Composite completion — if action plan is already CE-approved,
+    // this sustainability approve should advance the IA all the way to
+    // Detailed Appraisal via stageId 20 (SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED).
+    // Backend doesn't auto-advance; frontend has to send the composite
+    // stageId explicitly on the "last" approval (confirmed by Sameer 2026-09-27).
+    const actionPlanStage = ws.workflow?.stages?.find((x) => x.key === STAGE.ACTION_PLAN)
+    const actionPlanApproved = actionPlanStage?.status === STATUS.COMPLETED
+    const compositeStageId = stageIdOf(stagesQ.data, 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED')
     return (
       <>
         <ReadOnlyMatrix
@@ -182,6 +198,16 @@ export default function SustainabilityTab() {
           submittedBy={dto.createdBy || ws.ia?.createdBy}
           submittedAt={dto.createdAt}
         />
+        {isCeReviewer && (
+          <CeSustainabilityDecisionBar
+            matrixId={dto.id}
+            registrationId={ws.iaId}
+            dto={dto}
+            decisions={ceDecisions}
+            otherTrackApproved={actionPlanApproved}
+            compositeStageId={compositeStageId}
+          />
+        )}
         <Toast toast={toast} onClose={() => setToast(null)} />
       </>
     )
@@ -357,3 +383,122 @@ function Toast({ toast, onClose }) {
     </Snackbar>
   )
 }
+
+// ── CE decision bar (sustainability matrix) ─────────────────────────────
+// Mirrors the ActionPlanTab's CeDecisionBar. Reuses `useDecideActionPlan`
+// under the hood because that hook already handles the REPLACE-PUT dance
+// (echoes every existing matrix boolean + preserves actionPlans / CE
+// comment) and just passes `stageId` + `stageComments` through untouched.
+// For sustainability we pass NO actionPlans and NO actionPlanCE comment
+// — only the destination stageId (22 approve / 21 revert / 23 reject)
+// and CE's remark as stageComments.
+const CeSustainabilityDecisionBar = memo(function CeSustainabilityDecisionBar({ matrixId, registrationId, dto, decisions, otherTrackApproved, compositeStageId }) {
+  const theme = useTheme()
+  const decideM = useDecideActionPlan()
+  const [comment, setComment] = useState('')
+  const [busyKind, setBusyKind] = useState(null)
+  const [toast, setToast] = useState(null)
+
+  const decide = useCallback(async (d) => {
+    const trimmed = comment.trim()
+    if ((d.kind === DECISION.REVERT || d.kind === DECISION.REJECT) && !trimmed) {
+      setToast({ severity: 'warning', msg: 'Please add a comment explaining the decision.' })
+      return
+    }
+    // Composite advancement: if the OTHER track (action plan) is already
+    // CE-approved and this decision is an APPROVE, send the composite
+    // stageId instead of the individual sustainability APPROVED id — so
+    // the IA jumps straight to Detailed Appraisal in one write. Backend
+    // does not auto-advance; the frontend must fire the composite.
+    const shouldComposite = d.kind === DECISION.APPROVE && otherTrackApproved && compositeStageId != null
+    const stageId = shouldComposite ? compositeStageId : d.stageId
+    if (stageId == null) {
+      setToast({ severity: 'error', msg: 'Missing destination stage id — reload and try again.' })
+      return
+    }
+    setBusyKind(d.kind)
+    try {
+      await decideM.mutateAsync({
+        matrixId,
+        registrationId,
+        dto, // echoed so the REPLACE-PUT preserves every matrix boolean
+        stageId,
+        stageComments: trimmed || (
+          shouldComposite ? 'Both tracks approved by Cluster Expert · Detailed Appraisal unlocked'
+          : d.kind === DECISION.APPROVE ? 'Sustainability matrix approved by Cluster Expert'
+          : d.kind === DECISION.REVERT ? 'Sustainability matrix sent back to GT'
+          : 'Sustainability matrix rejected by Cluster Expert'
+        ),
+      })
+      setToast({ severity: 'success', msg: `${d.label} · recorded.` })
+      setComment('')
+    } catch (err) {
+      setToast({ severity: 'error', msg: err?.message || 'Failed to record decision.' })
+    } finally {
+      setBusyKind(null)
+    }
+  }, [comment, matrixId, registrationId, dto, decideM, otherTrackApproved, compositeStageId])
+
+  return (
+    <>
+      <Box
+        sx={{
+          position: 'sticky',
+          bottom: 0,
+          mt: 3,
+          mx: { xs: -1, md: -1.5 },
+          background: theme.palette.background.paper,
+          borderTop: 1,
+          borderColor: alpha(theme.palette.text.primary, 0.09),
+          px: { xs: 2.5, md: 4 },
+          py: 2.25,
+          zIndex: 10,
+          boxShadow: '0 -6px 20px rgba(0,0,0,0.06)',
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1.5, md: 3 }} alignItems={{ md: 'center' }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: theme.palette.text.disabled, mb: 0.5 }}>
+              Cluster Expert comment
+            </Typography>
+            <TextField
+              value={comment}
+              onChange={(e) => setComment(e.target.value.slice(0, 1000))}
+              placeholder="Required to revert or reject · optional on approval"
+              fullWidth
+              size="small"
+              multiline
+              minRows={1}
+              maxRows={4}
+            />
+          </Box>
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignSelf: { xs: 'flex-end', md: 'auto' } }}>
+            {decisions.map((d) => {
+              const busy = busyKind === d.kind
+              const disabled = busyKind !== null
+              const variant = d.kind === DECISION.APPROVE ? 'contained' : 'outlined'
+              const color   = d.kind === DECISION.APPROVE ? 'success'
+                            : d.kind === DECISION.REJECT  ? 'error'
+                            : 'warning'
+              return (
+                <Button
+                  key={d.kind + d.to}
+                  onClick={() => decide(d)}
+                  disabled={disabled}
+                  variant={variant}
+                  color={color}
+                  disableElevation
+                  startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}
+                  sx={{ textTransform: 'none', fontWeight: 700, minWidth: 148, py: 1, borderRadius: 1.5 }}
+                >
+                  {busy ? 'Recording…' : d.label}
+                </Button>
+              )
+            })}
+          </Stack>
+        </Stack>
+      </Box>
+      <Toast toast={toast} onClose={() => setToast(null)} />
+    </>
+  )
+})

@@ -108,7 +108,7 @@ import {
   updateSustainabilityActionPlan,
 } from './apis/sustainabilityMatrix'
 import {
-  updateContentStatus, listContent, getContent,
+  updateContentStatus, updateLegacyContentStatus, listContent, getContent,
 } from './apis/contentStatus'
 import { updateContent } from './apis/diaContent'
 
@@ -409,6 +409,14 @@ export function useCreateAppraisal() {
       if (regId) {
         qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(regId), refetchType: 'all' })
         qc.invalidateQueries({ queryKey: keys.ias.detail(regId), refetchType: 'all' })
+        // Backend writes a stage-history row when `stageId` rides on the
+        // create — without invalidating this cache, the workspace's
+        // stage tracker keeps rendering the just-submitted sub-stage as
+        // IN_PROGRESS instead of COMPLETED until the next natural
+        // refetch, because deriveSubStage falls through to the
+        // currentStage-matching branch when no matching history entry
+        // is found.
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(regId), refetchType: 'all' })
       }
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
     },
@@ -426,6 +434,8 @@ export function useUpdateAppraisal() {
       if (regId) {
         qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(regId), refetchType: 'all' })
         qc.invalidateQueries({ queryKey: keys.ias.detail(regId), refetchType: 'all' })
+        // Stage-history refetch — see comment on useCreateAppraisal.
+        qc.invalidateQueries({ queryKey: keys.ias.stageHistory(regId), refetchType: 'all' })
       }
       qc.invalidateQueries({ queryKey: keys.appraisals.lists(), refetchType: 'all' })
       qc.invalidateQueries({ queryKey: keys.ias.lists(), refetchType: 'all' })
@@ -924,7 +934,10 @@ export function useUpdateDisbursementCapacityBuildingStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, status, remarks }) =>
-      updateContentStatus('disbursement-note-capacity-building-ia', id, { status, remarks }),
+      // Uses the LEGACY single-`status` shape — the CB endpoints were
+      // NOT migrated to the maker/checker split (per backend team
+      // 2026-09-25 handoff doc + verified live 2026-09-26).
+      updateLegacyContentStatus('disbursement-note-capacity-building-ia', id, { status, remarks }),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: keys.capacityBuilding.all })
       if (id) qc.invalidateQueries({ queryKey: keys.capacityBuilding.detail(id) })
@@ -993,7 +1006,9 @@ export function useUpdateCapacityBuildingOfficialsStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, status, remarks }) =>
-      updateContentStatus('disbursement-note-capacity-building-ia-officials', id, { status, remarks }),
+      // Same legacy shape as the members endpoint — see notes on
+      // useUpdateDisbursementCapacityBuildingStatus above.
+      updateLegacyContentStatus('disbursement-note-capacity-building-ia-officials', id, { status, remarks }),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.all })
       if (id) qc.invalidateQueries({ queryKey: keys.capacityBuildingOfficials.detail(id) })
@@ -1482,13 +1497,16 @@ export function useUpdateContent() {
   })
 }
 
-// PATCH /<path>/{id}/status. Passes through `remarks` for forward
-// compatibility — backend is adding the column; today it ignores it.
+// PATCH /<path>/{id}/status. Backend split the single `status` into
+// `makerStatus` + `checkerStatus` on 2026-09-25 — callers must supply
+// both. The helper stays thin; deriving/defaulting values based on
+// current role belongs at the call site, not here, so the same helper
+// serves both HO Maker and HO Checker workspaces.
 export function useUpdateContentStatus() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ path, id, status, remarks }) =>
-      updateContentStatus(path, id, { status, remarks }),
+    mutationFn: ({ path, id, makerStatus, checkerStatus, remarks }) =>
+      updateContentStatus(path, id, { makerStatus, checkerStatus, remarks }),
     onSuccess: (_data, { path, id }) => {
       qc.invalidateQueries({ queryKey: contentKey.list(path), refetchType: 'all' })
       if (id) qc.invalidateQueries({ queryKey: contentKey.detail(path, id) })

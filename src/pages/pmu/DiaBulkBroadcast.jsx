@@ -5,6 +5,7 @@ import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso, URL_RE,
   RhfTextField, RhfSelectField, RhfFileField, SHRINK_LABEL, CHIP_RENDER_VALUE,
   useForm, useWatch,
+  CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
   createContent, updateContent, uploadContentAttachments,
@@ -131,16 +132,17 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
       <PmuSection first title="Broadcast details">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="subject" fullWidth required label="Subject line" rules={REQUIRED_TEXT} />
+            <RhfTextField name="subject" fullWidth required label="Subject line" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell>
@@ -148,7 +150,8 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
               name="sample" fullWidth required multiline minRows={2}
               label="Sample for the bulk broadcast"
               placeholder="Who receives this — audience, filters, sample size…"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
         </FieldRow>
@@ -237,5 +240,3 @@ function MainContentField() {
     />
   )
 }
-
-const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }

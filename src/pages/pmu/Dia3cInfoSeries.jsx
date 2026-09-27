@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, FileDropField, todayIso,
   RhfTextField, RhfSelectField, RhfFileField, SHRINK_LABEL, CHIP_RENDER_VALUE,
-  useForm,
+  useForm, CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
   createContent, updateContent, uploadContentAttachments,
@@ -119,13 +119,13 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
       <PmuSection first title="Entry details">
         <FieldRow>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="topic" fullWidth required label="Topic" rules={REQUIRED_TEXT} />
+            <RhfTextField name="topic" fullWidth required label="Topic" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
-            <RhfTextField name="chapterNo" fullWidth required label="Chapter No." rules={REQUIRED_TEXT} />
+            <RhfTextField name="chapterNo" fullWidth required label="Chapter No." rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
           <FieldCell>
-            <RhfTextField name="subjectLine" fullWidth required label="Subject line" rules={REQUIRED_TEXT} />
+            <RhfTextField name="subjectLine" fullWidth required label="Subject line" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
           </FieldCell>
         </FieldRow>
       </PmuSection>
@@ -136,21 +136,24 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="brief" fullWidth required multiline minRows={3}
               label="Brief of the content"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="mainContent" fullWidth required multiline minRows={6}
               label="Main content"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
         </FieldRow>
@@ -192,5 +195,3 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
     </PmuFormShell>
   )
 }
-
-const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }

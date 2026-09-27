@@ -197,6 +197,10 @@ export function toCreatePayload(values = {}, registrationId = null) {
     itInfrastructureAvailable: bool(values.it_infra),
     infrastructureType: str(values.it_infra_details),
     secretariatStaffAvailable: bool(values.secretariat_staff),
+    // Backend appraisal DTO field is `secretariatStaffDetail` (verified
+    // via OpenAPI 2026-09-27) — NOT `secretariatStaff` like the
+    // registration DTO. This detail was being dropped silently before.
+    secretariatStaffDetail: values.secretariat_staff === 'yes' ? str(values.secretariat_details) : null,
     websiteAvailable: bool(values.website),
     // Client UAT (2026-09-25 #64) — persist the URL from Stage 5 too, so
     // SDE / HO edits on the L2 flow back into the IA record.
@@ -207,12 +211,10 @@ export function toCreatePayload(values = {}, registrationId = null) {
     activitiesLastYear: str(values.activities_last_year),
 
     // ── Section 11 — DIA Specific ─────────────────────────────────────────
-    // Basis of selection is now a free-text string on Stage 5 too
-    // (client UAT 2026-09-25 #68). Send as `selectionCriteriaText` and
-    // mirror in the legacy list column so the existing column keeps
-    // working during backend migration.
-    selectionCriteriaText: str(values.basis_of_selection),
-    selectionCriteria: str(values.basis_of_selection) ? [str(values.basis_of_selection)] : [],
+    // Basis of selection — backend migrated the column from
+    // `List<String>` to a plain string on 2026-09-25. Send raw string;
+    // schema-side cap is now 2000 chars to match the DB.
+    selectionCriteria: str(values.basis_of_selection),
     formalizationComments: str(values.ready_formalization),
     referralArrangementComments: str(values.ready_referral),
     bseReadinessComments: str(values.ready_bse),
@@ -256,13 +258,23 @@ export function toCreatePayload(values = {}, registrationId = null) {
     utilizedAmount: num(values.budget_utilized),
     availableBudget: computeAvailable(values),
 
-    // ── Terms ─────────────────────────────────────────────────────────────
+    // ── Section 13 — Terms of Assistance ─────────────────────────────────
     // Backend types this as List<String> — one entry per term text box.
+    // Contract on update:
+    //   • omit / null → backend keeps existing list unchanged
+    //   • [] → backend clears the list
+    //   • non-empty array → backend replaces the list wholesale
     termsAndConditions: toTermsList(values.terms),
 
     // ── Annexures V & VI ─────────────────────────────────────────────────
     // Only sent when the form actually holds the list, so a payload built
     // from a partial values object never wipes saved annexure rows.
+    // Contract per LATEST_CHANGES_FOR_FRONTEND §2:
+    //   • omitted / null → existing rows preserved
+    //   • [] → backend deletes all rows
+    //   • non-empty array → backend deletes existing and inserts these
+    // Response ids get regenerated on each non-empty update, so we
+    // deliberately don't round-trip `id` on the way up.
     ...(Array.isArray(values.annexure_v) ? { annexureVList: toAnnexureVList(values.annexure_v) } : null),
     ...(Array.isArray(values.annexure_vi) ? { annexureVIList: toAnnexureVIList(values.annexure_vi) } : null),
     // ── Section 15 — Delegation of Power ─────────────────────────────────
@@ -378,11 +390,7 @@ export function toFormValues(dto = {}) {
     cluster_expert_comments: clusterExpert.general,
     cluster_expert_terms_comments: clusterExpert.terms,
 
-    // ── Annexures V & VI ─────────────────────────────────────────────
-    annexure_v: fromAnnexureVList(dto.annexureVList),
-    annexure_vi: fromAnnexureVIList(dto.annexureVIList),
-
-    // ── Terms, Budget, DoP ───────────────────────────────────────────
+    // ── Section 14 — Terms of Assistance ─────────────────────────────
     terms: fromTermsList(dto.termsAndConditions),
     financial_year: (dto.financialYear ?? '').slice(0, 10),
     budget_allocated: dto.budgetAllocated ?? '',
@@ -392,6 +400,13 @@ export function toFormValues(dto = {}) {
     // ── Section 16 — Recommendation ──────────────────────────────────
     recommendation: dto.recommendation ?? '',
     recommendation_remarks: dto.recommendationRemarks ?? '',
+
+    // ── Annexures V & VI ─────────────────────────────────────────────
+    // Backend returns arrays; response ids are ENC-encrypted and are
+    // regenerated on every non-empty PUT, so we drop them here and let
+    // FormRenderer's Repeater synthesise its own row keys.
+    annexure_v: fromAnnexureVList(dto.annexureVList),
+    annexure_vi: fromAnnexureVIList(dto.annexureVIList),
   }
 
   // Overlay IA-mirror fields only when the appraisal has actual data,
@@ -432,6 +447,7 @@ export function toFormValues(dto = {}) {
   putBool('it_infra', dto.itInfrastructureAvailable)
   putStr('it_infra_details', dto.infrastructureType)
   putBool('secretariat_staff', dto.secretariatStaffAvailable)
+  putStr('secretariat_details', dto.secretariatStaffDetail)
   putBool('website', dto.websiteAvailable)
   putBool('paid_services', dto.paidServicesAvailable)
   putStr('paid_services_details', dto.paidServicesDetails)
@@ -511,17 +527,25 @@ export function buildIaSeed(iaDto, branchesList = null) {
     it_infra: yn(r.itInfrastructureAvailable),
     it_infra_details: r.infrastructureType ?? '',
     secretariat_staff: yn(r.secretariatStaffAvailable),
+    // IA registration DTO uses `secretariatStaff` (free-text description
+    // — client UAT 2026-09-25 flattened this from a structured list to
+    // one textarea). The APPRAISAL DTO uses `secretariatStaffDetail` for
+    // the same value — different field name on each endpoint, don't
+    // conflate them. Seed the L2 form from IA's string first; appraisal
+    // overlays its own `secretariatStaffDetail` on top via putStr in
+    // `toFormValues` when the appraiser has edited it.
+    secretariat_details: r.secretariatStaff ?? '',
     website: yn(r.websiteAvailable),
     // Autofetched from the parent IA — client UAT (2026-09-25 #64):
     // when website is Yes, seed the URL from the In-Principle record.
     website_url: r.websiteUrl ?? '',
     paid_services: yn(r.paidServicesAvailable),
     paid_services_details: r.paidServicesDetails ?? '',
-    // Basis of selection now a free-text string. Prefer the string
-    // column, fall back to joining the legacy array so older records
-    // still hydrate meaningfully.
-    basis_of_selection: typeof r.selectionCriteriaText === 'string'
-      ? r.selectionCriteriaText
+    // Basis of selection — backend column is now a plain string. Fall
+    // back to joining the legacy array for records written before the
+    // migration.
+    basis_of_selection: typeof r.selectionCriteria === 'string'
+      ? r.selectionCriteria
       : (Array.isArray(r.selectionCriteria) ? r.selectionCriteria.filter(Boolean).join(', ') : ''),
     grant_proposed: r.grantProposed ?? '',
     grant_details: r.grantDetails ?? '',
@@ -642,16 +666,18 @@ const blank = (v) => v == null || String(v).trim() === ''
 const numOrNull = (v) => (blank(v) || !Number.isFinite(Number(v)) ? null : Number(v))
 const strOrNull = (v) => (blank(v) ? null : String(v).trim())
 
-// Annexure V — cost items. `snNo` is the row's position, re-derived on
-// every save so deleting a middle row doesn't leave gaps.
+// Annexure V — cost items. Row-field naming is camelCase to match the
+// schema columns (`snNo` / `particulars` / `totalCost` / `sidbiSupport`).
+// If the user provided a snNo we preserve it; otherwise derive from the
+// row's position so deleting a middle row doesn't leave gaps.
 function toAnnexureVList(rows) {
   return rows
-    .filter((r) => r && !(blank(r.particulars) && blank(r.total_cost) && blank(r.sidbi_support)))
+    .filter((r) => r && !(blank(r.particulars) && blank(r.totalCost) && blank(r.sidbiSupport)))
     .map((r, i) => ({
-      snNo: i + 1,
+      snNo: blank(r.snNo) ? i + 1 : numOrNull(r.snNo),
       particulars: strOrNull(r.particulars),
-      totalCost: numOrNull(r.total_cost),
-      sidbiSupport: numOrNull(r.sidbi_support),
+      totalCost: numOrNull(r.totalCost),
+      sidbiSupport: numOrNull(r.sidbiSupport),
     }))
 }
 
@@ -661,23 +687,22 @@ function fromAnnexureVList(list) {
     .sort((a, b) => (a?.snNo ?? 0) - (b?.snNo ?? 0))
     .map((r) => ({
       particulars: r?.particulars ?? '',
-      total_cost: r?.totalCost ?? '',
-      sidbi_support: r?.sidbiSupport ?? '',
+      totalCost: r?.totalCost ?? '',
+      sidbiSupport: r?.sidbiSupport ?? '',
     }))
 }
 
 // Annexure VI — indicative items. Rows are kept in entry order.
+// Backend DTO (verified 2026-09-27) has only four columns:
+// indicativeItem, numbers, make, maximumCost. Nothing else round-trips.
 function toAnnexureVIList(rows) {
   return rows
-    .filter((r) => r && !(blank(r.section) && blank(r.indicative_item)))
+    .filter((r) => r && !blank(r.indicativeItem))
     .map((r) => ({
-      section: strOrNull(r.section),
-      sectionNote: strOrNull(r.section_note),
-      indicativeItem: strOrNull(r.indicative_item),
+      indicativeItem: strOrNull(r.indicativeItem),
       numbers: numOrNull(r.numbers),
       make: strOrNull(r.make),
-      maximumCost: numOrNull(r.maximum_cost),
-      maximumCostUnit: strOrNull(r.maximum_cost_unit),
+      maximumCost: numOrNull(r.maximumCost),
     }))
 }
 
@@ -686,13 +711,10 @@ function fromAnnexureVIList(list) {
   return [...list]
     .sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0))
     .map((r) => ({
-      section: r?.section ?? '',
-      section_note: r?.sectionNote ?? '',
-      indicative_item: r?.indicativeItem ?? '',
+      indicativeItem: r?.indicativeItem ?? '',
       numbers: r?.numbers ?? '',
       make: r?.make ?? '',
-      maximum_cost: r?.maximumCost ?? '',
-      maximum_cost_unit: r?.maximumCostUnit ?? '',
+      maximumCost: r?.maximumCost ?? '',
     }))
 }
 

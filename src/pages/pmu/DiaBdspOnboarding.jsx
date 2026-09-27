@@ -13,6 +13,7 @@ import {
   PmuFormShell, PmuSection, FieldRow, FieldCell,
   formatFileSize, EMAIL_RE, PHONE_RE,
   RhfTextField, useForm, useWatch,
+  CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import { STATES, districtsOf } from '../../geo'
 import {
@@ -159,22 +160,24 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
         <PmuSection first title="BDSP identity">
           <FieldRow>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <RhfTextField name="name" fullWidth required label="Name of BDSP" rules={REQUIRED_TEXT} />
+              <RhfTextField name="name" fullWidth required label="Name of BDSP" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
             </FieldCell>
             <FieldCell span={{ xs: 12, md: 6 }}>
-              <RhfTextField name="theme" fullWidth required label="Theme" rules={REQUIRED_TEXT} />
+              <RhfTextField name="theme" fullWidth required label="Theme" rules={requiredText(CHAR_LIMITS.SHORT)} inputProps={capChars(CHAR_LIMITS.SHORT)} />
             </FieldCell>
             <FieldCell>
               <RhfTextField
                 name="rationale" fullWidth required multiline minRows={2}
                 label="Rationale for onboarding BDSP"
-                rules={REQUIRED_TEXT}
+                rules={requiredText(CHAR_LIMITS.LONG)}
+                inputProps={capChars(CHAR_LIMITS.LONG)}
               />
             </FieldCell>
             <FieldCell>
               <RhfTextField
                 name="area" fullWidth required label="Area of service / expertise"
-                rules={REQUIRED_TEXT}
+                rules={requiredText(CHAR_LIMITS.MEDIUM)}
+                inputProps={capChars(CHAR_LIMITS.MEDIUM)}
               />
             </FieldCell>
           </FieldRow>
@@ -197,11 +200,13 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
               <RhfTextField
                 name="contact" fullWidth required label="Contact"
                 placeholder="+91 98xxxxxxxx"
+                inputProps={capChars(CHAR_LIMITS.SHORT)}
                 rules={{
                   validate: (v) => {
                     const s = String(v || '').trim()
                     if (!s) return 'Required.'
                     if (!PHONE_RE.test(s)) return 'Enter a valid phone number.'
+                    if (s.length > CHAR_LIMITS.SHORT) return `Max ${CHAR_LIMITS.SHORT} characters.`
                     return true
                   },
                 }}
@@ -211,11 +216,13 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
               <RhfTextField
                 name="email" fullWidth required type="email" label="Email"
                 placeholder="bdsp@example.com"
+                inputProps={capChars(CHAR_LIMITS.SHORT)}
                 rules={{
                   validate: (v) => {
                     const s = String(v || '').trim()
                     if (!s) return 'Required.'
                     if (!EMAIL_RE.test(s)) return 'Enter a valid email address.'
+                    if (s.length > CHAR_LIMITS.SHORT) return `Max ${CHAR_LIMITS.SHORT} characters.`
                     return true
                   },
                 }}
@@ -225,7 +232,8 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
               <RhfTextField
                 name="kyc" fullWidth required multiline minRows={2} label="KYC"
                 placeholder="PAN / Aadhaar / GSTIN, or any KYC identifier"
-                rules={REQUIRED_TEXT}
+                rules={requiredText(CHAR_LIMITS.MEDIUM)}
+                inputProps={capChars(CHAR_LIMITS.MEDIUM)}
               />
             </FieldCell>
           </FieldRow>

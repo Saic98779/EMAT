@@ -193,6 +193,21 @@ function RegistrationForm({ ws }) {
   // deriveWorkflow when it saw a REVERTED sub-stage in history).
   const revertRemark = l1Reverted ? l1Stage?.comment : null
 
+  // Reviewer decisions live in workspace context — the SDE (or CE / HO)
+  // gets a set of Approve / Reject / Send-back buttons when it's their
+  // turn at the current sub-stage. Non-reviewers get an empty array.
+  // Computed here (before schema derivation) so the "SDE can edit L1
+  // fields" carve-out below can gate on it — otherwise SDE keeps
+  // editing L1 forever, even after the workflow has advanced past L1.
+  const decisions = ws.decisionsForCurrent || []
+  const isReviewer = decisions.length > 0
+  // "SDE is actively reviewing L1 right now" — role is SIDBI_SDE AND
+  // the workspace still offers them a pending L1 decision. Once L1 has
+  // been approved (or reverted-and-resubmitted-and-approved) and the
+  // workflow moved on to Sustainability, `isReviewer` goes false so
+  // this flips off and the L1 form snaps back to read-only for everyone.
+  const isSdeActivelyReviewing = isSdeReviewer && isReviewer
+
   // ── Schema derivation ────────────────────────────────────────────────
   // Base schema locks the header fields as read-only. This matches the
   // "captured on eligibility, edit-locked here" contract shown in the UI.
@@ -206,9 +221,10 @@ function RegistrationForm({ ws }) {
           // Locked view — every field becomes a read-only record cell.
           // Exception (client UAT 2026-09-25): the SIDBI SDE reviewer
           // must be able to edit any field before recording their L1
-          // decision. Keep header fields locked either way (canonical
-          // on the eligibility record).
-          if (isLocked && !isSdeReviewer) return { ...f, readOnly: true, required: false }
+          // decision. Only in effect while SDE is ACTIVELY reviewing
+          // (decisions pending); once L1 is finalised and workflow
+          // moves on, everyone — including SDE — sees read-only.
+          if (isLocked && !isSdeActivelyReviewing) return { ...f, readOnly: true, required: false }
           if (LOCKED_HEADER_FIELDS.has(f.name)) {
             return { ...f, readOnly: true, required: false, help: 'Captured on the Eligibility Matrix — read-only here.' }
           }
@@ -216,7 +232,7 @@ function RegistrationForm({ ws }) {
         }),
       })),
     }
-  }, [branchOptions, sdeOptions, branchHelp, sdeHelp, isLocked, isSdeReviewer])
+  }, [branchOptions, sdeOptions, branchHelp, sdeHelp, isLocked, isSdeActivelyReviewing])
 
   const sections = fullSchema.sections
   const [activeIndex, setActiveIndex] = useState(0)
@@ -286,16 +302,12 @@ function RegistrationForm({ ws }) {
   const goNext = useCallback(() => setActiveIndex((i) => Math.min(sections.length - 1, i + 1)), [sections.length])
   const goTo = useCallback((i) => setActiveIndex(i), [])
 
-  // Reviewer decisions live in workspace context — the SDE (or CE / HO)
-  // gets a set of Approve / Reject / Send-back buttons when it's their
-  // turn at the current sub-stage. Non-reviewers get an empty array.
-  const decisions = ws.decisionsForCurrent || []
-  const isReviewer = decisions.length > 0
-
   // Reviewer branch — SDE / CE / HO Maker opens the L1 tab on a
   // submitted IA. SIDBI SDE gets the editable variant (client spec:
   // every field is modifiable by SDE); everyone else keeps the classic
   // read-only review surface with docs sidebar + decision bar.
+  // `decisions` / `isReviewer` are declared earlier — they gate both
+  // the SDE editable-field carve-out and this reviewer branch.
   if (isLocked && isReviewer) {
     const ReviewComponent = isSdeReviewer ? SdeL1EditableView : SdeL1ReviewView
     return (

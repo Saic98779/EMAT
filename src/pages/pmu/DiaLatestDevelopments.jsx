@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   PmuFormShell, PmuSection, FieldRow, FieldCell, todayIso,
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
+  CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
@@ -79,14 +80,16 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
           <FieldCell>
             <RhfTextField
               name="topic" fullWidth required label="Topic"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.SHORT)}
+              inputProps={capChars(CHAR_LIMITS.SHORT)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={REQUIRED_TEXT}
+              rules={requiredText(CHAR_LIMITS.LONG)}
+              inputProps={capChars(CHAR_LIMITS.LONG)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
@@ -106,9 +109,6 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
   )
 }
 
-const REQUIRED_TEXT = {
-  validate: (v) => (String(v || '').trim() ? true : 'Required.'),
-}
 const REQUIRED_DATE = { required: 'Required.' }
 
 // End date has a min = startDate; watching just the one field keeps this

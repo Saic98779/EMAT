@@ -18,12 +18,14 @@ import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsAc
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined'
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined'
+import PlaylistAddCheckOutlinedIcon from '@mui/icons-material/PlaylistAddCheckOutlined'
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined'
 import { PageHeader } from '../../components/shared'
 import { useContentList } from '../../queries'
 import { CONTENT_REVIEW_TYPES, CONTENT_REVIEW_ORDER } from './contentReviewConfig'
 import { StatusPill } from './CheckerReview'
+import { CONTENT_STATUS, deriveStatus, DERIVED_STATUS, isPendingForChecker, isPendingForMaker } from '../../apis/contentStatus'
 
 // CheckerQueue
 // ────────────────────────────────────────────────────────────────────────
@@ -42,23 +44,41 @@ const TYPE_ICON = {
   'surveys':                          PollOutlinedIcon,
   'bdsp':                             HandshakeOutlinedIcon,
   'bds-service-providers-onboarding': BusinessOutlinedIcon,
+  'action-plans':                     PlaylistAddCheckOutlinedIcon,
 }
 
-export default function CheckerQueue() {
+// `mode` — 'checker' (default) mounts the HO Checker workspace at
+// /checker/*; 'maker' mounts the HO Maker's own workspace at
+// /sde/content-approvals. Same queue, different pending filter + copy.
+// See isPending() below for how the two roles carve up the record
+// lifecycle, and CheckerReview for how the decision writes differ.
+export default function CheckerQueue({ mode = 'checker' } = {}) {
   const [tab, setTab] = useState(CONTENT_REVIEW_ORDER[0])
   const cfg = CONTENT_REVIEW_TYPES[tab]
+
+  const copy = mode === 'maker'
+    ? {
+        overline: 'Approvals',
+        title: 'Content Approvals (HO Maker)',
+        subtitle: 'Review submissions from GT PMU. Approving forwards the record to HO Checker for final sign-off; rejecting or reverting ends the chain here.',
+      }
+    : {
+        overline: 'Approvals',
+        title: 'Content Approvals',
+        subtitle: 'Final sign-off on submissions HO Maker has already approved. Approve to publish, revert to send back with remarks, or reject outright.',
+      }
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', pb: 8 }}>
       <PageHeader
-        overline="Approvals"
-        title="Content Approvals"
-        subtitle="Review submissions from GT PMU. Approve to publish, revert to send back with remarks, or reject outright."
+        overline={copy.overline}
+        title={copy.title}
+        subtitle={copy.subtitle}
       />
 
       <QueueTabs value={tab} onChange={setTab} />
 
-      {cfg && <QueueBody key={tab} type={tab} cfg={cfg} />}
+      {cfg && <QueueBody key={tab} type={tab} cfg={cfg} mode={mode} />}
     </Box>
   )
 }
@@ -102,56 +122,71 @@ function QueueTabs({ value, onChange }) {
   )
 }
 
-// Live pending-count badge. Uses the same list query the queue body uses,
-// so the badge and rows share a cache and update together.
+// Local wrapper — the shared `isPendingForChecker` counts everything
+// still awaiting the checker (PENDING + WITH_CHECKER). We also want
+// resubmitted-since-revert rows in the checker's queue because the
+// GT PMU has touched them and they need another look. wasResubmitted
+// lives here since it needs the audit-field heuristic (createdBy vs
+// updatedBy) which the pure `apis/contentStatus.js` helper avoids.
+const checkerPendingFilter = (row) => isPendingForChecker(row) || wasResubmitted(row)
+
+// Tab label — icon + name only. The pending-count badge used to live
+// here and drove a `useContentList(type)` call per tab, which fired
+// nine parallel GETs on page mount just to compute badges. We now
+// fetch only the ACTIVE tab's list (see QueueBody) so switching tabs
+// makes exactly one request. Badges intentionally dropped along with
+// the eager fetch — reintroduce with a lightweight `/counts` endpoint
+// if the client wants them back.
 const TabLabel = memo(function TabLabel({ type, label }) {
-  const q = useContentList(type)
-  const pending = useMemo(() => (q.data || []).filter(isPending).length, [q.data])
   const Icon = TYPE_ICON[type]
   return (
     <Stack direction="row" spacing={0.75} alignItems="center">
       {Icon && <Icon sx={{ fontSize: 16 }} />}
       <span>{label}</span>
-      {pending > 0 && (
-        <Chip
-          size="small"
-          label={pending}
-          sx={{
-            height: 18, fontSize: 11, fontWeight: 700, ml: 0.25,
-            bgcolor: (t) => alpha(t.palette.warning.main, 0.16),
-            color: (t) => t.palette.warning.dark,
-            '.MuiChip-label': { px: 0.75 },
-          }}
-        />
-      )}
     </Stack>
   )
 })
 
 // ─── One tab body ──────────────────────────────────────────────────────
-function QueueBody({ type, cfg }) {
+function QueueBody({ type, cfg, mode = 'checker' }) {
   const theme = useTheme()
   const [filter, setFilter] = useState('pending')      // pending | all | approved | rejected
   const [q, setQ] = useState('')
   const query = useContentList(type)
 
-  const rows = query.data || []
+  // Scope the raw list to what THIS role should ever see:
+  //   • Checker workspace → only rows Maker has approved. Fresh
+  //     submissions (makerStatus === null), maker-rejected, and
+  //     maker-reverted rows never appear here — those are Maker's
+  //     job or already terminal. This gates *every* filter tab
+  //     (Pending, All, Approved, Rejected) so Checker never sees a
+  //     submission Maker hasn't touched.
+  //   • Maker workspace → everything shows (Maker is the first
+  //     line of review and is the audit trail for their own history).
+  const rawRows = query.data || []
+  const rows = mode === 'checker'
+    ? rawRows.filter((r) => r?.makerStatus === CONTENT_STATUS.APPROVED)
+    : rawRows
+
+  // Pending predicate depends on which workspace this is:
+  //   • Maker  → rows nobody has decided yet (deriveStatus === PENDING)
+  //   • Checker → rows the maker approved but the checker hasn't
+  //     signed off on (plus fresh-resubmit-after-revert cycles).
+  const pendingPred = mode === 'maker' ? isPendingForMaker : checkerPendingFilter
   const counts = useMemo(() => ({
-    pending:  rows.filter(isPending).length,
-    approved: rows.filter((r) => r.status === 'APPROVED').length,
-    rejected: rows.filter((r) => r.status === 'REJECT').length,
-    reverted: rows.filter((r) => r.status === 'REVERT').length,
+    pending:  rows.filter(pendingPred).length,
+    approved: rows.filter((r) => deriveStatus(r) === DERIVED_STATUS.APPROVED).length,
+    rejected: rows.filter((r) => deriveStatus(r) === DERIVED_STATUS.REJECT).length,
+    reverted: rows.filter((r) => deriveStatus(r) === DERIVED_STATUS.REVERT).length,
     total:    rows.length,
-  }), [rows])
+  }), [rows, pendingPred])
 
   const filtered = useMemo(() => {
     let list = rows
-    // Pending includes fresh submissions AND revert'd items the GT-PMU
-    // has resubmitted since (they need re-review). See isPending() below.
-    if (filter === 'pending')  list = rows.filter(isPending)
-    if (filter === 'approved') list = rows.filter((r) => r.status === 'APPROVED')
-    if (filter === 'rejected') list = rows.filter((r) => r.status === 'REJECT')
-    if (filter === 'reverted') list = rows.filter((r) => r.status === 'REVERT')
+    if (filter === 'pending')  list = rows.filter(pendingPred)
+    if (filter === 'approved') list = rows.filter((r) => deriveStatus(r) === DERIVED_STATUS.APPROVED)
+    if (filter === 'rejected') list = rows.filter((r) => deriveStatus(r) === DERIVED_STATUS.REJECT)
+    if (filter === 'reverted') list = rows.filter((r) => deriveStatus(r) === DERIVED_STATUS.REVERT)
     const term = q.trim().toLowerCase()
     if (term) {
       list = list.filter((r) => {
@@ -234,11 +269,11 @@ function QueueBody({ type, cfg }) {
           <CircularProgress size={24} />
         </Box>
       ) : filtered.length === 0 ? (
-        <EmptyState filter={filter} typeLabel={cfg.label} totalCount={counts.total} />
+        <EmptyState filter={filter} typeLabel={cfg.label} totalCount={counts.total} mode={mode} />
       ) : (
         <Stack spacing={1.25}>
           {filtered.map((row, i) => (
-            <QueueRow key={row.id ?? i} cfg={cfg} row={row} />
+            <QueueRow key={row.id ?? i} cfg={cfg} type={type} row={row} mode={mode} />
           ))}
         </Stack>
       )}
@@ -247,16 +282,25 @@ function QueueBody({ type, cfg }) {
 }
 
 // ─── One queue row (inbox card) ────────────────────────────────────────
-function QueueRow({ cfg, row }) {
+function QueueRow({ cfg, type, row, mode = 'checker' }) {
   const theme = useTheme()
-  const status = row.status || null
+  // Row-level status is the derived bucket, not the raw backend field
+  // (which is now split into two). StatusPill knows how to render every
+  // DERIVED_STATUS value including the new WITH_CHECKER / PENDING pair.
+  const status = deriveStatus(row)
   const primaryKey = cfg.columns[0]?.key
   const secondaryCols = cfg.columns.slice(1)
+  // Route target depends on which workspace we're in — the review
+  // shell is the same (CheckerReview) but the URL prefix differs so
+  // the shell can pick up its mode from the route element.
+  const to = mode === 'maker'
+    ? `/sde/content-approvals/${encodeURIComponent(type)}/${encodeURIComponent(row.id)}`
+    : cfg.detailRoute(encodeURIComponent(row.id))
 
   return (
     <Box
       component={Link}
-      to={cfg.detailRoute(encodeURIComponent(row.id))}
+      to={to}
       sx={{
         display: 'block',
         textDecoration: 'none',
@@ -329,7 +373,7 @@ function QueueRow({ cfg, row }) {
         </Box>
 
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flexShrink: 0 }}>
-          <StatusPill status={status} />
+          <StatusPill status={status} viewerMode={mode} />
           <ArrowForwardRoundedIcon sx={{ fontSize: 16, color: theme.palette.text.disabled }} />
         </Stack>
       </Stack>
@@ -395,6 +439,18 @@ function EmptyState({ filter, typeLabel, totalCount }) {
   )
 }
 
+// Row-level "resubmitted since revert" indicator. Post-migration the
+// clearest signal is `updatedBy` flipping from the checker's role back
+// to the submitter's, so it still works — but we ALSO check the
+// derived bucket to keep the semantics correct (a REVERT row that
+// wasn't resubmitted stays a plain revert).
+export function wasResubmitted(row) {
+  if (deriveStatus(row) !== DERIVED_STATUS.REVERT) return false
+  const created = String(row.createdBy || '').toLowerCase()
+  const updated = String(row.updatedBy || '').toLowerCase()
+  return !!created && created === updated
+}
+
 // ─── Attachment chip ───────────────────────────────────────────────────
 // Same treatment as the ContentTypeList row — one-click access to the
 // first attachment on a queue row, so the reviewer can peek without
@@ -438,28 +494,10 @@ function collectAttachmentUrls(row) {
   return out
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────
-// A row is "pending" if:
-//   • It's never been touched by the checker (`status == null`), OR
-//   • It was REVERTed and the GT-PMU has since edited it (a resubmit).
-//
-// Detection for the second case relies on the audit fields: when the
-// checker PATCHes /status, backend writes `updatedBy = sidbi_ho_checker`
-// while `createdBy` stays as the original PMU. When the PMU resubmits
-// via PUT, `updatedBy` flips back to their username (typically equal to
-// `createdBy`). So `status === 'REVERT' && updatedBy === createdBy`
-// means "waiting for me to re-review" as opposed to "waiting for the
-// PMU to act".
-export function wasResubmitted(row) {
-  if (row.status !== 'REVERT') return false
-  const created = String(row.createdBy || '').toLowerCase()
-  const updated = String(row.updatedBy || '').toLowerCase()
-  return !!created && created === updated
-}
-
-function isPending(row) {
-  return !row.status || wasResubmitted(row)
-}
+// The old local isPending() lived here — it's now split into:
+//   • isPendingForMaker  (in apis/contentStatus.js)
+//   • checkerPendingFilter (defined near TabLabel above, wraps
+//     isPendingForChecker + adds wasResubmitted for resubmits)
 
 function formatCellValue(col, v) {
   if (v == null || v === '') return '—'

@@ -18,6 +18,7 @@ import { useAuth } from '../../auth'
 import { useContentList } from '../../queries'
 import { CONTENT_REVIEW_TYPES } from '../checker/contentReviewConfig'
 import { StatusPill } from '../checker/CheckerReview'
+import { deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
 
 // ContentTypeList
 // ────────────────────────────────────────────────────────────────────────
@@ -134,10 +135,12 @@ export default function ContentTypeList() {
 // ─── Row ───────────────────────────────────────────────────────────────
 function ContentRow({ type, cfg, row }) {
   const theme = useTheme()
-  const status = row.status || null
+  // Derived bucket, not raw enum — the record now carries two status
+  // fields and the display cares only about the final lifecycle state.
+  const status = deriveStatus(row)
   const primaryKey = cfg.columns[0]?.key
   const secondaryCols = cfg.columns.slice(1)
-  const isRevert = status === 'REVERT'
+  const isRevert = status === DERIVED_STATUS.REVERT
 
   return (
     <Box

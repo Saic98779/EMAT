@@ -13,8 +13,9 @@ import UndoRoundedIcon from '@mui/icons-material/UndoRounded'
 import LinkOutlinedIcon from '@mui/icons-material/LinkOutlined'
 import { PageHeader } from '../../components/shared'
 import { useContentRecord, useUpdateContentStatus } from '../../queries'
-import { CONTENT_STATUS } from '../../apis/contentStatus'
+import { CONTENT_STATUS, deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
 import { CONTENT_REVIEW_TYPES } from './contentReviewConfig'
+import { wasResubmitted } from './CheckerQueue'
 import { viewFileUrl } from '../../apis/files'
 
 // CheckerReview
@@ -38,6 +39,10 @@ import { viewFileUrl } from '../../apis/files'
 //                 checker queue).
 //   overline    — overline text above the title (defaults to the content
 //                 type's overline from config).
+// `mode` — 'checker' (default) writes checkerStatus, 'maker' writes
+// makerStatus. Both roles share this shell; the only meaningful
+// difference is which of the two backend fields their decision lands
+// on. See commitDecide below for the field-selection + mirror logic.
 export default function CheckerReview({
   readOnly = false,
   backTo = '/checker',
@@ -49,6 +54,7 @@ export default function CheckerReview({
   // to surface a workflow action (e.g. the PMU's "Edit & Resubmit"
   // button on REVERT records). Receives the DTO so it can gate itself.
   heroAction = null,
+  mode = 'checker',
 } = {}) {
   const navigate = useNavigate()
   const { type, id } = useParams()
@@ -64,7 +70,9 @@ export default function CheckerReview({
   if (!cfg) return <NotFound msg={`No review config for content type "${type}".`} backTo={backTo} />
 
   const dto = recordQ.data
-  const currentStatus = dto?.status || null
+  // Single derived status for display + banner tone. Reads both
+  // makerStatus and checkerStatus and folds them into one bucket.
+  const currentStatus = dto ? deriveStatus(dto) : null
 
   const requestDecide = (status) => {
     // Remarks are mandatory for revert + reject.
@@ -90,10 +98,27 @@ export default function CheckerReview({
   const commitDecide = async () => {
     if (!confirm || !id) return
     try {
+      // Field-selection logic:
+      //   • Maker mode  → writes only `makerStatus`. Preserves whatever
+      //     `checkerStatus` was on the row (null if Checker hasn't
+      //     acted, or their prior decision if they somehow got there
+      //     first). This is what lands the item in Checker's queue as
+      //     WITH_CHECKER after Maker's approve.
+      //   • Checker mode → writes only `checkerStatus`. Preserves
+      //     `makerStatus` — Checker should never overwrite Maker.
+      //
+      // Backend accepts null on the counterpart as of 2026-09-27
+      // (verified live). The earlier mirror workaround auto-approved
+      // on Checker's behalf when Maker acted, which surfaced as "HO
+      // Checker sees Maker's approval as already Approved" — fixed
+      // by not mirroring.
+      const makerStatus   = mode === 'maker'   ? confirm.status : (dto?.makerStatus   ?? null)
+      const checkerStatus = mode === 'checker' ? confirm.status : (dto?.checkerStatus ?? null)
       await patchStatus.mutateAsync({
         path: type,
         id,
-        status: confirm.status,
+        makerStatus,
+        checkerStatus,
         remarks: remarks.trim() || undefined,
       })
       setToast({ severity: 'success', msg: `${confirm.label} · saved.` })
@@ -130,8 +155,8 @@ export default function CheckerReview({
         <Alert severity="error">{recordQ.error.message || 'Failed to load record.'}</Alert>
       ) : dto ? (
         <>
-          <ReviewHero dto={dto} cfg={cfg} action={typeof heroAction === 'function' ? heroAction(dto) : heroAction} />
-          {dto.remark && <RemarkBanner status={dto.status} remark={dto.remark} />}
+          <ReviewHero dto={dto} cfg={cfg} mode={mode} action={typeof heroAction === 'function' ? heroAction(dto) : heroAction} />
+          {dto.remark && <RemarkBanner status={deriveStatus(dto)} remark={dto.remark} />}
           <Stack spacing={2.5} sx={{ mt: 3 }}>
             {cfg.sections.map((sec) => (
               <ReviewSection key={sec.title} title={sec.title} fields={sec.fields} dto={dto} />
@@ -143,14 +168,19 @@ export default function CheckerReview({
       )}
 
       {dto && !readOnly && (
-        <DecisionBar
-          currentStatus={currentStatus}
-          remarks={remarks}
-          setRemarks={(v) => { setRemarks(v); if (v.trim()) setRemarksError(false) }}
-          remarksError={remarksError}
-          onDecide={requestDecide}
-          busy={patchStatus.isPending}
-        />
+        canDecide({ dto, mode })
+          ? (
+            <DecisionBar
+              currentStatus={currentStatus}
+              remarks={remarks}
+              setRemarks={(v) => { setRemarks(v); if (v.trim()) setRemarksError(false) }}
+              remarksError={remarksError}
+              onDecide={requestDecide}
+              busy={patchStatus.isPending}
+              mode={mode}
+            />
+          )
+          : <DecisionRecordedBanner dto={dto} mode={mode} />
       )}
 
       <ConfirmDialog
@@ -181,10 +211,10 @@ export default function CheckerReview({
 // ─── Header ────────────────────────────────────────────────────────────
 // Simple, quiet header: title + label + submitter meta + status pill.
 // No color stripe, no oversized type — the record itself is the content.
-const ReviewHero = memo(function ReviewHero({ dto, cfg, action = null }) {
+const ReviewHero = memo(function ReviewHero({ dto, cfg, mode, action = null }) {
   const theme = useTheme()
   const title = primaryTitle(dto, cfg)
-  const currentStatus = dto?.status || null
+  const currentStatus = dto ? deriveStatus(dto) : null
 
   return (
     <Box
@@ -211,13 +241,13 @@ const ReviewHero = memo(function ReviewHero({ dto, cfg, action = null }) {
           <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 0.5 }}>
             <MetaBit label="Submitted by" value={dto.createdBy || 'Unknown'} />
             <MetaBit label="Submitted on" value={formatDateTime(dto.createdAt) || '—'} />
-            {dto.status && dto.approvedDate && (
+            {(dto.checkerStatus || dto.makerStatus) && dto.approvedDate && (
               <MetaBit label="Decision on" value={formatDate(dto.approvedDate)} />
             )}
           </Stack>
         </Box>
         <Stack direction="column" spacing={1} alignItems="flex-end" sx={{ flexShrink: 0 }}>
-          <StatusPill status={currentStatus} />
+          <StatusPill status={currentStatus} viewerMode={mode} />
           {action}
         </Stack>
       </Stack>
@@ -323,7 +353,7 @@ const ReviewSection = memo(function ReviewSection({ title, fields, dto }) {
 
 function FieldCell({ field, value }) {
   const theme = useTheme()
-  const isFull = field.type === 'multiline' || field.type === 'questionnaire' || field.type === 'link' || field.full
+  const isFull = field.type === 'multiline' || field.type === 'questionnaire' || field.type === 'link' || field.type === 'activities' || field.full
   return (
     <Box
       sx={{
@@ -416,6 +446,72 @@ function renderValue(field, value, theme) {
     )
   }
 
+  if (field.type === 'activities') {
+    // Action Plan (Annexure IV) — Year-1 activities table. Renders each
+    // activity as a numbered block with the sheet's key columns so the
+    // reviewer can scan cost split + expected impact per row.
+    const rows = Array.isArray(value) ? value : []
+    if (!rows.length) return <Typography sx={{ fontSize: 13.5, color: theme.palette.text.disabled }}>No activities recorded.</Typography>
+    const fmtMoney = (v) => (v == null || v === '' ? '—' : `₹ ${Number(v).toLocaleString('en-IN')}`)
+    const fmtPct   = (v) => (v == null || v === '' ? '—' : `${Number(v)}%`)
+    const fmtInt   = (v) => (v == null || v === '' ? '—' : Number(v).toLocaleString('en-IN'))
+    return (
+      <Stack spacing={1.5}>
+        {rows.slice().sort((a, b) => (a.activityNo ?? 0) - (b.activityNo ?? 0)).map((a, i) => (
+          <Box
+            key={`activity-${a.activityNo ?? i}`}
+            sx={{
+              p: 1.5,
+              borderRadius: 1.5,
+              border: 1,
+              borderColor: alpha(theme.palette.text.primary, 0.09),
+              bgcolor: alpha(theme.palette.text.primary, 0.02),
+            }}
+          >
+            <Stack direction="row" alignItems="baseline" spacing={1}>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: theme.palette.text.disabled }}>
+                Activity {a.activityNo ?? i + 1}
+              </Typography>
+              <Typography sx={{ fontSize: 10.5, color: theme.palette.text.disabled }}>
+                {a.monthToBeHeld || '—'}
+              </Typography>
+            </Stack>
+            <Typography sx={{ mt: 0.25, fontSize: 13.5, fontWeight: 700, color: theme.palette.text.primary }}>
+              {a.nameOfActivity || '—'}
+            </Typography>
+            {a.technicalServiceProvider && (
+              <Typography sx={{ mt: 0.25, fontSize: 12.5, color: theme.palette.text.secondary }}>
+                TSP: {a.technicalServiceProvider}
+              </Typography>
+            )}
+            <Box
+              sx={{
+                mt: 1,
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
+                gap: 1,
+              }}
+            >
+              <ActivityStat label="Total cost"    value={fmtMoney(a.totalCost)} theme={theme} />
+              <ActivityStat label="SIDBI"         value={fmtPct(a.percentSupportBySidbi)} theme={theme} />
+              <ActivityStat label="Others"        value={fmtPct(a.percentSupportByOthers)} theme={theme} />
+              <ActivityStat label="IA share"      value={fmtPct(a.percentContributionByIa)} theme={theme} />
+              <ActivityStat label="Members"       value={fmtInt(a.expectedParticipantMembers)} theme={theme} />
+              <ActivityStat label="Non-members"   value={fmtInt(a.expectedParticipantNonMembers)} theme={theme} />
+            </Box>
+            {(a.expectedOutput || a.expectedOutcome || a.expectedIncomeGeneratingActivity) && (
+              <Box sx={{ mt: 1 }}>
+                {a.expectedOutput && <ActivityLine label="Expected output" value={a.expectedOutput} theme={theme} />}
+                {a.expectedOutcome && <ActivityLine label="Expected outcome" value={a.expectedOutcome} theme={theme} />}
+                {a.expectedIncomeGeneratingActivity && <ActivityLine label="Expected IGA" value={a.expectedIncomeGeneratingActivity} theme={theme} />}
+              </Box>
+            )}
+          </Box>
+        ))}
+      </Stack>
+    )
+  }
+
   if (field.type === 'questionnaire') {
     const rows = Array.isArray(value) ? value : []
     return (
@@ -459,8 +555,59 @@ function renderValue(field, value, theme) {
   return <Typography sx={{ fontSize: 13.5, color: theme.palette.text.primary }}>{String(value)}</Typography>
 }
 
+// ─── Decision availability ─────────────────────────────────────────────
+// A reviewer can decide when their own status field is empty, OR when
+// the row was reverted and GT PMU has resubmitted since (a fresh cycle).
+// Otherwise the "Decision recorded" banner takes the DecisionBar's slot
+// so the reviewer isn't offered buttons that would just re-write the
+// same decision.
+function canDecide({ dto, mode }) {
+  if (!dto) return false
+  const mine = mode === 'maker' ? dto.makerStatus : dto.checkerStatus
+  if (mine == null) return true
+  return wasResubmitted(dto)
+}
+
+// Read-only badge shown in place of the DecisionBar once this reviewer
+// has already acted. Sits inline (not fixed) so the page footer isn't
+// permanently taken up after the decision.
+function DecisionRecordedBanner({ dto, mode }) {
+  const theme = useTheme()
+  const mine = mode === 'maker' ? dto.makerStatus : dto.checkerStatus
+  const label = mine === CONTENT_STATUS.APPROVED ? 'You approved this submission.'
+              : mine === CONTENT_STATUS.REJECT   ? 'You rejected this submission.'
+              : mine === CONTENT_STATUS.REVERT   ? 'You sent this back for changes.'
+              : 'Your decision is recorded.'
+  const tone = mine === CONTENT_STATUS.APPROVED ? theme.palette.success
+             : mine === CONTENT_STATUS.REJECT   ? theme.palette.error
+             : mine === CONTENT_STATUS.REVERT   ? theme.palette.warning
+             : theme.palette.info
+  const followUp = mine === CONTENT_STATUS.APPROVED && mode === 'maker'
+        ? ' Awaiting HO Checker sign-off.'
+      : mine === CONTENT_STATUS.APPROVED && mode === 'checker'
+        ? ' Submission is now live.'
+      : mine === CONTENT_STATUS.REVERT
+        ? ' Waiting for the submitter to revise and resubmit.'
+      : ''
+  return (
+    <Box
+      sx={{
+        mt: 3, p: 2, borderRadius: 2,
+        border: 1, borderColor: alpha(tone.main, 0.35),
+        bgcolor: alpha(tone.main, 0.06),
+        display: 'flex', alignItems: 'center', gap: 1.25,
+      }}
+    >
+      <StatusPill status={mine} viewerMode={mode} />
+      <Typography sx={{ fontSize: 13.5, color: theme.palette.text.primary }}>
+        <b>{label}</b>{followUp}
+      </Typography>
+    </Box>
+  )
+}
+
 // ─── Decision bar ──────────────────────────────────────────────────────
-function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecide, busy }) {
+function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecide, busy, mode }) {
   const theme = useTheme()
   return (
     <Paper
@@ -521,16 +668,9 @@ function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecid
           />
         </Stack>
       </Stack>
-      {(remarksError || currentStatus) && (
-        <Typography
-          sx={{
-            mt: 0.75, fontSize: 11.5,
-            color: remarksError ? theme.palette.error.main : theme.palette.text.disabled,
-          }}
-        >
-          {remarksError
-            ? 'Remarks are required to revert or reject.'
-            : <>Currently <StatusPill status={currentStatus} inline /> — a new decision replaces the previous one.</>}
+      {remarksError && (
+        <Typography sx={{ mt: 0.75, fontSize: 11.5, color: theme.palette.error.main }}>
+          Remarks are required to revert or reject.
         </Typography>
       )}
     </Paper>
@@ -627,9 +767,19 @@ function ConfirmDialog({ open, confirm, remarks, busy, onCancel, onOk }) {
 }
 
 // ─── Status pill (exported for the queue) ───────────────────────────────
-export function StatusPill({ status, inline = false, big = false }) {
+// `viewerMode` personalises the WITH_CHECKER and PENDING labels so each
+// role sees the queue from their own POV:
+//   • 'maker'   — the HO Maker workspace: PENDING → "Awaiting your review";
+//                 WITH_CHECKER → "Sent to HO Checker" (out of your hands)
+//   • 'checker' — the HO Checker workspace: WITH_CHECKER → "Awaiting your
+//                 review"; PENDING → "Awaiting HO Maker" (they haven't
+//                 acted yet, nothing for you to do)
+//   • undefined — third-party views (GT PMU list, Action Plan lists,
+//                 stage cards): stays on neutral role-labelled copy so
+//                 the submitter can see where their record sits.
+export function StatusPill({ status, viewerMode, inline = false, big = false }) {
   const theme = useTheme()
-  const { label, color } = statusVisuals(status, theme)
+  const { label, color } = statusVisuals(status, theme, viewerMode)
   return (
     <Chip
       size={big ? 'medium' : 'small'}
@@ -646,15 +796,51 @@ export function StatusPill({ status, inline = false, big = false }) {
   )
 }
 
-function statusVisuals(status, theme) {
+// Activities-table helpers (Action Plan review)
+function ActivityStat({ label, value, theme }) {
+  return (
+    <Box>
+      <Typography sx={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: theme.palette.text.disabled }}>
+        {label}
+      </Typography>
+      <Typography sx={{ fontSize: 13, fontWeight: 600, color: theme.palette.text.primary }}>
+        {value}
+      </Typography>
+    </Box>
+  )
+}
+function ActivityLine({ label, value, theme }) {
+  return (
+    <Typography sx={{ fontSize: 12.5, color: theme.palette.text.secondary, mt: 0.5, whiteSpace: 'pre-wrap' }}>
+      <Box component="span" sx={{ fontWeight: 700, color: theme.palette.text.disabled, mr: 0.5 }}>{label}:</Box>
+      {value}
+    </Typography>
+  )
+}
+
+function statusVisuals(status, theme, viewerMode) {
   // theme may be null when called during initial render to just derive
   // the label (see requestDecide). Use a safe access pattern.
   const t = theme || { palette: { success: {}, error: {}, warning: {}, info: {} } }
   switch (status) {
-    case 'APPROVED': return { label: 'Approved', color: t.palette.success }
-    case 'REJECT':   return { label: 'Rejected', color: t.palette.error }
-    case 'REVERT':   return { label: 'Reverted', color: t.palette.warning }
-    default:         return { label: 'Pending',  color: t.palette.info }
+    // Both the raw enum values (APPROVED / REJECT / REVERT — legacy
+    // callers) and the two new derived values (WITH_CHECKER / PENDING)
+    // land here. Kept in one switch so the pill renders the right chip
+    // regardless of which one the caller passes.
+    case 'APPROVED':     return { label: 'Approved', color: t.palette.success }
+    case 'REJECT':       return { label: 'Rejected', color: t.palette.error }
+    case 'REVERT':       return { label: 'Reverted', color: t.palette.warning }
+    case 'WITH_CHECKER': {
+      if (viewerMode === 'checker') return { label: 'Awaiting your review',   color: t.palette.warning }
+      if (viewerMode === 'maker')   return { label: 'Sent to HO Checker',     color: t.palette.info }
+      return                                { label: 'Awaiting HO Checker',   color: t.palette.info }
+    }
+    case 'PENDING': {
+      if (viewerMode === 'maker')   return { label: 'Awaiting your review',   color: t.palette.warning }
+      if (viewerMode === 'checker') return { label: 'Awaiting HO Maker',      color: t.palette.info }
+      return                                { label: 'Awaiting HO Maker',     color: t.palette.info }
+    }
+    default:             return { label: 'Awaiting HO Maker', color: t.palette.info }
   }
 }
 

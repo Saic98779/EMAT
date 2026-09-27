@@ -146,7 +146,8 @@ export const makeInPrincipleSchema = ({
       // PincodeField in FormRenderer.
       { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE,
         pincodeLookup: { stateField: 'state', districtField: 'district' },
-        counter: false, max: 6,
+        // min/max 6 stop extra keystrokes and the 500-char default rule.
+        counter: false, min: 6, max: 6,
         help: "Must be in the IA's state",
         validate: (v, values) => values?._pincode_error || '' },
       { name: 'district', label: 'District', type: 'select', span: 6, required: true,
@@ -170,7 +171,19 @@ export const makeInPrincipleSchema = ({
         options: ['Aadhaar', 'Voter ID card', 'Driving licence', 'Passport', 'Telephone bill', 'Electricity bill', 'Water consumption bill', 'Gas receipt / connection card'] },
       { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter document / bill number',
-        showIf: (v) => !!v.apex_kyc_doc },
+        showIf: (v) => !!v.apex_kyc_doc,
+        // Format check keyed on the selected KYC document type. Bills are
+        // free-form (no standard numbering) so we skip the check there.
+        validate: (v, values) => {
+          if (v === '' || v == null) return ''
+          const raw = String(v).trim()
+          const t = values?.apex_kyc_doc
+          if (t === 'Aadhaar' && !/^\d{12}$/.test(raw)) return '12-digit Aadhaar'
+          if (t === 'Voter ID card' && !/^[A-Z]{3}\d{7}$/.test(raw.toUpperCase())) return 'Voter ID (EPIC): 3 letters + 7 digits (e.g. ABC1234567)'
+          if (t === 'Passport' && !/^[A-PR-WYa-pr-wy][0-9]{7}$/.test(raw)) return 'Passport: 1 letter + 7 digits (e.g. A1234567)'
+          if (t === 'Driving licence' && !/^[A-Z0-9-]{8,20}$/i.test(raw)) return 'Driving licence: 8–20 chars, letters/digits/hyphen'
+          return ''
+        } },
       { name: 'apex_kyc_file', label: 'Upload KYC document', type: 'file', span: 4, required: true },
 
       // ID Proof block: same "one-row triple" layout for the ID document
@@ -264,9 +277,9 @@ export const makeInPrincipleSchema = ({
     ] },
     { n: 7, title: 'DIA Specific Details', fields: [
       { name: 'basis_of_selection', label: 'Basis of selection', type: 'textarea', span: 12, required: true,
-        rows: 2, max: 500,
+        rows: 2, max: 2000,
         placeholder: 'e.g. active member base > 200; runs regular training programs; maintains an updated member directory…',
-        help: 'Describe the reasons this IA was selected — combine one or more criteria in your own words.' },
+        help: 'Describe the reasons this IA was selected — combine one or more criteria in your own words. Up to 2000 characters.' },
       { name: 'willingness_comments', label: "Comments on IA's willingness to take up Micro income-generating activities", type: 'textarea', span: 12, max: 500, required: true },
 
       { name: '_grant', label: 'Grant proposal', type: 'subheading', span: 12 },
@@ -612,11 +625,15 @@ export const appraisalSchema = {
       { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
       { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
       { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
-      { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3 },
+      // Ranking is typically a short grade string ("A+", "B", "AAA") —
+      // override the FormRenderer default 3-char minimum.
+      { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3, min: 1 },
       { name: 'cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
 
       { name: '_dd_ia_darpan', label: 'NGO Darpan', type: 'subheading', span: 12 },
-      { name: 'ngo_darpan_no', label: 'NGO Darpan Number', type: 'text', span: 6 },
+      // NGO Darpan numbers are short alphanumeric IDs — override the
+      // FormRenderer default 3-char minimum + 500-char maximum.
+      { name: 'ngo_darpan_no', label: 'NGO Darpan Number', type: 'text', span: 6, min: 1 },
       { name: 'ngo_darpan_file', label: 'NGO Darpan copy (upload)', type: 'file', span: 6 },
 
       { name: '_dd_ia_nabard', label: 'NABARD Blacklist', type: 'subheading', span: 12 },
@@ -662,7 +679,8 @@ export const appraisalSchema = {
       { name: '_dd_owner_cibil', label: 'IA Beneficial Owner/s — CIBIL (extant KYC policy)', type: 'subheading', span: 12 },
       { name: 'owner_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
       { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
-      { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3 },
+      // Ranking/score is a short grade string — see cibil_ranking above.
+      { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3, min: 1 },
       { name: 'owner_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
       { name: 'owner_cibil_file', label: 'CIBIL Report (upload)', type: 'file', span: 12 },
 
@@ -718,11 +736,13 @@ export const appraisalSchema = {
       { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
       // Sector #1 required — client UAT (2026-09-25 #67): sectoral IAs
       // may deal in only one sector, so #2 / #3 stay optional.
-      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true },
+      // Sector name fields — override the FormRenderer default 3-char
+      // minimum so short codes / numbers ("IT", "1", "R&D") are accepted.
+      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true, min: 1 },
       { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4 },
+      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1 },
       { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4 },
+      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1 },
       { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope', label: 'Scope for financing — description (50–75 words)', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5',
@@ -735,13 +755,14 @@ export const appraisalSchema = {
         } },
       { name: 'project_location', label: 'Location where the project is being proposed', type: 'textarea', span: 12, max: 500,
         rows: 2, placeholder: 'District(s), block(s), specific villages / MSME clusters where the project will operate.' },
-      // Client UAT (2026-09-25 #68): checkboxes → free-text 500-char
-      // description, mirroring the Stage-2 change. Autofetched from the
-      // IA record — see fromDto below.
+      // Client UAT (2026-09-25 #68): checkboxes → free-text description,
+      // mirroring the Stage-2 change. 2000-char cap now matches the
+      // backend column (LATEST_CHANGES_FOR_FRONTEND.md §3).
+      // Autofetched from the IA record — see fromDto below.
       { name: 'basis_of_selection', label: 'Basis of selection (autofetched from IA)', type: 'textarea', span: 12,
-        rows: 2, max: 500,
+        rows: 2, max: 2000,
         placeholder: 'e.g. active member base > 200; runs regular training programs; maintains an updated member directory…',
-        help: 'Autofetched from the IA record — editable here.' },
+        help: 'Autofetched from the IA record — editable here. Up to 2000 characters.' },
       // Grant split — backend keeps `grantProposedSalary` and
       // `grantProposedCapex`, and (2026-09-25) added a third bucket for
       // capacity building. Client caps:
@@ -785,19 +806,21 @@ export const appraisalSchema = {
     // Annexures V & VI — nested lists on the appraisal DTO
     // (`annexureVList`, `annexureVIList`); mapping in
     // apis/industryAssociationAppraisals.js. The backend replaces the whole
-    // list on every PUT, so rows carry no id client-side.
+    // list on every PUT, so rows carry no id client-side. Column names
+    // are camelCase to match `toAnnexureVList` / `fromAnnexureVList` /
+    // `toAnnexureVIList` / `fromAnnexureVIList` in that adapter.
     { n: 12, title: 'Annexure V — Cost & SIDBI Support', desc: 'Item-wise cost of the proposal and the SIDBI support sought against each item.', fields: [
       { name: 'annexure_v', label: 'Cost items', type: 'repeater', serial: true, addLabel: 'Add item',
-        totals: ['total_cost', 'sidbi_support'],
+        totals: ['totalCost', 'sidbiSupport'],
         columns: [
           { name: 'particulars', label: 'Particulars', type: 'text', width: '50%', required: true },
-          { name: 'total_cost', label: 'Total Cost (₹)', type: 'number', required: true, validate: nonNegative },
-          { name: 'sidbi_support', label: 'SIDBI Support (₹)', type: 'number', required: true,
+          { name: 'totalCost', label: 'Total Cost (₹)', type: 'number', required: true, validate: nonNegative },
+          { name: 'sidbiSupport', label: 'SIDBI Support (₹)', type: 'number', required: true,
             validate: (v, row) => {
               const e = nonNegative(v)
               if (e) return e
-              const cost = Number(row.total_cost)
-              if (row.total_cost !== '' && row.total_cost != null && Number.isFinite(cost) && Number(v) > cost) {
+              const cost = Number(row.totalCost)
+              if (row.totalCost !== '' && row.totalCost != null && Number.isFinite(cost) && Number(v) > cost) {
                 return 'Cannot exceed Total Cost'
               }
               return ''
@@ -805,24 +828,25 @@ export const appraisalSchema = {
         ],
         validate: (rows) => {
           if (!Array.isArray(rows) || rows.length === 0) return ''
-          const support = rows.reduce((s, r) => s + (Number(r?.sidbi_support) || 0), 0)
+          const support = rows.reduce((s, r) => s + (Number(r?.sidbiSupport) || 0), 0)
           return support > 1400000 ? 'Total SIDBI support cannot exceed ₹14,00,000' : ''
         } },
     ] },
-    { n: 13, title: 'Annexure VI — Indicative List of Items', desc: 'Items the IA proposes to procure, grouped by section, with the maximum admissible cost.', fields: [
-      { name: 'annexure_vi', label: 'Items', type: 'repeater', layout: 'cards', serial: true, addLabel: 'Add item',
+    { n: 13, title: 'Annexure VI — Indicative List of Items', desc: 'Items the IA proposes to procure, with the maximum admissible cost.', fields: [
+      // Backend schema (verified via OpenAPI 2026-09-27) has ONLY these
+      // four columns: indicativeItem, numbers, make, maximumCost.
+      // Earlier drafts carried `section`, `sectionNote`, `maximumCostUnit`
+      // — none of those exist on the backend DTO (would be silently
+      // dropped by Jackson on save and never hydrate on read). Removed.
+      { name: 'annexure_vi', label: 'Items', type: 'repeater', serial: true, addLabel: 'Add item',
         // Optional — not every proposal procures equipment.
         optional: true,
         columns: [
-          { name: 'section', label: 'Section', type: 'text', span: 6, required: true, placeholder: 'e.g. IT Infrastructure' },
-          { name: 'indicative_item', label: 'Indicative item', type: 'text', span: 6, required: true, placeholder: 'e.g. Desktop computer' },
-          { name: 'numbers', label: 'Numbers', type: 'number', span: 3,
+          { name: 'indicativeItem', label: 'Indicative item', type: 'text', required: true, placeholder: 'e.g. Desktop computer' },
+          { name: 'numbers', label: 'Qty', type: 'number', width: 100,
             validate: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 ? '' : 'Whole number, at least 1') },
-          { name: 'make', label: 'Make', type: 'text', span: 3 },
-          { name: 'maximum_cost', label: 'Maximum cost (₹)', type: 'number', span: 3, validate: nonNegative },
-          { name: 'maximum_cost_unit', label: 'Cost basis', type: 'select', span: 3,
-            options: ['Per unit', 'Lump sum', 'Per month', 'Per year'] },
-          { name: 'section_note', label: 'Section note', type: 'textarea', span: 12, placeholder: 'Optional — conditions or specifications for this section' },
+          { name: 'make', label: 'Make', type: 'text' },
+          { name: 'maximumCost', label: 'Max cost (₹)', type: 'number', validate: nonNegative },
         ] },
     ] },
     { n: 14, title: 'Terms of Assistance', desc: 'List each term or condition of assistance separately.', fields: [

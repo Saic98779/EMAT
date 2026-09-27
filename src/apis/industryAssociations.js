@@ -189,12 +189,11 @@ export function toPayload(v = {}) {
     adverseRemarksAvailable: bool(v.adverse_remarks),
     adverseRemarks: v.adverse_remarks === 'yes' ? str(v.adverse_details) : null,
     webReport: null,
-    // Basis of selection — now free-text. Send as a single-element array
-    // so the existing backend `selectionCriteria: List<String>` column
-    // still round-trips; and mirror it on `selectionCriteriaText` for
-    // whenever backend adds a proper text column.
-    selectionCriteria: str(v.basis_of_selection) ? [str(v.basis_of_selection)] : [],
-    selectionCriteriaText: str(v.basis_of_selection),
+    // Basis of selection — backend flipped this from `List<String>` to
+    // a plain `string` on 2026-09-25 (LATEST_CHANGES_FOR_FRONTEND.md
+    // §3). Send the raw string; column now caps at 2000 chars on the
+    // DB side (frontend schema enforces the same cap).
+    selectionCriteria: str(v.basis_of_selection),
     willingnessComments: str(v.willingness_comments),
     workedWithSidbiBefore: bool(v.worked_before),
     grantProposed: num(v.grant_proposed),
@@ -290,11 +289,13 @@ export function toFormValues(dto = {}) {
     paid_services_details: dto.paidServicesDetails ?? '',
     adverse_remarks: yn(dto.adverseRemarksAvailable),
     adverse_details: dto.adverseRemarks ?? '',
-    // Basis of selection — now a single free-text string. Prefer the new
-    // string column, fall back to joining the legacy checkbox array so
-    // older records still show their selection when reloaded.
-    basis_of_selection: typeof dto.selectionCriteriaText === 'string'
-      ? dto.selectionCriteriaText
+    // Basis of selection — post-migration backend returns a plain
+    // string. Fall back to joining the legacy array shape for records
+    // written before the migration (safe to keep even after the
+    // migration completes since backend won't return the array shape
+    // once the column is a scalar; the array branch just doesn't fire).
+    basis_of_selection: typeof dto.selectionCriteria === 'string'
+      ? dto.selectionCriteria
       : (Array.isArray(dto.selectionCriteria) ? dto.selectionCriteria.filter(Boolean).join(', ') : ''),
     willingness_comments: dto.willingnessComments ?? '',
     worked_before: yn(dto.workedWithSidbiBefore),
@@ -426,11 +427,23 @@ const CURRENT_STAGE_TO_STATUS = {
   IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REJECTED:        { status: 'Rejected (L1)',                    stage: 0 },
   IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REVERTED:        { status: 'Changes Requested',                stage: 0 },
 
-  SUSTAINABILITY_MATRIX_SUBMITTED:                 { status: 'Sustainability · Submitted',       stage: 1 },
+  SUSTAINABILITY_MATRIX_SUBMITTED:                 { status: 'Sustainability · With CE',         stage: 1 },
+  // CE decision sub-stages added by backend 2026-09-27 (ids 22/21/23)
+  // — sustainability now has an individual CE approval affordance
+  // (previously implicit-on-submit).
+  SUSTAINABILITY_MATRIX_APPROVED:                  { status: 'Sustainability · Approved',        stage: 1 },
+  SUSTAINABILITY_MATRIX_REVERTED:                  { status: 'Sustainability · Changes Requested', stage: 1 },
+  SUSTAINABILITY_MATRIX_REJECTED:                  { status: 'Rejected (Sustainability)',        stage: 1 },
 
   ACTION_PLAN_SUBMITTED:                           { status: 'Action Plan · With CE',            stage: 1 },
   CLUSTER_EXPERT_APPROVED:                         { status: 'Detailed Pending',                 stage: 1 },
   CLUSTER_EXPERT_REVERTED:                         { status: 'Changes Requested',                stage: 1 },
+  // Parallel-tracks gate added by backend on 2026-09-27. CE fires this
+  // stageId in the same request as the second-track approval (whichever
+  // track — sustainability or action plan — is approved last). Once
+  // written, both tracks are considered done and the IA can advance to
+  // Detailed Appraisal.
+  SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED: { status: 'Detailed Pending',                 stage: 1 },
 
   DETAILED_APPRAISAL_SUBMITTED:                    { status: 'Final Review (L2)',                stage: 1 },
   DETAILED_APPRAISAL_APPROVAL_BY_SDE:              { status: 'L2 · With CE',                     stage: 1 },
@@ -450,9 +463,13 @@ const CURRENT_STAGE_TO_STATUS = {
 const L1_APPROVED_SUBSTAGES = new Set([
   'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
   'SUSTAINABILITY_MATRIX_SUBMITTED',
+  'SUSTAINABILITY_MATRIX_APPROVED',
+  'SUSTAINABILITY_MATRIX_REVERTED',
+  'SUSTAINABILITY_MATRIX_REJECTED',
   'ACTION_PLAN_SUBMITTED',
   'CLUSTER_EXPERT_APPROVED',
   'CLUSTER_EXPERT_REVERTED',
+  'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED',
   'DETAILED_APPRAISAL_SUBMITTED',
   'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
   'DETAILED_APPRAISAL_REJECTED_BY_SDE',
