@@ -74,7 +74,7 @@ export default function CheckerQueue({ mode = 'checker' } = {}) {
         subtitle={copy.subtitle}
       />
 
-      <QueueTabs value={tab} onChange={setTab} mode={mode} />
+      <QueueTabs value={tab} onChange={setTab} />
 
       {cfg && <QueueBody key={tab} type={tab} cfg={cfg} mode={mode} />}
     </Box>
@@ -82,7 +82,7 @@ export default function CheckerQueue({ mode = 'checker' } = {}) {
 }
 
 // ─── Tab strip ─────────────────────────────────────────────────────────
-function QueueTabs({ value, onChange, mode = 'checker' }) {
+function QueueTabs({ value, onChange }) {
   const theme = useTheme()
   return (
     <Box sx={{ mt: 2, borderBottom: 1, borderColor: alpha(theme.palette.text.primary, 0.08) }}>
@@ -112,7 +112,7 @@ function QueueTabs({ value, onChange, mode = 'checker' }) {
           <Tab
             key={k}
             value={k}
-            label={<TabLabel type={k} label={CONTENT_REVIEW_TYPES[k].label} mode={mode} />}
+            label={<TabLabel type={k} label={CONTENT_REVIEW_TYPES[k].label} />}
           />
         ))}
       </Tabs>
@@ -128,31 +128,19 @@ function QueueTabs({ value, onChange, mode = 'checker' }) {
 // updatedBy) which the pure `apis/contentStatus.js` helper avoids.
 const checkerPendingFilter = (row) => isPendingForChecker(row) || wasResubmitted(row)
 
-// Live pending-count badge. Uses the same list query the queue body uses,
-// so the badge and rows share a cache and update together. `mode` picks
-// between the two pending predicates so Maker + Checker workspaces each
-// show the count that's really theirs.
-const TabLabel = memo(function TabLabel({ type, label, mode = 'checker' }) {
-  const q = useContentList(type)
-  const pred = mode === 'maker' ? isPendingForMaker : checkerPendingFilter
-  const pending = useMemo(() => (q.data || []).filter(pred).length, [q.data, pred])
+// Tab label — icon + name only. The pending-count badge used to live
+// here and drove a `useContentList(type)` call per tab, which fired
+// nine parallel GETs on page mount just to compute badges. We now
+// fetch only the ACTIVE tab's list (see QueueBody) so switching tabs
+// makes exactly one request. Badges intentionally dropped along with
+// the eager fetch — reintroduce with a lightweight `/counts` endpoint
+// if the client wants them back.
+const TabLabel = memo(function TabLabel({ type, label }) {
   const Icon = TYPE_ICON[type]
   return (
     <Stack direction="row" spacing={0.75} alignItems="center">
       {Icon && <Icon sx={{ fontSize: 16 }} />}
       <span>{label}</span>
-      {pending > 0 && (
-        <Chip
-          size="small"
-          label={pending}
-          sx={{
-            height: 18, fontSize: 11, fontWeight: 700, ml: 0.25,
-            bgcolor: (t) => alpha(t.palette.warning.main, 0.16),
-            color: (t) => t.palette.warning.dark,
-            '.MuiChip-label': { px: 0.75 },
-          }}
-        />
-      )}
     </Stack>
   )
 })
@@ -372,7 +360,7 @@ function QueueRow({ cfg, type, row, mode = 'checker' }) {
         </Box>
 
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flexShrink: 0 }}>
-          <StatusPill status={status} />
+          <StatusPill status={status} viewerMode={mode} />
           <ArrowForwardRoundedIcon sx={{ fontSize: 16, color: theme.palette.text.disabled }} />
         </Stack>
       </Stack>

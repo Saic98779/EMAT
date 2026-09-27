@@ -432,6 +432,12 @@ const CURRENT_STAGE_TO_STATUS = {
   ACTION_PLAN_SUBMITTED:                           { status: 'Action Plan · With CE',            stage: 1 },
   CLUSTER_EXPERT_APPROVED:                         { status: 'Detailed Pending',                 stage: 1 },
   CLUSTER_EXPERT_REVERTED:                         { status: 'Changes Requested',                stage: 1 },
+  // Parallel-tracks gate added by backend on 2026-09-27. CE fires this
+  // stageId in the same request as the second-track approval (whichever
+  // track — sustainability or action plan — is approved last). Once
+  // written, both tracks are considered done and the IA can advance to
+  // Detailed Appraisal.
+  SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED: { status: 'Detailed Pending',                 stage: 1 },
 
   DETAILED_APPRAISAL_SUBMITTED:                    { status: 'Final Review (L2)',                stage: 1 },
   DETAILED_APPRAISAL_APPROVAL_BY_SDE:              { status: 'L2 · With CE',                     stage: 1 },
@@ -454,6 +460,7 @@ const L1_APPROVED_SUBSTAGES = new Set([
   'ACTION_PLAN_SUBMITTED',
   'CLUSTER_EXPERT_APPROVED',
   'CLUSTER_EXPERT_REVERTED',
+  'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED',
   'DETAILED_APPRAISAL_SUBMITTED',
   'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
   'DETAILED_APPRAISAL_REJECTED_BY_SDE',

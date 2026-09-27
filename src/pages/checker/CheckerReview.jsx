@@ -98,25 +98,21 @@ export default function CheckerReview({
     if (!confirm || !id) return
     try {
       // Field-selection logic:
-      //   • Maker mode  → sets `makerStatus`. Once backend accepts null
-      //     on the counterpart, we should send `checkerStatus: null` so
-      //     the item lands in Checker's queue as WITH_CHECKER. Today
-      //     (2026-09-26) backend rejects null, so we mirror the maker's
-      //     decision onto checkerStatus — that auto-signs on the
-      //     checker's behalf, which is undesirable but is the least
-      //     surprising fallback until backend ships the null fix.
-      //   • Checker mode → sets `checkerStatus`, preserving whatever
-      //     makerStatus the maker already wrote (or, if nobody wrote
-      //     one because backend still enforces both non-null, mirrors
-      //     the decision onto makerStatus too).
-      let makerStatus, checkerStatus
-      if (mode === 'maker') {
-        makerStatus = confirm.status
-        checkerStatus = dto?.checkerStatus || confirm.status
-      } else {
-        makerStatus = dto?.makerStatus || confirm.status
-        checkerStatus = confirm.status
-      }
+      //   • Maker mode  → writes only `makerStatus`. Preserves whatever
+      //     `checkerStatus` was on the row (null if Checker hasn't
+      //     acted, or their prior decision if they somehow got there
+      //     first). This is what lands the item in Checker's queue as
+      //     WITH_CHECKER after Maker's approve.
+      //   • Checker mode → writes only `checkerStatus`. Preserves
+      //     `makerStatus` — Checker should never overwrite Maker.
+      //
+      // Backend accepts null on the counterpart as of 2026-09-27
+      // (verified live). The earlier mirror workaround auto-approved
+      // on Checker's behalf when Maker acted, which surfaced as "HO
+      // Checker sees Maker's approval as already Approved" — fixed
+      // by not mirroring.
+      const makerStatus   = mode === 'maker'   ? confirm.status : (dto?.makerStatus   ?? null)
+      const checkerStatus = mode === 'checker' ? confirm.status : (dto?.checkerStatus ?? null)
       await patchStatus.mutateAsync({
         path: type,
         id,
@@ -158,7 +154,7 @@ export default function CheckerReview({
         <Alert severity="error">{recordQ.error.message || 'Failed to load record.'}</Alert>
       ) : dto ? (
         <>
-          <ReviewHero dto={dto} cfg={cfg} action={typeof heroAction === 'function' ? heroAction(dto) : heroAction} />
+          <ReviewHero dto={dto} cfg={cfg} mode={mode} action={typeof heroAction === 'function' ? heroAction(dto) : heroAction} />
           {dto.remark && <RemarkBanner status={deriveStatus(dto)} remark={dto.remark} />}
           <Stack spacing={2.5} sx={{ mt: 3 }}>
             {cfg.sections.map((sec) => (
@@ -178,6 +174,7 @@ export default function CheckerReview({
           remarksError={remarksError}
           onDecide={requestDecide}
           busy={patchStatus.isPending}
+          mode={mode}
         />
       )}
 
@@ -209,7 +206,7 @@ export default function CheckerReview({
 // ─── Header ────────────────────────────────────────────────────────────
 // Simple, quiet header: title + label + submitter meta + status pill.
 // No color stripe, no oversized type — the record itself is the content.
-const ReviewHero = memo(function ReviewHero({ dto, cfg, action = null }) {
+const ReviewHero = memo(function ReviewHero({ dto, cfg, mode, action = null }) {
   const theme = useTheme()
   const title = primaryTitle(dto, cfg)
   const currentStatus = dto ? deriveStatus(dto) : null
@@ -245,7 +242,7 @@ const ReviewHero = memo(function ReviewHero({ dto, cfg, action = null }) {
           </Stack>
         </Box>
         <Stack direction="column" spacing={1} alignItems="flex-end" sx={{ flexShrink: 0 }}>
-          <StatusPill status={currentStatus} />
+          <StatusPill status={currentStatus} viewerMode={mode} />
           {action}
         </Stack>
       </Stack>
@@ -488,7 +485,7 @@ function renderValue(field, value, theme) {
 }
 
 // ─── Decision bar ──────────────────────────────────────────────────────
-function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecide, busy }) {
+function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecide, busy, mode }) {
   const theme = useTheme()
   return (
     <Paper
@@ -558,7 +555,7 @@ function DecisionBar({ currentStatus, remarks, setRemarks, remarksError, onDecid
         >
           {remarksError
             ? 'Remarks are required to revert or reject.'
-            : <>Currently <StatusPill status={currentStatus} inline /> — a new decision replaces the previous one.</>}
+            : <>Currently <StatusPill status={currentStatus} viewerMode={mode} inline /> — a new decision replaces the previous one.</>}
         </Typography>
       )}
     </Paper>
@@ -655,9 +652,19 @@ function ConfirmDialog({ open, confirm, remarks, busy, onCancel, onOk }) {
 }
 
 // ─── Status pill (exported for the queue) ───────────────────────────────
-export function StatusPill({ status, inline = false, big = false }) {
+// `viewerMode` personalises the WITH_CHECKER and PENDING labels so each
+// role sees the queue from their own POV:
+//   • 'maker'   — the HO Maker workspace: PENDING → "Awaiting your review";
+//                 WITH_CHECKER → "Sent to HO Checker" (out of your hands)
+//   • 'checker' — the HO Checker workspace: WITH_CHECKER → "Awaiting your
+//                 review"; PENDING → "Awaiting HO Maker" (they haven't
+//                 acted yet, nothing for you to do)
+//   • undefined — third-party views (GT PMU list, Action Plan lists,
+//                 stage cards): stays on neutral role-labelled copy so
+//                 the submitter can see where their record sits.
+export function StatusPill({ status, viewerMode, inline = false, big = false }) {
   const theme = useTheme()
-  const { label, color } = statusVisuals(status, theme)
+  const { label, color } = statusVisuals(status, theme, viewerMode)
   return (
     <Chip
       size={big ? 'medium' : 'small'}
@@ -674,7 +681,7 @@ export function StatusPill({ status, inline = false, big = false }) {
   )
 }
 
-function statusVisuals(status, theme) {
+function statusVisuals(status, theme, viewerMode) {
   // theme may be null when called during initial render to just derive
   // the label (see requestDecide). Use a safe access pattern.
   const t = theme || { palette: { success: {}, error: {}, warning: {}, info: {} } }
@@ -683,12 +690,20 @@ function statusVisuals(status, theme) {
     // callers) and the two new derived values (WITH_CHECKER / PENDING)
     // land here. Kept in one switch so the pill renders the right chip
     // regardless of which one the caller passes.
-    case 'APPROVED':     return { label: 'Approved',        color: t.palette.success }
-    case 'REJECT':       return { label: 'Rejected',        color: t.palette.error }
-    case 'REVERT':       return { label: 'Reverted',        color: t.palette.warning }
-    case 'WITH_CHECKER': return { label: 'With HO Checker', color: t.palette.info }
-    case 'PENDING':      return { label: 'Pending',         color: t.palette.info }
-    default:             return { label: 'Pending',         color: t.palette.info }
+    case 'APPROVED':     return { label: 'Approved', color: t.palette.success }
+    case 'REJECT':       return { label: 'Rejected', color: t.palette.error }
+    case 'REVERT':       return { label: 'Reverted', color: t.palette.warning }
+    case 'WITH_CHECKER': {
+      if (viewerMode === 'checker') return { label: 'Awaiting your review',   color: t.palette.warning }
+      if (viewerMode === 'maker')   return { label: 'Sent to HO Checker',     color: t.palette.info }
+      return                                { label: 'Awaiting HO Checker',   color: t.palette.info }
+    }
+    case 'PENDING': {
+      if (viewerMode === 'maker')   return { label: 'Awaiting your review',   color: t.palette.warning }
+      if (viewerMode === 'checker') return { label: 'Awaiting HO Maker',      color: t.palette.info }
+      return                                { label: 'Awaiting HO Maker',     color: t.palette.info }
+    }
+    default:             return { label: 'Awaiting HO Maker', color: t.palette.info }
   }
 }
 

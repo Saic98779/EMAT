@@ -107,6 +107,9 @@ const STAGE_TEMPLATE = {
   [STAGE.SUSTAINABILITY_MATRIX]: {
     subStages: [
       { label: 'Sustainability Matrix Submission', keys: ['SUSTAINABILITY_MATRIX_SUBMITTED'] },
+      // The composite "both done" key completes this stage in the tracker
+      // too — parallel tracks share a single "both approved" sub-stage.
+      { label: 'Cluster Expert Approval', keys: ['SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED'] },
     ],
     rejectionKeys: [],
     revertKeys: [],
@@ -115,7 +118,12 @@ const STAGE_TEMPLATE = {
   [STAGE.ACTION_PLAN]: {
     subStages: [
       { label: 'Action Plan Submission', keys: ['ACTION_PLAN_SUBMITTED'] },
-      { label: 'Cluster Expert Approval', keys: ['CLUSTER_EXPERT_APPROVED'] },
+      // `CLUSTER_EXPERT_APPROVED` is the legacy single-track approval that
+      // covered both matrix and action plan. `SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED`
+      // is the new parallel-tracks gate CE writes once both tracks are
+      // individually approved. Either satisfies "action plan approved" for
+      // the tracker.
+      { label: 'Cluster Expert Approval', keys: ['CLUSTER_EXPERT_APPROVED', 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED'] },
     ],
     rejectionKeys: [],
     revertKeys:    ['CLUSTER_EXPERT_REVERTED'],
