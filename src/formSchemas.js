@@ -890,50 +890,5 @@ export const appraisalSchema = {
       { name: 'recommendation', label: 'Recommendation', type: 'radio', options: ['Recommended', 'Not Recommended'], span: 6, required: true },
       { name: 'recommendation_remarks', label: 'Remarks', type: 'textarea', span: 12 },
     ] },
-    // Annexure V and VI landed on 2026-09-25 (LATEST_CHANGES_FOR_FRONTEND
-    // §2). Both are repeater-style grids attached to the same appraisal
-    // record; empty list means "no rows recorded", `[]` on save clears
-    // any previous rows. IDs on response are ENC-encrypted and get
-    // regenerated on every non-empty PUT, so we never round-trip them —
-    // FormRenderer's Repeater uses a synthetic `_rid` for React keys.
-    { n: 17, title: 'Annexure V — Cost breakdown', desc: 'Line items with total cost + SIDBI support share. Sorted by S.No. on display.', fields: [
-      { name: 'annexure_v', type: 'repeater', span: 12,
-        label: 'Cost line items', addLabel: 'Add line item',
-        columns: [
-          { name: 'snNo', label: 'S.No.', type: 'number',
-            validate: (v) => (v === '' || v == null ? '' : (Number(v) < 1 ? 'Positive integer' : '')) },
-          { name: 'particulars', label: 'Particulars', type: 'text',
-            placeholder: 'Line item description',
-            validate: (v) => (String(v || '').length > 500 ? 'Keep under 500 characters' : '') },
-          { name: 'totalCost', label: 'Total cost (₹)', type: 'number',
-            validate: (v) => (v === '' || v == null ? '' : (Number(v) < 0 ? 'Cannot be negative' : '')) },
-          { name: 'sidbiSupport', label: 'SIDBI support (₹)', type: 'number',
-            validate: (v) => (v === '' || v == null ? '' : (Number(v) < 0 ? 'Cannot be negative' : '')) },
-        ] },
-    ] },
-    { n: 18, title: 'Annexure VI — Indicative items', desc: 'Per-item breakdown of proposed hard-intervention purchases (make, quantity, ceiling cost).', fields: [
-      { name: 'annexure_vi', type: 'repeater', span: 12,
-        label: 'Indicative items', addLabel: 'Add item',
-        columns: [
-          { name: 'section', label: 'Section', type: 'text',
-            placeholder: 'e.g. Hard Interventions',
-            validate: (v) => (String(v || '').length > 200 ? 'Keep under 200 characters' : '') },
-          { name: 'sectionNote', label: 'Section note', type: 'text',
-            validate: (v) => (String(v || '').length > 500 ? 'Keep under 500 characters' : '') },
-          { name: 'indicativeItem', label: 'Item', type: 'text',
-            validate: (v) => (String(v || '').length > 300 ? 'Keep under 300 characters' : '') },
-          // Backend field name is literally `numbers`, not `number` —
-          // confirmed in the handoff doc §2.
-          { name: 'numbers', label: 'Qty', type: 'number',
-            validate: (v) => (v === '' || v == null ? '' : (Number(v) < 0 || !Number.isInteger(Number(v)) ? 'Non-negative integer' : '')) },
-          { name: 'make', label: 'Make / brand', type: 'text',
-            validate: (v) => (String(v || '').length > 300 ? 'Keep under 300 characters' : '') },
-          { name: 'maximumCost', label: 'Max cost (₹)', type: 'number',
-            validate: (v) => (v === '' || v == null ? '' : (Number(v) < 0 ? 'Cannot be negative' : '')) },
-          { name: 'maximumCostUnit', label: 'Unit', type: 'text',
-            placeholder: 'e.g. each',
-            validate: (v) => (String(v || '').length > 50 ? 'Keep under 50 characters' : '') },
-        ] },
-    ] },
   ]),
 }

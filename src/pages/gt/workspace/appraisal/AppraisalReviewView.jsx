@@ -88,7 +88,7 @@ export default function AppraisalReviewView({
   // HO Maker etc. to see it, so gate on content-presence rather than
   // hiding it outright.
   const CE_SECTION_TITLE = 'Cluster Expert Comments'
-  const ceCommentsFilled = !!String(seed?.cluster_expert_comments || '').trim()
+  const ceCommentsFilled = !!String(values?.cluster_expert_comments || '').trim()
   const sections = useMemo(() => {
     const all = appraisalSchema?.sections || []
     if (viewerRole === REVIEWER_ROLES.CLUSTER_EXPERT) {
