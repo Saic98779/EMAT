@@ -141,8 +141,20 @@ export const makeInPrincipleSchema = ({
         placeholder: 'Line 1, Line 2, Landmark, City, State — PIN',
         rows: 2, max: 500,
         help: 'Enter the complete postal address as it should appear on official correspondence.' },
-      { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true, help: 'Within the selected State' },
-      { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE },
+      // Pincode first — the district is resolved from it via the pincode
+      // master, and a pincode outside the IA's state is rejected. See
+      // PincodeField in FormRenderer.
+      { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE,
+        pincodeLookup: { stateField: 'state', districtField: 'district' },
+        counter: false, max: 6,
+        help: "Must be in the IA's state",
+        validate: (v, values) => values?._pincode_error || '' },
+      { name: 'district', label: 'District', type: 'select', span: 6, required: true,
+        optionsFrom: (v) => {
+          if (Array.isArray(v._pincode_districts) && v._pincode_districts.length) return v._pincode_districts
+          return v._pincode_lookup_failed ? districtsOf(v.state) : []
+        },
+        help: 'Auto-fetched from the pincode' },
     ] },
     { n: 3, title: 'Apex Office Holder Details of IA', fields: [
       { name: '_apex_contact', label: 'Contact', type: 'subheading', span: 12 },

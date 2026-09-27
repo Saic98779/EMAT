@@ -1,4 +1,4 @@
-import { createContext, memo, useCallback, useContext, useDeferredValue, useMemo, useRef, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Box, Card, Grid, Stack, Typography, TextField, MenuItem, InputAdornment,
   ToggleButtonGroup, ToggleButton, Avatar, RadioGroup, FormControlLabel,
@@ -10,6 +10,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import { alpha } from '@mui/material/styles'
 import FileChip from './FileChip'
+import usePincodeLookup from './usePincodeLookup'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -591,9 +592,74 @@ function CoordinatesCapture({ f, changeFor }) {
   )
 }
 
+// Pincode input that resolves the district from the pincode master and
+// checks the pincode belongs to the IA's state. Schema opts in with
+// `pincodeLookup: { stateField, districtField }`. Results land in the form
+// values so the (sync) validators can see them:
+//   _pincode_error          — message when the pincode is outside the state
+//   _pincode_districts      — districts the pincode maps to (district options)
+//   _pincode_lookup_failed  — master unreachable; district falls back to a
+//                             manual pick
+// Read-only fields never write.
+function PincodeField({ f, value, error, ctx, onChange, changeFor }) {
+  const { districtField = 'district' } = f.pincodeLookup
+  const res = usePincodeLookup(ctx?.state, value)
+  const ctxRef = useRef(ctx)
+  ctxRef.current = ctx
+
+  useEffect(() => {
+    if (f.readOnly || res.status === 'loading') return
+    const cur = ctxRef.current || {}
+    const put = (name, next, prev) => {
+      const same = Array.isArray(next) && Array.isArray(prev)
+        ? next.join('|') === prev.join('|')
+        : (next ?? null) === (prev ?? null)
+      if (!same) changeFor(name)(next)
+    }
+    const mismatch = res.status === 'mismatch'
+    const hits = res.status === 'ok' ? res.districts : null
+    const failed = res.status === 'unavailable' || (hits != null && hits.length === 0)
+    put('_pincode_error', mismatch ? `Pincode ${String(value).trim()} is not in ${res.state}` : null, cur.error)
+    put('_pincode_districts', hits && hits.length ? hits : null, cur.districts)
+    put('_pincode_lookup_failed', failed || null, cur.failed)
+    if (mismatch && cur.district) changeFor(districtField)('')
+    if (hits && hits.length) {
+      const keep = hits.find((d) => String(d).toLowerCase() === String(cur.district ?? '').toLowerCase())
+      const next = keep || (hits.length === 1 ? hits[0] : '')
+      if (next !== cur.district) changeFor(districtField)(next)
+    }
+  }, [res, f.readOnly, value, districtField, changeFor])
+
+  const help = res.status === 'loading'
+    ? 'Checking pincode…'
+    : res.status === 'ok' && res.districts.length
+      ? `District auto-filled: ${res.districts.join(' / ')}`
+      : res.status === 'unavailable' || (res.status === 'ok' && !res.districts.length)
+        ? "Couldn't look up this pincode — pick the district manually."
+        : f.help
+  return (
+    <Field f={{ ...f, pincodeLookup: undefined, help }} value={value} error={error}
+      onChange={onChange} changeFor={changeFor} />
+  )
+}
+
+function pincodeCtx(f, values) {
+  const { stateField = 'state', districtField = 'district' } = f.pincodeLookup
+  return {
+    state: values[stateField],
+    district: values[districtField],
+    error: values._pincode_error,
+    districts: values._pincode_districts,
+    failed: values._pincode_lookup_failed,
+  }
+}
+
 // Individual field. Wrapped in memo — receives primitives + stable callbacks
 // so a keystroke on field A won't cause field B to re-render.
 const Field = memo(function Field({ f, value, error, computed, options, verified, onChange, onVerify, changeFor }) {
+  if (f.pincodeLookup) {
+    return <PincodeField f={f} value={value} error={error} ctx={computed} onChange={onChange} changeFor={changeFor} />
+  }
   if (f.type === 'coordinates_capture') {
     return <CoordinatesCapture f={f} changeFor={changeFor} />
   }
@@ -763,7 +829,8 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
   // running length regardless of whether the field is at default or
   // custom cap.
   const effectiveMax = (f.type === 'text' || f.type === 'textarea') ? (f.max ?? 500) : f.max
-  const counter = effectiveMax ? `${String(value ?? '').length} / ${effectiveMax}` : null
+  // `counter: false` frees the helper line for status text (pincode lookup).
+  const counter = effectiveMax && f.counter !== false ? `${String(value ?? '').length} / ${effectiveMax}` : null
   // Native calendar bounds for date inputs. Accepts an ISO string
   // ("YYYY-MM-DD") or the literal "today".
   // NOTE: format in local time — toISOString() would emit UTC, so at IST
@@ -1048,7 +1115,9 @@ const SectionCard = memo(function SectionCard({
                 f={f}
                 value={val}
                 error={fieldError(f, val, values, { showRequired: showAllErrors })}
-                computed={f.type === 'computed' ? compute(f) : undefined}
+                computed={f.type === 'computed'
+                  ? compute(f)
+                  : f.pincodeLookup ? pincodeCtx(f, values) : undefined}
                 options={options}
                 verified={f.otp ? !!values[`${f.name}_verified`] : undefined}
                 onChange={changeFor(f.name)}

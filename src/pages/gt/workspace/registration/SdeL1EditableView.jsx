@@ -284,7 +284,9 @@ function collectFiles(values) {
 function shallowEqual(a, b) {
   if (a === b) return true
   if (!a || !b) return false
-  const ak = Object.keys(a); const bk = Object.keys(b)
+  // `_pincode_*` keys are pincode-lookup bookkeeping, not SDE edits.
+  const own = (o) => Object.keys(o).filter((k) => !k.startsWith('_pincode'))
+  const ak = own(a); const bk = own(b)
   if (ak.length !== bk.length) return false
   for (const k of ak) {
     const av = a[k]; const bv = b[k]
