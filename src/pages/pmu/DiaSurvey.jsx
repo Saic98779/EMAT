@@ -108,7 +108,7 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
         relevanceOfTopic: values.relevance.trim(),
         startDate: values.startDate,
         endDate: values.endDate,
-        sample: values.sample.trim(),
+        sample: Number(String(values.sample ?? '').trim()),
         bulkMessaging: toBackendChannels(values.channels),
         // Keep the existing attachment URL on resubmit unless the user
         // picked a new file — the file-upload step below overwrites it.
@@ -194,10 +194,11 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
           </FieldCell>
           <FieldCell span={12}>
             <RhfTextField
-              name="sample" fullWidth required multiline minRows={2}
-              label="Sample of the Survey"
-              placeholder="Who receives this — audience, filters, sample size…"
-              rules={REQUIRED_TEXT}
+              name="sample" fullWidth required type="number"
+              label="Sample size"
+              placeholder="e.g. 200"
+              inputProps={{ min: 1, step: 1 }}
+              rules={REQUIRED_POSITIVE_INT}
             />
           </FieldCell>
         </FieldRow>
@@ -364,3 +365,13 @@ function EndDateField() {
 
 const REQUIRED_TEXT = { validate: (v) => (String(v || '').trim() ? true : 'Required.') }
 const REQUIRED_DATE = { required: 'Required.' }
+// Backend types `sample` as Integer — validate as a positive whole number.
+const REQUIRED_POSITIVE_INT = {
+  validate: (v) => {
+    const s = String(v ?? '').trim()
+    if (!s) return 'Required.'
+    const n = Number(s)
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return 'Enter a whole number ≥ 1.'
+    return true
+  },
+}
