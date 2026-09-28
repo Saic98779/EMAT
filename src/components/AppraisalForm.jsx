@@ -91,11 +91,13 @@ function schemaFor(role) {
       })),
     }
   }
-  if (role === 'SIDBI_SDE') {
-    // SDE doesn't own any CE-only fields (client UAT — "Cluster Expert's
-    // comments on the Terms of Assistance" is CE-authored, shouldn't
-    // even render on the SDE surface). Drop them entirely, not just
-    // lock, matching the GT flow.
+  if (role === 'SIDBI_SDE' || role === 'SIDBI_HO_CHECKER') {
+    // SDE + HO Checker see the same editable review surface. Neither
+    // owns any CE-only fields (that content stays with the Cluster
+    // Expert). Drop the CE-authored section and any `ceOnly` inputs
+    // entirely, matching the GT flow. Panel-letter upload for HO
+    // Checker happens on a dedicated post-approval screen — not on
+    // the appraisal form itself.
     return {
       ...src,
       sections: src.sections

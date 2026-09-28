@@ -450,9 +450,14 @@ const CURRENT_STAGE_TO_STATUS = {
   DETAILED_APPRAISAL_REJECTED_BY_SDE:              { status: 'Rejected (L2)',                    stage: 1 },
   DETAILED_APPRAISAL_REVERTED_BY_SDE:              { status: 'Changes Requested',                stage: 1 },
   DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED:        { status: 'L2 · With HO Maker',               stage: 1 },
-  DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER:         { status: 'Approved',                         stage: 2 },
-  DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER:         { status: 'Rejected (HO)',                    stage: 1 },
+  DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER:         { status: 'L2 · With HO Checker',             stage: 1 },
+  DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER:         { status: 'Rejected (HO Maker)',              stage: 1 },
   DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER:         { status: 'Changes Requested',                stage: 1 },
+  // HO Checker sub-stages added 2026-09-28 (backend ids 24/25/26).
+  // Sits after HO Maker approval — HO Checker is the final signer.
+  DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER:       { status: 'Approved',                         stage: 2 },
+  DETAILED_APPRAISAL_REJECTED_BY_HO_CHECKER:       { status: 'Rejected (HO Checker)',            stage: 1 },
+  DETAILED_APPRAISAL_REVERTED_BY_HO_CHECKER:       { status: 'Changes Requested',                stage: 1 },
   DETAILED_APPRAISAL_SUBMITTED_BY_PANEL:           { status: 'Panel · Submitted',                stage: 1 },
 
   DOCUMENTATION_OF_IA:                             { status: 'Documentation',                    stage: 2 },
@@ -478,6 +483,9 @@ const L1_APPROVED_SUBSTAGES = new Set([
   'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
   'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
   'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER',
+  'DETAILED_APPRAISAL_REJECTED_BY_HO_CHECKER',
+  'DETAILED_APPRAISAL_REVERTED_BY_HO_CHECKER',
   'DETAILED_APPRAISAL_SUBMITTED_BY_PANEL',
   'DOCUMENTATION_OF_IA',
 ])

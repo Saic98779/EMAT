@@ -956,5 +956,9 @@ export const appraisalSchema = {
       { name: 'recommendation', label: 'Recommendation', type: 'radio', options: ['Recommended', 'Not Recommended'], span: 6, required: true },
       { name: 'recommendation_remarks', label: 'Remarks', type: 'textarea', span: 12 },
     ] },
+    // NOTE: Panel Approval Letter is NOT part of the appraisal form.
+    // HO Checker uploads it on a dedicated post-approval screen — see
+    // `HoCheckerPanelLetterUpload` rendered by AppraisalTab when the
+    // IA is at DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER.
   ]),
 }

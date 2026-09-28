@@ -5,6 +5,7 @@ import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
 import AppraisalForm from '../../../components/AppraisalForm'
 import AppraisalReviewView from './appraisal/AppraisalReviewView'
 import SdeL2ReviewEdit from './appraisal/SdeL2ReviewEdit'
+import HoCheckerPanelLetterUpload from './appraisal/HoCheckerPanelLetterUpload'
 import { STAGE } from '../../../apis/registrationStages'
 import { STATUS } from '../../../apis/workflow'
 import { useAppraisalByRegistration } from '../../../queries'
@@ -104,24 +105,44 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
     )
   }
 
-  // SDE at the L2 decision point owns the Due Diligence block, so route
-  // them into the editable review surface instead of the read-only one.
-  // Every other reviewer (Cluster Expert commenting, HO Maker signing
-  // off) still uses AppraisalReviewView — their sections are read-only
-  // by role and their own contributions ride the sticky decision bar.
+  // SDE at the L2 decision point owns the Due Diligence block, and HO
+  // Checker at the final-sign-off point owns the panel-letter upload,
+  // so both roles get routed into the editable review surface. Every
+  // other reviewer (Cluster Expert commenting, HO Maker signing off)
+  // uses AppraisalReviewView — their sections are read-only by role and
+  // their own contributions ride the sticky decision bar.
   const isSdeAtL2Submit = isReviewer
     && ws.viewerRole === 'SIDBI_SDE'
     && ws.ia?.currentStage === 'DETAILED_APPRAISAL_SUBMITTED'
+  const isHoCheckerAtFinal = isReviewer
+    && ws.viewerRole === 'SIDBI_HO_CHECKER'
+    && ws.ia?.currentStage === 'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER'
+  const useEditableReview = isSdeAtL2Submit || isHoCheckerAtFinal
+
+  // Post-approval panel-letter step for HO Checker. Once HO Checker
+  // approves the L2, currentStage flips to APPROVAL_BY_HO_CHECKER and
+  // `isReviewer` goes false (no more decisions). We keep them on the
+  // Detailed Appraisal tab and swap in a dedicated upload screen so
+  // they can attach the signed panel letter without hunting for a
+  // separate page.
+  const isHoCheckerPanelUpload = ws.viewerRole === 'SIDBI_HO_CHECKER'
+    && ws.ia?.currentStage === 'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER'
 
   return (
     <>
-      {isSdeAtL2Submit ? (
+      {useEditableReview ? (
         <SdeL2ReviewEdit
           iaId={ws.iaId}
           iaName={ws.ia?.name}
           appraisal={appraisal}
           decisions={decisions}
           onDone={(result) => result && setToast(result)}
+        />
+      ) : isHoCheckerPanelUpload ? (
+        <HoCheckerPanelLetterUpload
+          iaId={ws.iaId}
+          iaName={ws.ia?.name}
+          appraisal={appraisal}
         />
       ) : isReviewer ? (
         <AppraisalReviewView

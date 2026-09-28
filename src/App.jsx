@@ -85,7 +85,13 @@ import ContentTypeList from './pages/pmu/ContentTypeList'
 function Protected({ role, children }) {
   const { role: current } = useAuth()
   if (!current) return <Navigate to="/" replace />
-  if (role && current !== role) return <Navigate to={`/${current}`} replace />
+  // `role` accepts either a single role string OR an array of allowed
+  // roles. Kept backward-compatible: existing single-string call sites
+  // (Object.is + array check) keep working unchanged.
+  if (role) {
+    const allowed = Array.isArray(role) ? role : [role]
+    if (!allowed.includes(current)) return <Navigate to={`/${current}`} replace />
+  }
   return children
 }
 
@@ -218,8 +224,10 @@ export default function App() {
         <Route path="/gt/pmu/capacity-building" element={<DenyRawRoles roles={['GT_FIELD_TEAM']} to="/gt"><PmuCapacityBuildingReview /></DenyRawRoles>} />
       </Route>
 
-      {/* SDE — SIDBI appraisal */}
-      <Route element={<Protected role="sde"><AppLayout /></Protected>}>
+      {/* SDE — SIDBI appraisal. HO Checker also enters the SDE workspace
+          for L2 sign-off + panel-letter upload; they keep their own
+          /checker route too. */}
+      <Route element={<Protected role={['sde', 'checker']}><AppLayout /></Protected>}>
         <Route path="/sde" element={<SdeHome />} />
         <Route path="/sde/queue" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_HO_MAKER']}><ApprovalQueue /></DenyRawRoles>} />
         <Route path="/sde/ias" element={<DenyRawRoles roles={['SIDBI_HO_MAKER']}><IndustryAssociations basePath="/sde/ias" /></DenyRawRoles>} />
@@ -270,8 +278,10 @@ export default function App() {
         <Route path="/sde/capacity-building-officials" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoCapacityBuildingReview /></DenyRawRoles>} />
         <Route path="/sde/action-plan" element={<DenyRawRoles roles={['CLUSTER_EXPERT']}><ActionPlan /></DenyRawRoles>} />
         <Route path="/sde/bse/:uuid/ho-review" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><HoBseReview /></DenyRawRoles>} />
-        <Route path="/sde/panel-submissions" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><PanelSubmissionQueue /></DenyRawRoles>} />
-        <Route path="/sde/panel-submissions/:uuid" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE']}><PanelSubmissionUpload /></DenyRawRoles>} />
+        {/* Panel Submissions moved from HO Maker → HO Checker on 2026-09-28.
+            Deny SDE + CE + HO Maker; only HO Checker can access. */}
+        <Route path="/sde/panel-submissions" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE', 'SIDBI_HO_MAKER']}><PanelSubmissionQueue /></DenyRawRoles>} />
+        <Route path="/sde/panel-submissions/:uuid" element={<DenyRawRoles roles={['CLUSTER_EXPERT', 'SIDBI_SDE', 'SIDBI_HO_MAKER']}><PanelSubmissionUpload /></DenyRawRoles>} />
         {/* HO Maker's Content Approvals — reuses the same CheckerQueue
             / CheckerReview shells with mode="maker" so the write-side
             targets makerStatus instead of checkerStatus, and the

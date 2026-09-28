@@ -283,6 +283,12 @@ export function toCreatePayload(values = {}, registrationId = null) {
     // ── Section 16 — Recommendation ──────────────────────────────────────
     recommendation: str(values.recommendation),
     recommendationRemarks: str(values.recommendation_remarks),
+    // Panel Approval Letter (backend column `pennalApprovalLetter`) is
+    // NOT written from this payload — HO Checker uploads it on a
+    // dedicated post-approval screen (HoCheckerPanelLetterUpload) that
+    // PUTs the appraisal with just the filename after the file bytes
+    // upload. Keeping it out of this adapter means SDE / CE / GT saves
+    // can't accidentally null it out.
     // ── Workflow ──────────────────────────────────────────────────────────
     // Same stageId / stageComments contract as the IA registration payload:
     // stamp the destination sub-stage so the backend advances currentStage

@@ -29,9 +29,10 @@ export const DECISION = Object.freeze({
 // Viewer roles that carry decision affordances. Kept as an enum so
 // the UI can render a friendly label without duplicating strings.
 export const REVIEWER_ROLES = Object.freeze({
-  SIDBI_SDE:      'SIDBI_SDE',
-  CLUSTER_EXPERT: 'CLUSTER_EXPERT',
-  SIDBI_HO_MAKER: 'SIDBI_HO_MAKER',
+  SIDBI_SDE:        'SIDBI_SDE',
+  CLUSTER_EXPERT:   'CLUSTER_EXPERT',
+  SIDBI_HO_MAKER:   'SIDBI_HO_MAKER',
+  SIDBI_HO_CHECKER: 'SIDBI_HO_CHECKER',
 })
 
 // Master transition table. Read as:
@@ -97,7 +98,7 @@ const TRANSITIONS = [
     ],
   },
 
-  // ── Detailed Appraisal — HO Maker final call ────────────────────────
+  // ── Detailed Appraisal — HO Maker sign-off ──────────────────────────
   {
     at: 'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
     role: REVIEWER_ROLES.SIDBI_HO_MAKER,
@@ -105,6 +106,22 @@ const TRANSITIONS = [
       { kind: DECISION.APPROVE, to: 'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER', label: 'Approve (HO Maker)' },
       { kind: DECISION.REJECT,  to: 'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER', label: 'Reject' },
       { kind: DECISION.REVERT,  to: 'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER', label: 'Send back for revisions' },
+    ],
+  },
+
+  // ── Detailed Appraisal — HO Checker final call ──────────────────────
+  // Added 2026-09-28 (backend ids 24/25/26). HO Checker sits AFTER HO
+  // Maker approves — final sign-off on the L2 appraisal. They can also
+  // edit the appraisal fields (same routing as SDE) before recording
+  // their decision, and are the ones who upload the panel approval
+  // letter at this step.
+  {
+    at: 'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+    role: REVIEWER_ROLES.SIDBI_HO_CHECKER,
+    decisions: [
+      { kind: DECISION.APPROVE, to: 'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER', label: 'Approve (HO Checker)' },
+      { kind: DECISION.REJECT,  to: 'DETAILED_APPRAISAL_REJECTED_BY_HO_CHECKER', label: 'Reject' },
+      { kind: DECISION.REVERT,  to: 'DETAILED_APPRAISAL_REVERTED_BY_HO_CHECKER', label: 'Send back for revisions' },
     ],
   },
 ]

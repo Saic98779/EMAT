@@ -13,15 +13,21 @@ import { unpackHoDecision } from '../../apis/industryAssociationAppraisals'
 
 const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 
-// Sub-stages HO Maker owns. Drives the filter that decides which IAs
-// land in the approvals table. Currently kept in sync with
-// `src/pages/ho/HoMakerDashboard.jsx#HO_REVIEWABLE_STAGES` — if you add
-// a new sub-stage there, add it here too.
+// Sub-stages HO Maker + HO Checker own. Drives the filter that decides
+// which IAs land in the approvals table. Both roles share this page —
+// each acts at their own sub-stage (Maker at CE_COMMENTS_SUBMITTED,
+// Checker at APPROVAL_BY_HO_MAKER). Keep in sync with
+// `HoMakerDashboard.jsx#HO_REVIEWABLE_STAGES`.
 const HO_REVIEWABLE_STAGES = new Set([
   'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
   'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
   'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
   'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+  // HO Checker sub-stages (2026-09-28) — final signer sees them here
+  // too so they can find IAs post their own decision.
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER',
+  'DETAILED_APPRAISAL_REJECTED_BY_HO_CHECKER',
+  'DETAILED_APPRAISAL_REVERTED_BY_HO_CHECKER',
   'DETAILED_APPRAISAL_SUBMITTED_BY_PANEL',
 ])
 
@@ -36,7 +42,17 @@ export default function HoIaApprovals() {
   const { data: allIas = [], isLoading, isFetching, error, refetch } = useIAs()
   const [q, setQ] = useState('')
 
-  const commented = allIas.filter((i) => HO_REVIEWABLE_STAGES.has(i.currentStage))
+  const commented = allIas
+    .filter((i) => HO_REVIEWABLE_STAGES.has(i.currentStage))
+    // Newest first — prefer updatedAt (most recent activity) then
+    // createdAt, then id as a stable tiebreaker.
+    .slice()
+    .sort((a, b) => {
+      const at = new Date(a?.raw?.updatedAt || a?.raw?.createdAt || 0).getTime()
+      const bt = new Date(b?.raw?.updatedAt || b?.raw?.createdAt || 0).getTime()
+      if (at !== bt) return bt - at
+      return (Number(b?.id) || 0) - (Number(a?.id) || 0)
+    })
 
   const filtered = q.trim()
     ? commented.filter((i) =>
