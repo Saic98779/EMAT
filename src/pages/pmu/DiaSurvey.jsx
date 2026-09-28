@@ -197,8 +197,9 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
           <FieldCell span={12}>
             <RhfTextField
               name="sample" fullWidth required type="number"
-              label="Sample size"
-              placeholder="e.g. 200"
+              label="Sample of the Survey"
+              placeholder="Total number of respondents (e.g. 200)"
+              helperText="Enter the target sample size — a whole number."
               inputProps={{ min: 1, step: 1 }}
               rules={REQUIRED_POSITIVE_INT}
             />

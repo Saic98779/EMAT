@@ -56,8 +56,10 @@ const afterIaCreation = (v, values) => {
 }
 
 const apexNodal = (prefix) => [
-  { name: `${prefix}_name`, label: 'Name', type: 'text', span: 3 },
-  { name: `${prefix}_designation`, label: 'Designation', type: 'text', span: 3 },
+  // Name / designation capped tighter than the FormRenderer default 500
+  // — matches the L1 registration caps.
+  { name: `${prefix}_name`, label: 'Name', type: 'text', span: 3, max: 150 },
+  { name: `${prefix}_designation`, label: 'Designation', type: 'text', span: 3, max: 150 },
   { name: `${prefix}_contact`, label: 'Contact Number', type: 'tel', span: 3 },
   { name: `${prefix}_email`, label: 'Email ID', type: 'email', span: 3 },
 ]
@@ -114,7 +116,7 @@ export const makeInPrincipleSchema = ({
       { name: 'constitution_type', label: 'Constitution', type: 'select', span: 6, required: true,
         options: ['Societies Registration Act 1860', 'Section 8 Company', 'Trust', 'Other'] },
       { name: 'constitution_other', label: 'If Other — specify', type: 'text', span: 6, required: true,
-        showIf: (v) => v.constitution_type === 'Other' },
+        showIf: (v) => v.constitution_type === 'Other', max: 200 },
       { name: 'ia_profit_type', label: 'Type of IA', type: 'select', span: 6, required: true, options: ['For Profit', 'Not for Profit'] },
       { name: 'incorporation_date', label: 'Date of Incorporation', type: 'date', span: 6, required: true,
         maxDate: 'today',
@@ -137,30 +139,63 @@ export const makeInPrincipleSchema = ({
       { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 6, required: true },
     ] },
     { n: 2, title: 'Address of IA', fields: [
-      { name: 'full_address', label: 'Full postal address', type: 'textarea', span: 12, required: true,
-        placeholder: 'Line 1, Line 2, Landmark, City, State — PIN',
-        rows: 2, max: 500,
-        help: 'Enter the complete postal address as it should appear on official correspondence.' },
-      // Pincode first — the district is resolved from it via the pincode
-      // master, and a pincode outside the IA's state is rejected. See
-      // PincodeField in FormRenderer.
-      { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE,
-        pincodeLookup: { stateField: 'state', districtField: 'district' },
-        // min/max 6 stop extra keystrokes and the 500-char default rule.
-        counter: false, min: 6, max: 6,
-        help: "Must be in the IA's state",
-        validate: (v, values) => values?._pincode_error || '' },
+      // District + pincode first so the user can pick + validate the
+      // locality before writing out the address. Full address sits at
+      // the bottom because it's the free-text field they can massage
+      // last once the structured location is confirmed.
+      //
+      // District dropdown is populated from the backend pincode master's
+      // per-state district list — writes into `_pincode_districts` land
+      // from PincodeField's effect (see FormRenderer). One API call per
+      // state, cached forever. Falls back to the static state→districts
+      // map when the master is unreachable.
       { name: 'district', label: 'District', type: 'select', span: 6, required: true,
+        placeholder: 'Select district',
+        // optionsFrom reads two bookkeeping keys PincodeField writes
+        // (`_pincode_districts`, `_pincode_lookup_failed`) — MUST list
+        // them in `dependsOn` so SectionCard re-renders when they land.
+        // Without this the section stays memoised on the initial (empty)
+        // values snapshot and the dropdown appears empty even though the
+        // API returned data.
+        dependsOn: ['_pincode_districts', '_pincode_lookup_failed'],
         optionsFrom: (v) => {
           if (Array.isArray(v._pincode_districts) && v._pincode_districts.length) return v._pincode_districts
           return v._pincode_lookup_failed ? districtsOf(v.state) : []
         },
-        help: 'Auto-fetched from the pincode' },
+        help: 'Pick the district your IA is in' },
+      // Pincode — validated against the selected district via the pincode
+      // master. One API call per unique {state, district} pair (cached).
+      // Mismatch is surfaced as an inline error and blocks submit via
+      // `_pincode_error`. See PincodeField in FormRenderer.
+      // Pincode dropdown — populated from the backend pincode master
+      // once the district is picked. PincodeField (opt-in via
+      // pincodeLookup) fetches /pincodes?state=X&district=Y and writes
+      // the list into `_district_pincodes` for this dropdown to read.
+      // User picks from the list; no manual typing = no invalid state
+      // possible, no after-the-fact validation needed.
+      { name: 'pincode', label: 'Pincode', type: 'select', span: 6, required: true,
+        pincodeLookup: { stateField: 'state', districtField: 'district' },
+        placeholder: 'Select pincode',
+        dependsOn: ['_district_pincodes', 'district'],
+        optionsFrom: (v) => {
+          // District picked but list hasn't landed yet → show a
+          // non-selectable "Loading…" placeholder so the empty dropdown
+          // doesn't feel broken during the ~500ms HTTP fetch.
+          if (v.district && !Array.isArray(v._district_pincodes)) return ['Loading pincodes…']
+          return Array.isArray(v._district_pincodes) ? v._district_pincodes : []
+        },
+        help: 'Pick the pincode — list loads from the selected district' },
+      { name: 'full_address', label: 'Full postal address', type: 'textarea', span: 12, required: true,
+        placeholder: 'Line 1, Line 2, Landmark, City, State — PIN',
+        rows: 2, max: 500,
+        help: 'Enter the complete postal address as it should appear on official correspondence.' },
     ] },
     { n: 3, title: 'Apex Office Holder Details of IA', fields: [
       { name: '_apex_contact', label: 'Contact', type: 'subheading', span: 12 },
-      { name: 'apex_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
-      { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
+      // Name / designation are short single-line inputs — cap tighter
+      // than the FormRenderer default 500.
+      { name: 'apex_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
+      { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
       { name: 'apex_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'apex_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
       // KYC block: doc type + number + upload file all on one row (span 4
@@ -172,6 +207,9 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter document / bill number',
         showIf: (v) => !!v.apex_kyc_doc,
+        // Doc-type validators below enforce exact formats; a 50-char cap
+        // just stops the 500-char default from allowing junk paste.
+        max: 50,
         // Format check keyed on the selected KYC document type. Bills are
         // free-form (no standard numbering) so we skip the check there.
         validate: (v, values) => {
@@ -194,6 +232,7 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_id_number', label: 'ID Proof Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter unique ID number',
         showIf: (v) => !!v.apex_id_proof,
+        max: 50,
         validate: (v, values) => {
           if (v === '' || v == null) return ''
           const t = values?.apex_id_proof
@@ -204,8 +243,9 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_id_file', label: 'Upload ID proof', type: 'file', span: 4, required: true },
     ] },
     { n: 4, title: 'Details of Nodal Contact of IA', fields: [
-      { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
-      { name: 'nodal_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
+      // Name / designation caps — see apex fields.
+      { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
+      { name: 'nodal_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
       { name: 'nodal_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'nodal_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
     ] },

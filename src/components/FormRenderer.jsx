@@ -592,23 +592,26 @@ function CoordinatesCapture({ f, changeFor }) {
   )
 }
 
-// Pincode input that resolves the district from the pincode master and
-// checks the pincode belongs to the IA's state. Schema opts in with
-// `pincodeLookup: { stateField, districtField }`. Results land in the form
-// values so the (sync) validators can see them:
-//   _pincode_error          — message when the pincode is outside the state
-//   _pincode_districts      — districts the pincode maps to (district options)
-//   _pincode_lookup_failed  — master unreachable; district falls back to a
-//                             manual pick
-// Read-only fields never write.
-function PincodeField({ f, value, error, ctx, onChange, changeFor }) {
-  const { districtField = 'district' } = f.pincodeLookup
-  const res = usePincodeLookup(ctx?.state, value)
+// Pincode field driven off the backend pincode master. Schema opts in
+// with `pincodeLookup: { stateField, districtField }`. This component
+// fetches two lists based on the current {state, district} and writes
+// them into the form values as bookkeeping keys other fields read:
+//   _pincode_districts       — the state's districts (District dropdown)
+//   _district_pincodes       — the district's pincodes (Pincode dropdown)
+//   _pincode_lookup_failed   — master unreachable; District dropdown
+//                              falls back to the static state → districts
+//                              map so the user can pick manually
+//
+// The user picks pincode from a dropdown (no manual typing, no
+// after-the-fact validation). One API call when the state resolves and
+// one more when the district is picked; both cached forever.
+function PincodeField({ f, value, error, ctx, options, onChange, changeFor }) {
+  const res = usePincodeLookup(ctx?.state, ctx?.district)
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
 
   useEffect(() => {
-    if (f.readOnly || res.status === 'loading') return
+    if (f.readOnly) return
     const cur = ctxRef.current || {}
     const put = (name, next, prev) => {
       const same = Array.isArray(next) && Array.isArray(prev)
@@ -616,30 +619,24 @@ function PincodeField({ f, value, error, ctx, onChange, changeFor }) {
         : (next ?? null) === (prev ?? null)
       if (!same) changeFor(name)(next)
     }
-    const mismatch = res.status === 'mismatch'
-    const hits = res.status === 'ok' ? res.districts : null
-    const failed = res.status === 'unavailable' || (hits != null && hits.length === 0)
-    put('_pincode_error', mismatch ? `Pincode ${String(value).trim()} is not in ${res.state}` : null, cur.error)
-    put('_pincode_districts', hits && hits.length ? hits : null, cur.districts)
+    const districts = Array.isArray(res.districts) && res.districts.length ? res.districts : null
+    const pincodes = Array.isArray(res.pincodes) && res.pincodes.length ? res.pincodes : null
+    const failed = res.status === 'unavailable'
+    put('_pincode_districts', districts, cur.districts)
+    put('_district_pincodes', pincodes, cur.pincodes)
     put('_pincode_lookup_failed', failed || null, cur.failed)
-    if (mismatch && cur.district) changeFor(districtField)('')
-    if (hits && hits.length) {
-      const keep = hits.find((d) => String(d).toLowerCase() === String(cur.district ?? '').toLowerCase())
-      const next = keep || (hits.length === 1 ? hits[0] : '')
-      if (next !== cur.district) changeFor(districtField)(next)
-    }
-  }, [res, f.readOnly, value, districtField, changeFor])
+  }, [res, f.readOnly, changeFor])
 
   const help = res.status === 'loading'
-    ? 'Checking pincode…'
-    : res.status === 'ok' && res.districts.length
-      ? `District auto-filled: ${res.districts.join(' / ')}`
-      : res.status === 'unavailable' || (res.status === 'ok' && !res.districts.length)
-        ? "Couldn't look up this pincode — pick the district manually."
+    ? 'Loading pincodes…'
+    : res.status === 'unavailable'
+      ? "Couldn't reach the pincode master."
+      : (ctx?.district && Array.isArray(res.pincodes) && res.pincodes.length === 0)
+        ? `No pincodes on record for ${ctx.district}.`
         : f.help
   return (
     <Field f={{ ...f, pincodeLookup: undefined, help }} value={value} error={error}
-      onChange={onChange} changeFor={changeFor} />
+      options={options} onChange={onChange} changeFor={changeFor} />
   )
 }
 
@@ -648,8 +645,8 @@ function pincodeCtx(f, values) {
   return {
     state: values[stateField],
     district: values[districtField],
-    error: values._pincode_error,
     districts: values._pincode_districts,
+    pincodes: values._district_pincodes,
     failed: values._pincode_lookup_failed,
   }
 }
@@ -658,7 +655,7 @@ function pincodeCtx(f, values) {
 // so a keystroke on field A won't cause field B to re-render.
 const Field = memo(function Field({ f, value, error, computed, options, verified, onChange, onVerify, changeFor }) {
   if (f.pincodeLookup) {
-    return <PincodeField f={f} value={value} error={error} ctx={computed} onChange={onChange} changeFor={changeFor} />
+    return <PincodeField f={f} value={value} error={error} ctx={computed} options={options} onChange={onChange} changeFor={changeFor} />
   }
   if (f.type === 'coordinates_capture') {
     return <CoordinatesCapture f={f} changeFor={changeFor} />
