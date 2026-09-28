@@ -91,18 +91,19 @@ function schemaFor(role) {
       })),
     }
   }
-  // Non-CE roles keep the CE fields visible but locked — the terms comment
-  // lives in the Terms of Assistance section, which they do own.
-  const lockCeFields = (sec) => ({
-    ...sec,
-    fields: sec.fields.map((f) => (f.ceOnly ? { ...f, readOnly: true, required: false } : f)),
-  })
   if (role === 'SIDBI_SDE') {
+    // SDE doesn't own any CE-only fields (client UAT — "Cluster Expert's
+    // comments on the Terms of Assistance" is CE-authored, shouldn't
+    // even render on the SDE surface). Drop them entirely, not just
+    // lock, matching the GT flow.
     return {
       ...src,
       sections: src.sections
         .filter((sec) => sec.title !== 'Cluster Expert Comments')
-        .map(lockCeFields),
+        .map((sec) => ({
+          ...sec,
+          fields: sec.fields.filter((f) => !f.ceOnly),
+        })),
     }
   }
   // GT flow — collapse the many tiny autofilled sections (1–6, 8–10) into
