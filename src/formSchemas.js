@@ -886,7 +886,7 @@ export const appraisalSchema = {
         optional: true,
         columns: [
           { name: 'indicativeItem', label: 'Indicative item', type: 'text', required: true, placeholder: 'e.g. Desktop computer' },
-          { name: 'numbers', label: 'Qty', type: 'number', width: 100,
+          { name: 'numbers', label: 'Number', type: 'number', width: 100,
             validate: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 ? '' : 'Whole number, at least 1') },
           { name: 'make', label: 'Make', type: 'text' },
           { name: 'maximumCost', label: 'Max cost (₹)', type: 'number', validate: nonNegative },
