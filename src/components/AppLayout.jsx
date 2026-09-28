@@ -105,7 +105,7 @@ export const NAV = {
   // GT_PMU rides the /gt workspace but only sees the PMU review screens.
   pmu: [
     { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'GT PMU' },
-    { icon: 'inbox', label: 'PMU Queue', path: '/gt/pmu/queue', overline: 'Approvals', title: 'BSE PMU Queue' },
+    { icon: 'inbox', label: 'BSE Onboarding', path: '/gt/pmu/queue', overline: 'Approvals', title: 'BSE Onboarding' },
     { icon: 'doc', label: 'Capacity Building', path: '/gt/pmu/capacity-building', overline: 'Approvals', title: 'Capacity Building (IA Officials) — Event Review' },
     { icon: 'doc', label: 'Action Plan', path: '/gt/action-plans', overline: 'Industry Association', title: 'Action Plan' },
     { icon: 'doc', label: '3C Info-Series', path: '/gt/pmu/list/dia-3c-info-series', overline: 'Content · DIA', title: 'DIA 3C Info-Series' },

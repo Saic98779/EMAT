@@ -58,6 +58,29 @@ export function updateContent(path, id, body) {
   return apiFetch(`/${path}/${encodeURIComponent(id)}`, { method: 'PUT', body })
 }
 
+// PMU resubmit path — PUTs the corrected DTO AND resets both status
+// fields to null so the record re-enters the Maker → Checker queue.
+// Without this second call, a HO Checker revert leaves the row stuck
+// at (APPROVED, REVERT) after GT PMU fixes it — Checker never sees a
+// fresh pending item because status stays REVERT. Backend accepts
+// null on both status fields as of 2026-09-27 (verified live).
+export async function resubmitContent(path, id, body) {
+  const updated = await apiFetch(`/${path}/${encodeURIComponent(id)}`, { method: 'PUT', body })
+  // Fire and forget-ish — if the status reset 400s (e.g., backend
+  // constraint drift) we still keep the PUT's result and surface a
+  // warning via console.
+  try {
+    await apiFetch(`/${path}/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: { makerStatus: null, checkerStatus: null, remark: null },
+    })
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`resubmitContent: status reset failed for ${path}/${id}`, err)
+  }
+  return updated
+}
+
 // POST /bdsp/import — multipart CSV / Excel bulk upload. Each row becomes
 // one BDSP record and rides the same HO Checker approval workflow.
 export async function importBdspRows(file, { signal } = {}) {

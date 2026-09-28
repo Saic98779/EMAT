@@ -4,10 +4,10 @@ import {
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
   CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
-import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, resubmitContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — Latest Developments
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 // Backed by react-hook-form — each field subscribes to its own path in
 // the form store, so typing anywhere never re-renders the other fields.
 
@@ -46,11 +46,11 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
         startDate: values.startDate,
         endDate: values.endDate,
       }
-      if (isEdit) await updateContent(DIA_ENDPOINTS.LATEST_DEV, editId, dto)
+      if (isEdit) await resubmitContent(DIA_ENDPOINTS.LATEST_DEV, editId, dto)
       else await createContent(DIA_ENDPOINTS.LATEST_DEV, dto)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -67,7 +67,7 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
       title={isEdit ? 'Resubmit Latest Developments' : 'Latest Developments'}
       subtitle={isEdit
         ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Add a Latest Developments entry — submits to SIDBI HO Checker for approval.'}
+        : 'Add a Latest Developments entry — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}

@@ -589,7 +589,7 @@ function SectionHeader({ title, description, stepIndex, stepCount }) {
 // so this stays consistent with what FormRenderer renders inline.
 function sectionState(sec, values) {
   const visible = sec.fields.filter((f) => {
-    if (['subheading', 'computed', 'coordinates_capture'].includes(f.type)) return false
+    if (['subheading', 'computed', 'coordinates_capture', 'disclaimer'].includes(f.type)) return false
     if (typeof f.showIf === 'function' && !f.showIf(values)) return false
     return true
   })

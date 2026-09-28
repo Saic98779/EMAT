@@ -56,6 +56,7 @@ import {
   listVendorsDropdown,
 } from './apis/vendors'
 import { listFiles, FILE_STAGE } from './apis/files'
+import { listPincodeStates, listPincodeDistricts } from './apis/pincodes'
 import {
   listVendorDisbursements, getVendorDisbursement,
   updateVendorDisbursement, reviewerUpdateVendorDisbursement,
@@ -344,6 +345,65 @@ export function useRegistrationsByStage(stageId) {
     enabled: stageId != null,
     queryFn: ({ signal }) => listRegistrationsByStage(stageId, { signal }),
   })
+}
+
+// India-wide pincode master fetchers used by any page that needs a
+// state / district picker fed from backend data instead of hardcoded
+// geo constants. Cached forever within the session — the master rarely
+// changes and each list is a few KB.
+const FOREVER = { staleTime: Infinity, gcTime: 24 * 60 * 60 * 1000 }
+
+export function usePincodeStates() {
+  return useQuery({
+    queryKey: ['pincodes', 'states'],
+    queryFn: ({ signal }) => listPincodeStates({ signal }),
+    ...FOREVER,
+  })
+}
+
+export function usePincodeDistricts(state) {
+  return useQuery({
+    queryKey: ['pincodes', 'districts', state || ''],
+    enabled: !!state,
+    queryFn: ({ signal }) => listPincodeDistricts(state, { signal }),
+    ...FOREVER,
+  })
+}
+
+// Parallel fetch of the same by-stage endpoint for several stage ids —
+// returns the de-duplicated union. Used by pages that need "IAs at
+// stage X OR Y OR …" (e.g. the BSE candidate form, which wants any IA
+// past L1 approval regardless of where it sits in the L2 workflow).
+// Shape mirrors useRegistrationsByStage — { data, isLoading, isFetching,
+// error }. `data` is always a plain array; empty when no stages given.
+export function useRegistrationsByStages(stageIds = []) {
+  const ids = Array.isArray(stageIds) ? stageIds.filter((n) => n != null) : []
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: keys.ias.byStage(id),
+      queryFn: ({ signal }) => listRegistrationsByStage(id, { signal }),
+    })),
+  })
+  const data = useMemo(() => {
+    const seen = new Set()
+    const out = []
+    for (const r of results) {
+      for (const ia of unwrapList(r?.data) || []) {
+        const key = ia?.id != null ? String(ia.id) : null
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        out.push(ia)
+      }
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results.map((r) => r?.data).join('|')])
+  return {
+    data,
+    isLoading: results.some((r) => r.isLoading),
+    isFetching: results.some((r) => r.isFetching),
+    error: results.find((r) => r.error)?.error || null,
+  }
 }
 
 // SDE edit / L1 submit — PUT the full IA registration. Backend's PUT

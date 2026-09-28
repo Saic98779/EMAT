@@ -6,10 +6,10 @@ import {
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
   CHAR_LIMITS, capChars,
 } from './_shared'
-import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, resubmitContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — PBSP Onboarding (Panel BDS Provider)
-// GT_PMU raises; SIDBI HO Checker approves. Fields mirror the backend
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off. Fields mirror the backend
 // `CreateBdsServiceProvidersOnboardingRequest` DTO 1:1 (see FIELDS.backend).
 
 const CONSTITUTION_OPTIONS = [
@@ -106,11 +106,11 @@ export default function DiaPbspOnboarding({ editId = null, initialRecord = null 
     setSubmitting(true)
     try {
       const payload = buildPayload(values)
-      if (isEdit) await updateContent(DIA_ENDPOINTS.PBSP, editId, payload)
+      if (isEdit) await resubmitContent(DIA_ENDPOINTS.PBSP, editId, payload)
       else await createContent(DIA_ENDPOINTS.PBSP, payload)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -127,7 +127,7 @@ export default function DiaPbspOnboarding({ editId = null, initialRecord = null 
       title={isEdit ? 'Resubmit PBSP Onboarding' : 'PBSP Onboarding'}
       subtitle={isEdit
         ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Add a Panel BDS Provider — submits to SIDBI HO Checker for approval.'}
+        : 'Add a Panel BDS Provider — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}

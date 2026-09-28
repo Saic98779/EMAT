@@ -682,6 +682,28 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
       </Grid>
     )
   }
+  if (f.type === 'disclaimer') {
+    // Static text footer for a section — italic + muted, rendered as
+    // the last grid item so it sits below all inputs. Used for the
+    // Annexure V / VI legal disclaimers (UAT 2026-09-28 §5.ii/§5.iii).
+    return (
+      <Grid size={12}>
+        <Box sx={{ mt: 1, pt: 1.5, borderTop: '1px dashed', borderColor: 'divider' }}>
+          <Typography
+            sx={{
+              fontSize: 12,
+              fontStyle: 'italic',
+              color: 'text.secondary',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {f.label}
+          </Typography>
+        </Box>
+      </Grid>
+    )
+  }
   if (f.type === 'yesno') {
     return (
       <Grid size={{ xs: 12, sm: f.span || 6 }}>
@@ -990,7 +1012,7 @@ const isFilled = (v) => {
 const isVisible = (f, values) => !f.showIf || f.showIf(values)
 
 function sectionDone(sec, values) {
-  const inputs = sec.fields.filter((f) => !['subheading', 'computed', 'coordinates_capture'].includes(f.type) && isVisible(f, values))
+  const inputs = sec.fields.filter((f) => !['subheading', 'computed', 'coordinates_capture', 'disclaimer'].includes(f.type) && isVisible(f, values))
   if (inputs.length === 0) return false
   const anyFilled = inputs.some((f) => isFilled(values[f.name]))
   const allValid = inputs.every((f) => (!f.required || isFilled(values[f.name])) && !fieldError(f, values[f.name], values))

@@ -277,10 +277,12 @@ export function toCreatePayload(values = {}, registrationId = null) {
     // deliberately don't round-trip `id` on the way up.
     ...(Array.isArray(values.annexure_v) ? { annexureVList: toAnnexureVList(values.annexure_v) } : null),
     ...(Array.isArray(values.annexure_vi) ? { annexureVIList: toAnnexureVIList(values.annexure_vi) } : null),
-    // ── Section 15 — Delegation of Power ─────────────────────────────────
+    // ── Section 14 — Delegation of Power ─────────────────────────────────
     dopDate: toIsoDate(values.dop_date),
+    // UAT 2026-09-28 §1.c.vii — DoP Reference (500 chars).
+    dopReference: str(values.dop_reference),
 
-    // ── Section 16 — Recommendation ──────────────────────────────────────
+    // ── Section 15 — Recommendation ──────────────────────────────────────
     recommendation: str(values.recommendation),
     recommendationRemarks: str(values.recommendation_remarks),
     // Panel Approval Letter (backend column `pennalApprovalLetter`) is
@@ -289,6 +291,19 @@ export function toCreatePayload(values = {}, registrationId = null) {
     // PUTs the appraisal with just the filename after the file bytes
     // upload. Keeping it out of this adapter means SDE / CE / GT saves
     // can't accidentally null it out.
+    //
+    // UAT 2026-09-28 §5.ix — HO Maker's post-HO-Checker committee step
+    // writes `sanctionMarking` (Sanctioned / Rejected / Deferred) and
+    // `committeeComments` (up to 2000 chars). Same rule as
+    // pennalApprovalLetter: only include the keys when the current
+    // form actually holds a value, so upstream saves (SDE / CE / GT)
+    // don't clobber the committee's inputs on re-save.
+    ...(str(values.sanction_marking)
+      ? { sanctionMarking: str(values.sanction_marking) }
+      : null),
+    ...(str(values.committee_comments)
+      ? { committeeComments: str(values.committee_comments) }
+      : null),
     // ── Workflow ──────────────────────────────────────────────────────────
     // Same stageId / stageComments contract as the IA registration payload:
     // stamp the destination sub-stage so the backend advances currentStage
@@ -402,10 +417,16 @@ export function toFormValues(dto = {}) {
     budget_allocated: dto.budgetAllocated ?? '',
     budget_utilized: dto.utilizedAmount ?? '',
     dop_date: (dto.dopDate ?? '').slice(0, 10),
+    dop_reference: dto.dopReference ?? '',
 
     // ── Section 16 — Recommendation ──────────────────────────────────
     recommendation: dto.recommendation ?? '',
     recommendation_remarks: dto.recommendationRemarks ?? '',
+
+    // UAT 2026-09-28 §5.ix — HO Maker's post-HO-Checker committee step.
+    // Read-back so the committee panel can pre-fill on re-open.
+    sanction_marking: dto.sanctionMarking ?? '',
+    committee_comments: dto.committeeComments ?? '',
 
     // ── Annexures V & VI ─────────────────────────────────────────────
     // Backend returns arrays; response ids are ENC-encrypted and are
@@ -510,6 +531,10 @@ export function buildIaSeed(iaDto, branchesList = null) {
     proof_constitution: r.constitutionType === 'Other'
       ? `Other — ${r.constitutionOther ?? ''}`
       : (r.constitutionType ?? ''),
+    // Full postal address (client UAT 2026-09-28) — seed from the
+    // IA registration DTO's `address` (or legacy `fullAddress`) so the
+    // L2 reviewer view actually shows what GT typed on L1.
+    full_address: r.address ?? r.fullAddress ?? '',
     district: r.district ?? '',
     pincode: r.pincode ?? '',
     apex_name: r.apexHolderName ?? '',

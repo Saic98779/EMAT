@@ -5,12 +5,12 @@ import {
   useForm, CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
-  createContent, updateContent, uploadContentAttachments,
+  createContent, updateContent, resubmitContent, uploadContentAttachments,
   toBackendChannels, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — 3C Info-Series
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 
 const CHANNELS = [
   { value: 'Email', label: 'Email' },
@@ -75,7 +75,7 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
         attachment: isEdit ? existingAttachment : null,
       }
       const savedId = isEdit
-        ? (await updateContent(DIA_ENDPOINTS.INFO_SERIES, editId, dto))?.id ?? editId
+        ? (await resubmitContent(DIA_ENDPOINTS.INFO_SERIES, editId, dto))?.id ?? editId
         : (await createContent(DIA_ENDPOINTS.INFO_SERIES, dto))?.id
       if (values.attachment && savedId) {
         try {
@@ -91,7 +91,7 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
       }
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -108,7 +108,7 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
       title={isEdit ? 'Resubmit 3C Info-Series' : '3C Info-Series'}
       subtitle={isEdit
         ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Draft an info-series entry — submits to SIDBI HO Checker for approval.'}
+        : 'Draft an info-series entry — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}

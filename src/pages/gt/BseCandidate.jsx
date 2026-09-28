@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box, Typography, Button, Snackbar, Alert, Chip, Paper, CircularProgress } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
@@ -9,8 +9,33 @@ import { createBseRecommendation } from '../../apis/bseRecommendations'
 import { uploadFilesBatch } from '../../apis/files'
 import { encodeFilename } from '../../fileFieldLabels'
 import { useData } from '../../store'
-import { useUsersByRole } from '../../queries'
+import {
+  useAllStages, usePincodeDistricts, usePincodeStates,
+  useRegistrationsByStages, useUsersByRole,
+} from '../../queries'
 import { formatUser } from '../../apis/users'
+import { stageIdOf } from '../../apis/stageActions'
+
+// Sub-stages an IA can sit at once it's past In-Principle (L1) approval.
+// The BSE proposal form lets GT link the candidate to any post-L1 IA
+// regardless of where it currently sits in the L2 / documentation
+// chain. Backend's /industry-association-registrations/stage/{id}
+// returns IAs at ONE stage at a time, so we fan out for each of these
+// sub-stages in parallel and union the results.
+const BSE_ELIGIBLE_SUBSTAGES = [
+  'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
+  'SUSTAINABILITY_MATRIX_SUBMITTED',
+  'SUSTAINABILITY_MATRIX_APPROVED',
+  'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED',
+  'ACTION_PLAN_SUBMITTED',
+  'CLUSTER_EXPERT_APPROVED',
+  'DETAILED_APPRAISAL_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
+  'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER',
+  'DOCUMENTATION_OF_IA',
+]
 
 // Every File instance picked across all file-typed fields, tagged with the
 // field name so DocUpload can later show which slot each file came from.
@@ -40,26 +65,44 @@ function firstProblem(schema, values) {
 
 export default function BseCandidate() {
   const navigate = useNavigate()
-  const { ias, refreshIAs, addBseCandidate } = useData()
+  const { addBseCandidate } = useData()
   const [values, setValues] = useState({})
   const [toast, setToast] = useState({ severity: '', msg: '' })
   const [busy, setBusy] = useState(false)
   const [showAllErrors, setShowAllErrors] = useState(false)
-  const setValue = useCallback((name, v) => setValues((p) => ({ ...p, [name]: v })), [])
+  const setValue = useCallback((name, v) => setValues((p) => {
+    // Cascade: clear the dependent district whenever state changes so
+    // a stale district (from the old state's list) doesn't ride the
+    // submit if the user hasn't re-picked yet.
+    if (name === 'state' && p.state !== v) return { ...p, state: v, district: '' }
+    return { ...p, [name]: v }
+  }), [])
 
-  // The IA list is loaded lazily by the `/gt/ias` page — refetch here so this
-  // page works when opened directly (deep link / navigation from dashboard).
-  useEffect(() => {
-    const ctrl = new AbortController()
-    refreshIAs({ signal: ctrl.signal })
-    return () => ctrl.abort()
-  }, [refreshIAs])
-
-  // Only IAs whose In-Principle Approval is cleared (stage >= 1) are eligible,
-  // and only records that carry a backend `id` — we can't POST without one.
+  // Only IAs whose In-Principle Approval is cleared (any post-L1 stage)
+  // are eligible for BSE proposal. Backend endpoint 2026-09-28:
+  //   GET /industry-association-registrations/stage/{stageId}
+  // returns IAs currently AT that specific sub-stage; we fan out across
+  // every post-L1 sub-stage and union the results. Much lighter on the
+  // wire than pulling the entire IA list and filtering client-side.
+  const stagesQ = useAllStages()
+  const eligibleStageIds = useMemo(
+    () => BSE_ELIGIBLE_SUBSTAGES
+      .map((key) => stageIdOf(stagesQ.data, key))
+      .filter((n) => n != null),
+    [stagesQ.data],
+  )
+  const iasQ = useRegistrationsByStages(eligibleStageIds)
   const approvedIAs = useMemo(
-    () => ias.filter((i) => (i.stage ?? 0) >= 1 && i.id),
-    [ias],
+    () => (iasQ.data || [])
+      .filter((r) => r && r.id != null)
+      .map((r) => ({
+        id: r.id,
+        name: r.industryAssociationName || String(r.id),
+        state: r.state || '',
+        district: r.district || '',
+        raw: r,
+      })),
+    [iasQ.data],
   )
 
   // "Offer Letter Vendor" dropdown — now sourced from user accounts with role
@@ -75,9 +118,23 @@ export default function BseCandidate() {
     [vendorsQ.data],
   )
 
+  // State / district picker options — backed by the /pincodes master
+  // (client UAT 2026-09-28). One call each, cached forever. District
+  // list refetches when state changes; the cascade in setValue below
+  // clears district when state flips so a stale value can't slip
+  // through.
+  const statesQ = usePincodeStates()
+  const districtsQ = usePincodeDistricts(values.state)
+  const stateOptions = useMemo(() => statesQ.data || [], [statesQ.data])
+  const districtOptions = useMemo(() => districtsQ.data || [], [districtsQ.data])
+
   const schema = useMemo(
-    () => makeBseCandidateSchema(approvedIAs.map((i) => i.name), vendorOptions),
-    [approvedIAs, vendorOptions],
+    () => makeBseCandidateSchema(
+      approvedIAs.map((i) => i.name),
+      vendorOptions,
+      { states: stateOptions, districts: districtOptions },
+    ),
+    [approvedIAs, vendorOptions, stateOptions, districtOptions],
   )
 
   const submit = async () => {

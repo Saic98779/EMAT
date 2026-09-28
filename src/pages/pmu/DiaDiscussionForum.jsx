@@ -8,10 +8,10 @@ import {
   RhfTextField, SHRINK_LABEL, useForm, useWatch, Controller,
   CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
-import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, resubmitContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — Discussion Forum
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 
 const VISIBILITY_OPTIONS = [
   { value: 'global', label: 'Global — open to everyone' },
@@ -62,11 +62,11 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
         endDate: values.endDate,
         globalOrOnlyMembers: values.visibility === 'members' ? 'MEMBERS' : 'GLOBAL',
       }
-      if (isEdit) await updateContent(DIA_ENDPOINTS.FORUM, editId, dto)
+      if (isEdit) await resubmitContent(DIA_ENDPOINTS.FORUM, editId, dto)
       else await createContent(DIA_ENDPOINTS.FORUM, dto)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -83,8 +83,8 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
       title={isEdit ? 'Resubmit Discussion Forum' : 'Discussion Forum'}
       subtitle={isEdit
         ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Open a forum thread — submits to SIDBI HO Checker for approval.'}
-      approvalNote="Once submitted, this thread goes to the SIDBI HO Checker for approval. It becomes visible to participants only after approval."
+        : 'Open a forum thread — submits to SIDBI HO Maker for approval.'}
+      approvalNote="Once submitted, this thread goes to SIDBI HO Maker for approval (HO Checker signs off after). It becomes visible to participants only after approval."
       methods={methods}
       onSubmit={submit}
       onReset={reset}

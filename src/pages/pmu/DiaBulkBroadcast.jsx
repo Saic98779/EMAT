@@ -8,12 +8,12 @@ import {
   CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
-  createContent, updateContent, uploadContentAttachments,
+  createContent, updateContent, resubmitContent, uploadContentAttachments,
   toBackendChannels, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — Bulk Broadcast
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 
 const CHANNELS = [
   { value: 'SMS', label: 'SMS' },
@@ -87,7 +87,7 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
         attachment: isEdit ? existingAttachment : null,
       }
       const savedId = isEdit
-        ? (await updateContent(DIA_ENDPOINTS.BROADCAST, editId, dto))?.id ?? editId
+        ? (await resubmitContent(DIA_ENDPOINTS.BROADCAST, editId, dto))?.id ?? editId
         : (await createContent(DIA_ENDPOINTS.BROADCAST, dto))?.id
       if (values.attachment && savedId) {
         try {
@@ -103,7 +103,7 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
       }
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -120,8 +120,8 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
       title={isEdit ? 'Resubmit Bulk Broadcast' : 'Bulk Broadcast'}
       subtitle={isEdit
         ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Draft a SMS / WhatsApp broadcast — submits to SIDBI HO Checker for approval.'}
-      approvalNote="Once submitted, this broadcast goes to the SIDBI HO Checker for approval. Recipients receive it only after approval."
+        : 'Draft a SMS / WhatsApp broadcast — submits to SIDBI HO Maker for approval.'}
+      approvalNote="Once submitted, this broadcast goes to SIDBI HO Maker for approval (HO Checker signs off after). Recipients receive it only after approval."
       methods={methods}
       onSubmit={submit}
       onReset={reset}

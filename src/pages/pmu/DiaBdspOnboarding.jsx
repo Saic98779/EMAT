@@ -17,11 +17,11 @@ import {
 } from './_shared'
 import { STATES, districtsOf } from '../../geo'
 import {
-  createContent, updateContent, downloadBdspTemplate, importBdspRows, DIA_ENDPOINTS,
+  createContent, updateContent, resubmitContent, downloadBdspTemplate, importBdspRows, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — BDSP Onboarding
-// GT_PMU raises; SIDBI HO Checker approves. Supports CSV import.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off. Supports CSV import.
 
 const IMPORT_ACCEPT = '.csv,.xls,.xlsx'
 const CSV_TEMPLATE_HEADERS = [
@@ -81,11 +81,11 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
         email: values.email.trim(),
         kyc: values.kyc.trim(),
       }
-      if (isEdit) await updateContent(DIA_ENDPOINTS.BDSP, editId, dto)
+      if (isEdit) await resubmitContent(DIA_ENDPOINTS.BDSP, editId, dto)
       else await createContent(DIA_ENDPOINTS.BDSP, dto)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -140,7 +140,7 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
         title={isEdit ? 'Resubmit BDSP Onboarding' : 'BDSP Onboarding'}
         subtitle={isEdit
           ? 'Address the checker\'s remarks and resubmit for re-review.'
-          : 'Add a Business Development Service Provider — submits to SIDBI HO Checker for approval.'}
+          : 'Add a Business Development Service Provider — submits to SIDBI HO Maker for approval.'}
         headerAction={!isEdit && (
           <Button
             variant="outlined" startIcon={<CloudUploadOutlinedIcon />}
@@ -244,7 +244,7 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
         <DialogTitle>Import BDSPs</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Upload a CSV or Excel file. Each row becomes one BDSP entry and is sent to the SIDBI HO Checker for approval individually.
+            Upload a CSV or Excel file. Each row becomes one BDSP entry and is sent to SIDBI HO Maker for approval (HO Checker signs off after) individually.
           </DialogContentText>
           <Alert severity="info" sx={{ mb: 2 }}>
             Columns expected (in order): {CSV_TEMPLATE_HEADERS.join(', ')}

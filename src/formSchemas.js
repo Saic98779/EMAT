@@ -64,28 +64,27 @@ const apexNodal = (prefix) => [
   { name: `${prefix}_email`, label: 'Email ID', type: 'email', span: 3 },
 ]
 
-// Appraisal-only identity — sections 1–6 pulled autofetched from the parent
-// IA registration. Sections 1–4 are strictly read-only (spec says
-// "Autofetched from In-Principle approval format"). Sections 5–6 are seeded
-// but modifiable ("Subject to Approval by Reporting Officer").
+// Appraisal-only identity — sections 1–3 pulled autofetched from the parent
+// IA registration. Section 1 (IA snapshot) is strictly read-only — it groups
+// the single-field blocks (State, IA name, Constitution, Address) that used
+// to be their own sections. Sections 2–3 are seeded but modifiable
+// ("Subject to Approval by Reporting Officer").
 const identity = [
-  { n: 1, title: 'State', fields: [
-    { name: 'state', label: 'State', type: 'text', span: 4, readOnly: true, help: 'Auto-fetched from In-Principle registration' },
-  ] },
-  { n: 2, title: 'Industry Association (IA)', fields: [
-    { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 8, readOnly: true },
-  ] },
-  { n: 3, title: 'Constitution of IA', fields: [
+  { n: 1, title: 'IA Snapshot', desc: 'Autofetched from In-Principle registration — read-only.', fields: [
+    { name: '_snap_location', label: 'Location', type: 'subheading', span: 12 },
+    { name: 'state', label: 'State', type: 'text', span: 4, readOnly: true },
+    { name: 'district', label: 'District', type: 'text', span: 4, readOnly: true },
+    { name: 'pincode', label: 'Pincode', type: 'text', span: 4, readOnly: true },
+    { name: 'full_address', label: 'Full postal address', type: 'textarea', span: 12, readOnly: true },
+    { name: '_snap_ia', label: 'Industry Association', type: 'subheading', span: 12 },
+    { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 12, readOnly: true },
+    { name: '_snap_constitution', label: 'Constitution of IA', type: 'subheading', span: 12 },
     { name: 'year_incorp', label: 'Year of Incorporation', type: 'number', span: 3, readOnly: true },
     { name: 'ia_profit_type', label: 'Type of IA', type: 'text', span: 4, readOnly: true },
     { name: 'proof_constitution', label: 'Proof of Constitution', type: 'text', span: 5, readOnly: true },
   ] },
-  { n: 4, title: 'Address of IA', fields: [
-    { name: 'district', label: 'District', type: 'text', span: 4, readOnly: true },
-    { name: 'pincode', label: 'Pincode', type: 'text', span: 3, readOnly: true },
-  ] },
-  { n: 5, title: 'Apex Office Holder Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('apex') },
-  { n: 6, title: 'Nodal Person Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('nodal') },
+  { n: 2, title: 'Apex Office Holder Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('apex') },
+  { n: 3, title: 'Nodal Person Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('nodal') },
 ]
 
 // ── In-Principle Approval (GT capture, first level) — full validated format ──
@@ -357,12 +356,26 @@ export const makeInPrincipleSchema = ({
 //                     GET /vendors/dropdown. The picked UUID is sent as
 //                     `vendorUuid` on the create payload — that's the vendor
 //                     who will mail the offer letter after final approval.
-export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = []) => ({
+// `geo` — backend-driven state/district dropdowns from /pincodes master
+// (UAT 2026-09-28). Falls back to the static STATES/districtsOf map when
+// the master hasn't loaded (caller supplies empty arrays before the query
+// resolves).
+export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = [], geo = {}) => ({
   key: 'bse-candidate',
   sections: [
     { n: 1, title: 'Location & Industry Association', fields: [
-      { name: 'state', label: 'State', type: 'select', options: STATES, span: 6, required: true },
-      { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true },
+      { name: 'state', label: 'State', type: 'select',
+        options: (Array.isArray(geo.states) && geo.states.length) ? geo.states : STATES,
+        span: 6, required: true },
+      { name: 'district', label: 'District', type: 'select', span: 6, required: true,
+        // Backend list once state is picked; static fallback if the API
+        // hasn't landed. `dependsOn: ['state']` forces SectionCard to
+        // re-render when the state changes so the list refreshes.
+        dependsOn: ['state'],
+        optionsFrom: (v) => {
+          if (Array.isArray(geo.districts) && geo.districts.length) return geo.districts
+          return districtsOf(v.state)
+        } },
       { name: 'ia_name', label: 'Name of Association (BSE Proposed For)', type: 'select',
         options: approvedIAs.length ? approvedIAs : ['No In-Principle approved IA available'],
         span: 12, required: true },
@@ -453,7 +466,8 @@ export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = []) => 
     { n: 7, title: 'GT Field Manager Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation Status', type: 'radio',
         options: ['Recommended', 'Not Recommended'], span: 6, required: true },
-      { name: 'recommendation_date', label: 'Recommendation Date', type: 'date', span: 6, required: true },
+      // UAT 2026-09-28 — future dates disallowed on BSE onboarding.
+      { name: 'recommendation_date', label: 'Recommendation Date', type: 'date', span: 6, required: true, maxDate: 'today' },
     ] },
   ],
 })
@@ -660,7 +674,7 @@ export const appraisalSchema = {
   key: 'appraisal',
   sections: requireAllInputs([
     ...identity,
-    { n: 7, title: 'Comments on Due Diligence', fields: [
+    { n: 4, title: 'Comments on Due Diligence', fields: [
       { name: '_dd_ia', label: 'Due Diligence of IA', type: 'subheading', span: 12 },
       { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
       { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
@@ -729,10 +743,10 @@ export const appraisalSchema = {
       { name: 'owner_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.owner_smart_verified === 'yes', validate: afterIaCreation },
       { name: 'owner_smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.owner_smart_verified === 'yes' },
     ] },
-    { n: 8, title: 'Nearest SIDBI Branch Office', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
+    { n: 5, title: 'Nearest SIDBI Branch Office', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
       { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'text', span: 6 },
     ] },
-    { n: 9, title: 'Cluster / District Details', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
+    { n: 6, title: 'Cluster / District Details', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
       { name: 'cluster_mapped', label: 'Mapped with an identified cluster?', type: 'yesno', span: 3 },
       // Only surfaces (and only counts as required) when cluster_mapped === 'yes'.
       // Without the showIf, `requireAllInputs` above would keep the field
@@ -742,7 +756,7 @@ export const appraisalSchema = {
       { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 4 },
       { name: 'msme_count', label: 'MSMEs (without traders) in district', type: 'number', span: 4 },
     ] },
-    { n: 10, title: 'Existing Infra Details', desc: 'Autofetched and modifiable', fields: [
+    { n: 7, title: 'Existing Infra Details', desc: 'Autofetched and modifiable', fields: [
       { name: 'members_gt200', label: 'Active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 6 },
       { name: 'active_members', label: 'No. of active members in IA', type: 'number', span: 3 },
       { name: 'members_justification', label: 'Justification if active member base is less than 200', type: 'textarea', span: 12,
@@ -767,7 +781,7 @@ export const appraisalSchema = {
       { name: 'major_sources_of_income', label: 'Major sources of income', type: 'textarea', span: 12 },
       { name: 'activities_last_year', label: 'List of activities done in the last year', type: 'textarea', span: 12 },
     ] },
-    { n: 11, title: 'DIA Specific Details', fields: [
+    { n: 8, title: 'DIA Specific Details', fields: [
       { name: 'ready_formalization', label: "IA's readiness to undertake the formalization process", type: 'textarea', span: 12, max: 500 },
       { name: 'ready_referral_yn', label: "IA's readiness to enter referral arrangement with SIDBI", type: 'yesno', span: 4 },
       { name: 'ready_referral', label: 'Remarks — referral arrangement', type: 'textarea', span: 8, max: 500 },
@@ -841,7 +855,9 @@ export const appraisalSchema = {
           if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
           return grantSumProblem(values)
         } },
-      { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, help: 'Autofetched — modifiable' },
+      // UAT 2026-09-28 §1.c.ii — Grant Details expanded to 4000 chars on L2
+      // so HO Maker / Checker can lay out the full sanction narrative.
+      { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, rows: 4, max: 4000, help: 'Autofetched — modifiable' },
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12, max: 500 },
@@ -852,7 +868,11 @@ export const appraisalSchema = {
     // list on every PUT, so rows carry no id client-side. Column names
     // are camelCase to match `toAnnexureVList` / `fromAnnexureVList` /
     // `toAnnexureVIList` / `fromAnnexureVIList` in that adapter.
-    { n: 12, title: 'Annexure V — Cost & SIDBI Support', desc: 'Item-wise cost of the proposal and the SIDBI support sought against each item.', fields: [
+    // UAT 2026-09-28 §1.c.iii — Annexure V renamed to
+    // "Tentative Capacity building program details" with a mandatory
+    // disclaimer rendered below the table (italic muted text via the
+    // `disclaimer` field type in FormRenderer).
+    { n: 9, title: 'Annexure V — Tentative Capacity building program details', desc: 'Item-wise cost of the proposal and the SIDBI support sought against each item.', fields: [
       { name: 'annexure_v', label: 'Cost items', type: 'repeater', serial: true, addLabel: 'Add item',
         totals: ['totalCost', 'sidbiSupport'],
         columns: [
@@ -874,8 +894,12 @@ export const appraisalSchema = {
           const support = rows.reduce((s, r) => s + (Number(r?.sidbiSupport) || 0), 0)
           return support > 1400000 ? 'Total SIDBI support cannot exceed ₹14,00,000' : ''
         } },
+      { name: 'annexure_v_note', type: 'disclaimer',
+        label: '* The above items are only indicative in nature and cost arrived as per the reasonable market pricing. Based on the specific hardware requirements of the IA as identified by PMA/SDE, need based changes in items / costs may be considered within the overall budget envisaged for such hard interventions per IAs.' },
     ] },
-    { n: 13, title: 'Annexure VI — Indicative List of Items', desc: 'Items the IA proposes to procure, with the maximum admissible cost.', fields: [
+    // UAT 2026-09-28 §1.c.iv — Annexure VI renamed to
+    // "Capital Expenditure Details" with its own disclaimer below.
+    { n: 10, title: 'Annexure VI — Capital Expenditure Details', desc: 'Items the IA proposes to procure, with the maximum admissible cost.', fields: [
       // Backend schema (verified via OpenAPI 2026-09-27) has ONLY these
       // four columns: indicativeItem, numbers, make, maximumCost.
       // Earlier drafts carried `section`, `sectionNote`, `maximumCostUnit`
@@ -891,8 +915,10 @@ export const appraisalSchema = {
           { name: 'make', label: 'Make', type: 'text' },
           { name: 'maximumCost', label: 'Max cost (₹)', type: 'number', validate: nonNegative },
         ] },
+      { name: 'annexure_vi_note', type: 'disclaimer',
+        label: '* The above items are only indicative in nature and cost arrived as per the reasonable market pricing. Based on the specific hardware requirements of the IA as identified by PMA/SDE/CE. Based on Need Assessment Report, need based changes in items / costs may be considered within the overall budget envisaged for such hard interventions per IAs. The Payment will be made on actual basis on submission of invoices.' },
     ] },
-    { n: 14, title: 'Terms of Assistance', desc: 'List each term or condition of assistance separately.', fields: [
+    { n: 11, title: 'Terms of Assistance', desc: 'List each term or condition of assistance separately.', fields: [
       // One text box per term — maps 1:1 to `termsAndConditions`
       // (List<String>) on the appraisal DTO.
       { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'repeater',
@@ -907,7 +933,7 @@ export const appraisalSchema = {
       // Cluster Expert Comments section.
       { name: 'cluster_expert_terms_comments', label: "Cluster Expert's comments on the Terms of Assistance", type: 'textarea', span: 12, rows: 3, ceOnly: true, optional: true },
     ] },
-    { n: 15, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
+    { n: 12, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
       // Mandatory for the Cluster Expert — it is the one thing that role is
       // asked to contribute. `required` is safe to keep on the shared schema
       // because GT/SDE variants filter this whole section out (see
@@ -916,7 +942,7 @@ export const appraisalSchema = {
       // 500-char default the FormRenderer applies to free text.
       { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4, required: true, max: 2000 },
     ] },
-    { n: 16, title: 'Budget', fields: [
+    { n: 13, title: 'Budget', fields: [
       // Backend stores this as a LocalDate; we key each option on the
       // April-1 start-date so it round-trips cleanly.
       { name: 'financial_year', label: 'Financial Year', type: 'select', span: 3,
@@ -949,10 +975,14 @@ export const appraisalSchema = {
           return Math.max(0, a - u)
         } },
     ] },
-    { n: 17, title: 'Delegation of Power', fields: [
+    { n: 14, title: 'Delegation of Power', fields: [
       { name: 'dop_date', label: 'DoP date (as per extant PDIV DoP)', type: 'date', span: 6 },
+      // UAT 2026-09-28 §1.c.vii — free-text reference note capped at 500 chars.
+      { name: 'dop_reference', label: 'DoP Reference', type: 'textarea', span: 12, rows: 2, max: 500,
+        placeholder: 'e.g. Extant PDIV DoP dated 12-Aug-2025, para 4.3 (a)',
+        help: 'Reference to the extant PDIV DoP under which this proposal is being placed.' },
     ] },
-    { n: 18, title: 'Recommendation', fields: [
+    { n: 15, title: 'Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation', type: 'radio', options: ['Recommended', 'Not Recommended'], span: 6, required: true },
       { name: 'recommendation_remarks', label: 'Remarks', type: 'textarea', span: 12 },
     ] },

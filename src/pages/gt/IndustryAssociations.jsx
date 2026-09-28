@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -15,6 +15,7 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
+import StatusFilterBar from '../../components/StatusFilterBar'
 import { deleteIndustryAssociation } from '../../apis/industryAssociations'
 import { useIAs, useBranchesByStates, keys } from '../../queries'
 import { useAuth } from '../../auth'
@@ -37,6 +38,54 @@ const CE_ACTIONABLE_STAGES = new Set([
   'ACTION_PLAN_SUBMITTED',                // CE approve/revert on the action plan
   'DETAILED_APPRAISAL_APPROVAL_BY_SDE',   // CE comments before HO Maker
 ])
+
+// Life-cycle buckets for the shared IA list page. Each bucket matches
+// on the record's `currentStage` (backend enum) — cheaper + more
+// accurate than pattern-matching the display `status` string. Keep the
+// order aligned with the actual workflow so the filter reads like a
+// timeline (Draft → L1 → Matrix → Action Plan → L2 → Approved).
+const IA_STATUS_FILTERS = [
+  { key: 'all',        label: 'All',                tone: 'default' },
+  { key: 'eligibility',label: 'Eligibility',        tone: 'info',    stages: new Set(['ELIGIBILITY_MATRIX']) },
+  { key: 'l1',         label: 'In-Principle (L1)',  tone: 'info',    stages: new Set([
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SUBMITTED',
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
+  ]) },
+  { key: 'sustain',    label: 'Sustainability',     tone: 'info',    stages: new Set([
+    'SUSTAINABILITY_MATRIX_SUBMITTED',
+    'SUSTAINABILITY_MATRIX_APPROVED',
+  ]) },
+  { key: 'action_plan',label: 'Action Plan',        tone: 'info',    stages: new Set([
+    'ACTION_PLAN_SUBMITTED',
+    'CLUSTER_EXPERT_APPROVED',
+    'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED',
+  ]) },
+  { key: 'l2',         label: 'Detailed Appraisal', tone: 'info',    stages: new Set([
+    'DETAILED_APPRAISAL_SUBMITTED',
+    'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
+    'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
+    'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  ]) },
+  { key: 'approved',   label: 'Approved',           tone: 'success', stages: new Set([
+    'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER',
+    'DOCUMENTATION_OF_IA',
+  ]) },
+  { key: 'reverted',   label: 'Reverted',           tone: 'warning', stages: new Set([
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REVERTED',
+    'SUSTAINABILITY_MATRIX_REVERTED',
+    'CLUSTER_EXPERT_REVERTED',
+    'DETAILED_APPRAISAL_REVERTED_BY_SDE',
+    'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+    'DETAILED_APPRAISAL_REVERTED_BY_HO_CHECKER',
+  ]) },
+  { key: 'rejected',   label: 'Rejected',           tone: 'error',   stages: new Set([
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REJECTED',
+    'SUSTAINABILITY_MATRIX_REJECTED',
+    'DETAILED_APPRAISAL_REJECTED_BY_SDE',
+    'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+    'DETAILED_APPRAISAL_REJECTED_BY_HO_CHECKER',
+  ]) },
+]
 
 // Timestamp used to sort the list — accept either `raw.createdAt` (backend
 // primary source) or `raw.updatedAt` as a fallback. Returns 0 when parsing
@@ -227,6 +276,20 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const [confirm, setConfirm] = useState(null) // IA pending soft-delete
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState({ severity: '', msg: '' })
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  // Per-bucket counts drive the badges on each filter pill. Computed off
+  // the already-role-filtered `ias` list so numbers reflect what the
+  // user is actually allowed to see.
+  const statusCounts = useMemo(() => {
+    const out = {}
+    for (const f of IA_STATUS_FILTERS) {
+      out[f.key] = f.stages ? ias.filter((i) => f.stages.has(i.currentStage)).length : ias.length
+    }
+    return out
+  }, [ias])
+  const activeStatus = IA_STATUS_FILTERS.find((f) => f.key === statusFilter) || IA_STATUS_FILTERS[0]
+  const iasVisible = activeStatus.stages ? ias.filter((i) => activeStatus.stages.has(i.currentStage)) : ias
 
   const doDelete = async () => {
     if (!confirm?.id) return
@@ -253,7 +316,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
         subtitle={
           initialLoading
             ? 'Loading…'
-            : `${ias.length} association${ias.length === 1 ? '' : 's'} across the appraisal pipeline`
+            : `${iasVisible.length} of ${ias.length} association${ias.length === 1 ? '' : 's'} shown`
         }
         action={
           <Stack direction="row" spacing={1}>
@@ -313,6 +376,13 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
           <CircularProgress />
         </Box>
       ) : (
+      <>
+      <StatusFilterBar
+        label="Filter"
+        value={statusFilter}
+        onChange={setStatusFilter}
+        filters={IA_STATUS_FILTERS.map((f) => ({ key: f.key, label: f.label, tone: f.tone, count: statusCounts[f.key] }))}
+      />
       <Card>
         <Table sx={{ '& tbody tr:last-of-type td': { border: 0 } }}>
           <TableHead>
@@ -324,17 +394,20 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {!iasLoading && ias.length === 0 && !iasError && (
+            {!iasLoading && iasVisible.length === 0 && !iasError && (
               <TableRow>
                 <TableCell colSpan={4} align="center" sx={{ py: 6 }}>
                   <Typography color="text.secondary">
-                    No Industry Associations yet.
-                    {canInitiate && ' Click “In-Principle Approval” to add the first one.'}
+                    {ias.length === 0
+                      ? (canInitiate
+                          ? 'No Industry Associations yet. Click “In-Principle Approval” to add the first one.'
+                          : 'No Industry Associations yet.')
+                      : `Nothing matches “${activeStatus.label}”. Pick another filter to widen the view.`}
                   </Typography>
                 </TableCell>
               </TableRow>
             )}
-            {ias.map((ia) => (
+            {iasVisible.map((ia) => (
               <TableRow key={ia.id} hover onClick={() => navigate(`${basePath}/${ia.id}`)} sx={{ cursor: 'pointer' }}>
                 <TableCell>
                   <Typography fontWeight={700} fontSize="0.95rem">{ia.name}</Typography>
@@ -365,6 +438,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
           </TableBody>
         </Table>
       </Card>
+      </>
       )}
 
       <Dialog

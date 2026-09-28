@@ -91,13 +91,13 @@ function schemaFor(role) {
       })),
     }
   }
-  if (role === 'SIDBI_SDE' || role === 'SIDBI_HO_CHECKER') {
-    // SDE + HO Checker see the same editable review surface. Neither
-    // owns any CE-only fields (that content stays with the Cluster
-    // Expert). Drop the CE-authored section and any `ceOnly` inputs
-    // entirely, matching the GT flow. Panel-letter upload for HO
-    // Checker happens on a dedicated post-approval screen — not on
-    // the appraisal form itself.
+  if (role === 'SIDBI_SDE' || role === 'SIDBI_HO_MAKER' || role === 'SIDBI_HO_CHECKER') {
+    // SDE, HO Maker, and HO Checker share the editable review surface.
+    // None of them own CE-only fields (that content stays with the
+    // Cluster Expert). Drop the CE-authored section and any `ceOnly`
+    // inputs entirely, matching the GT flow. Panel-letter upload for
+    // HO Checker happens on a dedicated post-approval screen — not
+    // on the appraisal form itself.
     return {
       ...src,
       sections: src.sections
@@ -112,15 +112,22 @@ function schemaFor(role) {
   // two consolidated sections so the stepper isn't a wall of green dots
   // each hiding a couple of read-only fields. Also drop any Cluster
   // Expert fields entirely (not just lock them) — GT shouldn't even see
-  // an empty CE remarks box tucked into their Terms section.
+  // an empty CE remarks box tucked into their Terms section. Client
+  // UAT 2026-09-28 §5.v — Sanction & Recommendation (Budget,
+  // Delegation of Power, Recommendation) are SDE-owned; hide from GT
+  // entirely.
+  const GT_HIDDEN_TITLES = new Set([
+    'Cluster Expert Comments',
+    'Comments on Due Diligence',
+    'Budget',
+    'Delegation of Power',
+    'Recommendation',
+  ])
   return {
     ...src,
     sections: consolidateForGt(
       src.sections
-        .filter((sec) =>
-          sec.title !== 'Cluster Expert Comments' &&
-          sec.title !== 'Comments on Due Diligence',
-        )
+        .filter((sec) => !GT_HIDDEN_TITLES.has(sec.title))
         .map((sec) => ({
           ...sec,
           fields: sec.fields
