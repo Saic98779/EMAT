@@ -523,21 +523,39 @@ export function RhfTextField({
   name, rules, defaultValue = '', helperText, ...rest
 }) {
   const { control } = useFormContext()
+  // Derive a `{used} / {max}` counter from inputProps.maxLength so DIA
+  // forms show the same running-length hint IA forms already do via
+  // FormRenderer. Opt out per-field with `counter={false}`. Error text
+  // beats counter; explicit `helperText` still wins over the counter
+  // when the field is idle.
+  const max = rest?.inputProps?.maxLength
+  const counterEnabled = rest?.counter !== false && Number.isFinite(max)
+  // Strip the local prop so it doesn't reach the DOM.
+  const { counter, ...cleanRest } = rest || {}
+  void counter
   return (
     <Controller
       name={name}
       control={control}
       rules={rules}
       defaultValue={defaultValue}
-      render={({ field, fieldState }) => (
-        <FormTextField
-          {...rest}
-          {...field}
-          value={field.value ?? ''}
-          error={!!fieldState.error}
-          helperText={fieldState.error?.message || helperText}
-        />
-      )}
+      render={({ field, fieldState }) => {
+        const value = field.value ?? ''
+        const counterText = counterEnabled ? `${String(value).length} / ${max}` : null
+        const helper = fieldState.error?.message
+          || helperText
+          || counterText
+          || undefined
+        return (
+          <FormTextField
+            {...cleanRest}
+            {...field}
+            value={value}
+            error={!!fieldState.error}
+            helperText={helper}
+          />
+        )
+      }}
     />
   )
 }

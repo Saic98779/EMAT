@@ -169,8 +169,8 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
               <RhfTextField
                 name="rationale" fullWidth required multiline minRows={2}
                 label="Rationale for onboarding BDSP"
-                rules={requiredText(CHAR_LIMITS.LONG)}
-                inputProps={capChars(CHAR_LIMITS.LONG)}
+                rules={requiredText(CHAR_LIMITS.MEDIUM)}
+                inputProps={capChars(CHAR_LIMITS.MEDIUM)}
               />
             </FieldCell>
             <FieldCell>

@@ -179,8 +179,8 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
@@ -287,12 +287,12 @@ function QuestionCard({ index, onRemove, removable }) {
         <FieldCell span={{ xs: 12, md: 8 }}>
           <RhfTextField
             name={`${base}.text`} fullWidth required label="Question"
-            inputProps={capChars(CHAR_LIMITS.LONG)}
+            inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             rules={{
               validate: (v) => {
                 const s = String(v || '').trim()
                 if (!s) return 'Enter the question.'
-                if (s.length > CHAR_LIMITS.LONG) return `Max ${CHAR_LIMITS.LONG} characters.`
+                if (s.length > CHAR_LIMITS.MEDIUM) return `Max ${CHAR_LIMITS.MEDIUM} characters.`
                 return true
               },
             }}

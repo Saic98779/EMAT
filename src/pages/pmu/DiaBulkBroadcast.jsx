@@ -141,8 +141,8 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell>
@@ -150,8 +150,8 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
               name="sample" fullWidth required multiline minRows={2}
               label="Sample for the bulk broadcast"
               placeholder="Who receives this — audience, filters, sample size…"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
         </FieldRow>

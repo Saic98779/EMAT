@@ -102,8 +102,8 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the pop-up"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
