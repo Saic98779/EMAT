@@ -775,15 +775,18 @@ export const appraisalSchema = {
       { name: 'ready_bse', label: 'Remarks — placing SIDBI BSE', type: 'textarea', span: 8, max: 500 },
       { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
       // Sector #1 required — client UAT (2026-09-25 #67): sectoral IAs
-      // may deal in only one sector, so #2 / #3 stay optional.
+      // may deal in only one sector, so #2 / #3 stay optional. All the
+      // key-problems textareas are optional too (descriptive only).
+      // `optional: true` is what tells `requireAllInputs` above to skip
+      // these fields when it force-marks the appraisal form's inputs.
       // Sector name fields — override the FormRenderer default 3-char
       // minimum so short codes / numbers ("IT", "1", "R&D") are accepted.
       { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true, min: 1 },
-      { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1 },
-      { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1 },
-      { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
+      { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
+      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1, optional: true },
+      { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
+      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1, optional: true },
+      { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
       { name: 'financing_scope', label: 'Scope for financing — description (50–75 words)', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5',
         validate: (v) => {
