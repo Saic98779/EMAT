@@ -662,8 +662,13 @@ const nonNegative = (v) => {
 function requireAllInputs(sections) {
   return sections.map((sec) => ({
     ...sec,
+    // `disclaimer` / `coordinates_capture` render no user input and therefore
+    // must NOT be forced-required — otherwise the appraisal submit gets stuck
+    // on an invisible "required" for the Annexure V/VI legal notes and the
+    // GT user sees a "Please fix the highlighted fields" toast with nothing
+    // to fix. Bug surfaced after UAT 2026-09-28 added the two disclaimers.
     fields: sec.fields.map((f) =>
-      ['subheading', 'computed'].includes(f.type) || f.readOnly || f.optional
+      ['subheading', 'computed', 'disclaimer', 'coordinates_capture'].includes(f.type) || f.readOnly || f.optional
         ? f
         : { ...f, required: true },
     ),

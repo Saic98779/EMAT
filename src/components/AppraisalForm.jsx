@@ -48,9 +48,14 @@ function valuesLookHydrated(values) {
 }
 
 // missing-required / bad-pattern field, or null if the form is submittable.
+// Skips the same non-input pseudo-types the renderer already skips
+// (subheading / computed / coordinates capture / disclaimer) — those
+// carry no user value and must never surface as "required".
+const NON_INPUT_TYPES = new Set(['subheading', 'computed', 'coordinates_capture', 'disclaimer'])
 function firstProblem(schema, values) {
   for (const sec of schema.sections) {
     for (const f of sec.fields) {
+      if (NON_INPUT_TYPES.has(f.type)) continue
       if (f.showIf && !f.showIf(values)) continue
       const v = values[f.name]
       const filled = Array.isArray(v)
