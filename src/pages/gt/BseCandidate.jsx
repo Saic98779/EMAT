@@ -106,13 +106,20 @@ export default function BseCandidate() {
     const rows = iasQ.data || []
     return rows
       .filter((r) => {
-        // Prefer the wrapper's already-stripped `currentStage` (see
-        // `iaFromDto` in apis/industryAssociations.js:394) — the raw
-        // DTO field may still carry the "STAGE.SUB_STAGE" dotted form,
-        // which wouldn't match our bare-key `BSE_ELIGIBLE_SUBSTAGES`
-        // set and would cause every eligible IA to be silently dropped.
-        const stage = r?.currentStage || stripStageDot(r?.raw?.currentStage)
-        return r && r.id != null && BSE_ELIGIBLE_SUBSTAGES.has(stage)
+        if (!r || r.id == null) return false
+        // Two-track eligibility, matching what `iaFromDto` calls L1-cleared:
+        //   1. `currentStage` sits in one of the post-L1 sub-stages (new
+        //      workflow, backend keeps this in sync).
+        //   2. Legacy fallback — record predates the sub-stage tracking
+        //      but carries the old boolean `isSidbeApproved = true`.
+        //      Without this fallback, IAs that were L1-approved before
+        //      the stage column was added silently drop out of the
+        //      dropdown even though the server-side by-stage endpoint
+        //      (the old fetch path) would have surfaced them.
+        const stage = r.currentStage || stripStageDot(r.raw?.currentStage)
+        if (stage && BSE_ELIGIBLE_SUBSTAGES.has(stage)) return true
+        if (r.raw?.isSidbeApproved === true) return true
+        return false
       })
       .map((r) => ({
         id: r.id,
@@ -123,8 +130,10 @@ export default function BseCandidate() {
       }))
     // Stable key so a re-fetch returning the same rows doesn't spawn a
     // fresh reference and thrash the schema/dropdown option identity.
+    // Includes both the sub-stage (new workflow) and the legacy
+    // `isSidbeApproved` flag so either signal changing forces a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(iasQ.data || []).map((r) => `${r?.id}:${r?.currentStage || r?.raw?.currentStage || ''}`).join('|')])
+  }, [(iasQ.data || []).map((r) => `${r?.id}:${r?.currentStage || r?.raw?.currentStage || ''}:${r?.raw?.isSidbeApproved ? 'A' : '_'}`).join('|')])
 
   // "Offer Letter Vendor" dropdown — now sourced from user accounts with role
   // `MANPOWER_AGENCY` (via GET /users/by-role) rather than the standalone
@@ -146,12 +155,26 @@ export default function BseCandidate() {
   // through.
   const statesQ = usePincodeStates()
   const districtsQ = usePincodeDistricts(values.state)
-  const stateOptions = useMemo(() => statesQ.data || [], [statesQ.data])
-  const districtOptions = useMemo(() => districtsQ.data || [], [districtsQ.data])
+  // Content-based memoisation — a React Query refetch that returns the
+  // same list still hands us a fresh array reference, and that fresh
+  // reference would cascade into `schema` regeneration → SectionCard
+  // re-render → MUI Select occasionally losing an in-flight click on
+  // the IA dropdown. Comparing the joined content keeps `stateOptions`
+  // / `districtOptions` reference-stable across refetches with identical
+  // data, so the schema regenerates only when the actual option set
+  // changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stateOptions = useMemo(() => statesQ.data || [], [(statesQ.data || []).join('|')])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const districtOptions = useMemo(() => districtsQ.data || [], [(districtsQ.data || []).join('|')])
 
   const schema = useMemo(
+    // Pass the full `{ id, name }` objects — the schema factory builds
+    // its Select options as `{ value: id, label: name }` so duplicate IA
+    // names stay individually selectable (see the comment on the
+    // ia_name field in makeBseCandidateSchema).
     () => makeBseCandidateSchema(
-      approvedIAs.map((i) => i.name),
+      approvedIAs,
       vendorOptions,
       { states: stateOptions, districts: districtOptions },
     ),
@@ -171,9 +194,11 @@ export default function BseCandidate() {
       return
     }
 
-    // Backend expects the IA's registrationId, but the form only carries the
-    // display name — resolve it from the approved IA list.
-    const ia = approvedIAs.find((i) => i.name === values.ia_name)
+    // `values.ia_name` now carries the IA's registrationId (as string —
+    // the select stores option `value`, which we built as `String(ia.id)`
+    // in the schema factory). Resolve the wrapped IA record for the name
+    // + downstream reference.
+    const ia = approvedIAs.find((i) => String(i.id) === String(values.ia_name))
     if (!ia?.id) {
       setToast({ severity: 'error', msg: 'Selected IA is missing a registration reference. Refresh and try again.' })
       return
@@ -211,7 +236,7 @@ export default function BseCandidate() {
         severity: 'success',
         msg: files.length
           ? `${values.bse_name || 'Candidate'} proposed — ${files.length} file${files.length === 1 ? '' : 's'} uploaded.`
-          : `${values.bse_name || 'Candidate'} proposed for ${values.ia_name || 'IA'}.`,
+          : `${values.bse_name || 'Candidate'} proposed for ${ia.name || 'IA'}.`,
       })
       const nextPath = bseId ? `/gt/team/${bseId}` : '/gt/team'
       setTimeout(() => navigate(nextPath), 1100)

@@ -396,8 +396,21 @@ export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = [], geo
           if (Array.isArray(geo.districts) && geo.districts.length) return geo.districts
           return districtsOf(v.state)
         } },
+      // Options are `{ value: registrationId, label: name }` — NOT bare
+      // strings. IA names are NOT unique on the backend (client UAT
+      // 2026-09-30 hit the case where "Test 28-09 IA" appeared multiple
+      // times), and MUI Select uses the option's `value` as both the
+      // MenuItem key AND the picked-value; when two options shared the
+      // same value, clicking the second one either fired onChange with
+      // an ambiguous match or React refused to reconcile the duplicate
+      // keys — user's click silently did nothing. Keying on the numeric
+      // id guarantees uniqueness. Downstream code reads the picked id
+      // from `values.ia_name` and resolves the full IA record via
+      // `approvedIAs.find(i => String(i.id) === values.ia_name)`.
       { name: 'ia_name', label: 'Name of Association (BSE Proposed For)', type: 'select',
-        options: approvedIAs.length ? approvedIAs : ['No In-Principle approved IA available'],
+        options: approvedIAs.length
+          ? approvedIAs.map((ia) => ({ value: String(ia.id), label: ia.name }))
+          : [{ value: '', label: 'No In-Principle approved IA available' }],
         span: 12, required: true },
       // Anchor coordinates used later for BSE attendance geofencing. GT
       // enters lat/lng of the BSE's working office (may not be the IA
