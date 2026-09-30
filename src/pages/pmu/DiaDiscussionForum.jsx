@@ -66,7 +66,7 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
       else await createContent(DIA_ENDPOINTS.FORUM, dto)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -82,7 +82,7 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
     <PmuFormShell
       title={isEdit ? 'Resubmit Discussion Forum' : 'Discussion Forum'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
         : 'Open a forum thread — submits to SIDBI HO Maker for approval.'}
       approvalNote="Once submitted, this thread goes to SIDBI HO Maker for approval (HO Checker signs off after). It becomes visible to participants only after approval."
       methods={methods}

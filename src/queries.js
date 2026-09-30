@@ -111,7 +111,7 @@ import {
 import {
   updateContentStatus, updateLegacyContentStatus, listContent, getContent,
 } from './apis/contentStatus'
-import { updateContent } from './apis/diaContent'
+import { updateContent, resubmitContent } from './apis/diaContent'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -1550,6 +1550,22 @@ export function useUpdateContent() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ path, id, body }) => updateContent(path, id, body),
+    onSuccess: (_data, { path, id }) => {
+      qc.invalidateQueries({ queryKey: contentKey.list(path), refetchType: 'all' })
+      if (id) qc.invalidateQueries({ queryKey: contentKey.detail(path, id) })
+    },
+  })
+}
+
+// Same as `useUpdateContent`, but goes through `resubmitContent` — which
+// also nulls out `makerStatus` / `checkerStatus` / `remark` on the PUT
+// body so a REVERT'd row goes back to PENDING and the HO Maker sees a
+// fresh queue entry. Call this from the DIA form edit flows instead of
+// updateContent when the form is in "edit-after-revert" mode.
+export function useResubmitContent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ path, id, body }) => resubmitContent(path, id, body),
     onSuccess: (_data, { path, id }) => {
       qc.invalidateQueries({ queryKey: contentKey.list(path), refetchType: 'all' })
       if (id) qc.invalidateQueries({ queryKey: contentKey.detail(path, id) })

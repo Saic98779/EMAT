@@ -50,7 +50,7 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
       else await createContent(DIA_ENDPOINTS.LATEST_DEV, dto)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -66,7 +66,7 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
     <PmuFormShell
       title={isEdit ? 'Resubmit Latest Developments' : 'Latest Developments'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
         : 'Add a Latest Developments entry — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}

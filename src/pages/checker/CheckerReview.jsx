@@ -113,7 +113,22 @@ export default function CheckerReview({
       // Checker sees Maker's approval as already Approved" — fixed
       // by not mirroring.
       const makerStatus   = mode === 'maker'   ? confirm.status : (dto?.makerStatus   ?? null)
-      const checkerStatus = mode === 'checker' ? confirm.status : (dto?.checkerStatus ?? null)
+      let checkerStatus   = mode === 'checker' ? confirm.status : (dto?.checkerStatus ?? null)
+      // UAT 2026-09-30 obs. 3 — when the Maker records an APPROVED on a
+      // row whose Checker slot still carries a stale REVERT / REJECT
+      // (either because a legacy resubmit didn't reset it, or because
+      // the row escaped the GT-PMU resubmit reset for any reason), the
+      // preserved-checkerStatus rule above leaves the row at
+      // (APPROVED, REVERT) — derived REVERT, and the Checker's own
+      // `mine !== null` blocks `canDecide` so they can't act. Clear the
+      // stale Checker slot in the same PATCH so the row correctly moves
+      // to WITH_CHECKER for a fresh Checker cycle.
+      if (mode === 'maker'
+          && confirm.status === CONTENT_STATUS.APPROVED
+          && (dto?.checkerStatus === CONTENT_STATUS.REVERT
+              || dto?.checkerStatus === CONTENT_STATUS.REJECT)) {
+        checkerStatus = null
+      }
       await patchStatus.mutateAsync({
         path: type,
         id,

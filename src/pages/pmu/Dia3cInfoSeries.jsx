@@ -91,7 +91,7 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
       }
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -107,7 +107,7 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
     <PmuFormShell
       title={isEdit ? 'Resubmit 3C Info-Series' : '3C Info-Series'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
         : 'Draft an info-series entry — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}

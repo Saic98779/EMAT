@@ -59,16 +59,35 @@ export function updateContent(path, id, body) {
 }
 
 // PMU resubmit path — PUTs the corrected DTO AND resets both status
-// fields to null so the record re-enters the Maker → Checker queue.
-// Without this second call, a HO Checker revert leaves the row stuck
-// at (APPROVED, REVERT) after GT PMU fixes it — Checker never sees a
-// fresh pending item because status stays REVERT. Backend accepts
-// null on both status fields as of 2026-09-27 (verified live).
+// fields to null so the record re-enters the Maker queue.
+//
+// UAT 2026-09-30 bug: sending the resets via a separate PATCH
+// /{path}/{id}/status with `{makerStatus: null, checkerStatus: null}`
+// gets 400'd on the live backend — the /status endpoint rejects null
+// on either field (see the note on `updateContentStatus` in
+// apis/contentStatus.js). The 400 was being swallowed by the
+// try/catch, so the row stayed at (makerStatus: REVERT) after the
+// resubmit and the list kept showing "Reverted" even though the DTO
+// itself had updated.
+//
+// Correct approach: merge the status clears into the PUT body itself.
+// The DIA PUT endpoints replace the whole row from the request payload,
+// so an explicit `makerStatus: null / checkerStatus: null / remark: null`
+// on the body reliably resets the record to PENDING. Keep the follow-up
+// PATCH as a best-effort no-op for older backends that ignore nulls on
+// PUT — it either succeeds or fails silently, but it can no longer be
+// the sole reset path.
 export async function resubmitContent(path, id, body) {
-  const updated = await apiFetch(`/${path}/${encodeURIComponent(id)}`, { method: 'PUT', body })
-  // Fire and forget-ish — if the status reset 400s (e.g., backend
-  // constraint drift) we still keep the PUT's result and surface a
-  // warning via console.
+  const resetBody = {
+    ...body,
+    makerStatus: null,
+    checkerStatus: null,
+    remark: null,
+  }
+  const updated = await apiFetch(`/${path}/${encodeURIComponent(id)}`, { method: 'PUT', body: resetBody })
+  // Belt-and-braces: also poke the dedicated /status endpoint. If the
+  // backend has been relaxed to accept nulls this reinforces the reset;
+  // if not, we don't care — the PUT above already did the work.
   try {
     await apiFetch(`/${path}/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
@@ -76,7 +95,7 @@ export async function resubmitContent(path, id, body) {
     })
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(`resubmitContent: status reset failed for ${path}/${id}`, err)
+    console.warn(`resubmitContent: /status reset failed for ${path}/${id} (already handled via PUT)`, err)
   }
   return updated
 }

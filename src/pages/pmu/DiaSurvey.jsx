@@ -138,7 +138,7 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
       setToast({
         severity: 'success',
         msg: isEdit
-          ? 'Resubmitted. The checker will re-review.'
+          ? 'Resubmitted. The maker will re-review.'
           : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset({ ...INITIAL, questions: [makeQuestion()] })
@@ -155,7 +155,7 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
     <PmuFormShell
       title={isEdit ? 'Resubmit Survey' : 'Survey'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
         : 'Draft a survey — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}

@@ -103,7 +103,7 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
       }
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -119,7 +119,7 @@ export default function DiaBulkBroadcast({ editId = null, initialRecord = null }
     <PmuFormShell
       title={isEdit ? 'Resubmit Bulk Broadcast' : 'Bulk Broadcast'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
         : 'Draft a SMS / WhatsApp broadcast — submits to SIDBI HO Maker for approval.'}
       approvalNote="Once submitted, this broadcast goes to SIDBI HO Maker for approval (HO Checker signs off after). Recipients receive it only after approval."
       methods={methods}

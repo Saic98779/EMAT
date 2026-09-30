@@ -85,7 +85,7 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
       else await createContent(DIA_ENDPOINTS.BDSP, dto)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
     } catch (err) {
@@ -139,7 +139,7 @@ export default function DiaBdspOnboarding({ editId = null, initialRecord = null 
       <PmuFormShell
         title={isEdit ? 'Resubmit BDSP Onboarding' : 'BDSP Onboarding'}
         subtitle={isEdit
-          ? 'Address the checker\'s remarks and resubmit for re-review.'
+          ? 'Address the reviewer\'s remarks and resubmit for re-review.'
           : 'Add a Business Development Service Provider — submits to SIDBI HO Maker for approval.'}
         headerAction={!isEdit && (
           <Button

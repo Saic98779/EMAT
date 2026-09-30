@@ -82,6 +82,12 @@ export function fieldError(f, value, values, { showRequired = false } = {}) {
     const maxLen = f.max ?? 500
     if (trimmed.length < minLen) return `Enter at least ${minLen} characters.`
     if (trimmed.length > maxLen) return `Keep it under ${maxLen} characters.`
+    // UAT 2026-09-30 obs. 7 — backend rejects any submission containing
+    // `<` or `>` (Jackson-level "Malformed request body" that used to
+    // surface as a raw stacktrace toast). Catch it here so IA
+    // registration / appraisal / matrix forms all show a friendly
+    // "HTML tags are not allowed." instead.
+    if (/[<>]/.test(trimmed)) return 'HTML tags are not allowed.'
   }
   const p = f.pattern || (f.type === 'email' && PATTERNS.email) || (f.type === 'tel' && PATTERNS.phone)
   if (p && !p.re.test(String(trimmed))) return p.msg
