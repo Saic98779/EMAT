@@ -21,6 +21,13 @@ export default function PmuSubmissionView() {
   return (
     <CheckerReview
       readOnly
+      // `mode='submitter'` tells the shared status pill + banner copy to
+      // speak from the GT PMU's perspective — labels like "With HO
+      // Checker for sign-off" / "Sent back for changes" instead of the
+      // reviewer-perspective "Awaiting your review". Without this, the
+      // default 'checker' mode leaks reviewer-facing copy onto the
+      // submitter's screen (UAT 2026-09-30 obs.).
+      mode="submitter"
       backTo={`/gt/pmu/list/${type}`}
       backLabel={label}
       overline={cfg?.overline || 'Content · DIA'}

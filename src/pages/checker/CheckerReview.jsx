@@ -171,7 +171,7 @@ export default function CheckerReview({
       ) : dto ? (
         <>
           <ReviewHero dto={dto} cfg={cfg} mode={mode} action={typeof heroAction === 'function' ? heroAction(dto) : heroAction} />
-          {dto.remark && <RemarkBanner status={deriveStatus(dto)} remark={dto.remark} />}
+          {dto.remark && <RemarkBanner dto={dto} remark={dto.remark} />}
           <Stack spacing={2.5} sx={{ mt: 3 }}>
             {cfg.sections.map((sec) => (
               <ReviewSection key={sec.title} title={sec.title} fields={sec.fields} dto={dto} />
@@ -271,20 +271,25 @@ const ReviewHero = memo(function ReviewHero({ dto, cfg, mode, action = null }) {
 })
 
 // ─── Remark banner ─────────────────────────────────────────────────────
-// Auto-renders whenever the record carries a checker's remark. The tone
-// matches the status: warning-yellow on REVERT, error-red on REJECT,
-// success-green on APPROVED. Visible both to the checker (own audit
-// trail) and to the GT PMU on their read-only submission view.
-function RemarkBanner({ status, remark }) {
+// Auto-renders whenever the record carries a reviewer's remark. The
+// `remark` column on the DTO is a single field shared by both roles —
+// whoever acted last owns it — so we attribute the banner from the
+// status fields themselves:
+//   • checkerStatus set → HO Checker was the last writer
+//   • else makerStatus set → HO Maker was the last writer
+//   • else → fall back to a generic "Reviewer remark"
+//
+// Tone is derived from the SAME actor's status enum so a Maker REVERT
+// paints warning-yellow, a Checker APPROVE paints success-green, etc.
+// Fixes UAT 2026-09-30 where an HO Maker approval-with-note surfaced
+// on the GT PMU screen mislabeled as "CHECKER REMARK".
+function RemarkBanner({ dto, remark }) {
   const theme = useTheme()
-  const tone = status === 'REVERT' ? theme.palette.warning
-    : status === 'REJECT' ? theme.palette.error
-    : status === 'APPROVED' ? theme.palette.success
+  const attribution = remarkAttribution(dto)
+  const tone = attribution.status === 'REVERT'   ? theme.palette.warning
+    : attribution.status === 'REJECT'   ? theme.palette.error
+    : attribution.status === 'APPROVED' ? theme.palette.success
     : theme.palette.info
-  const label = status === 'REVERT' ? 'Sent back for changes'
-    : status === 'REJECT' ? 'Rejected'
-    : status === 'APPROVED' ? 'Approved'
-    : 'Checker remark'
   return (
     <Box
       sx={{
@@ -294,13 +299,45 @@ function RemarkBanner({ status, remark }) {
       }}
     >
       <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: tone.dark }}>
-        {label}
+        {attribution.label}
       </Typography>
       <Typography sx={{ mt: 0.5, fontSize: 13.5, whiteSpace: 'pre-wrap', color: theme.palette.text.primary }}>
         {remark}
       </Typography>
     </Box>
   )
+}
+
+// Attribute a shared `remark` column back to the actor who wrote it.
+// The backend never stamps `remarkBy` explicitly, so we infer from
+// which of the two status enum fields is populated. Precedence goes to
+// `checkerStatus` because it can only be set AFTER the maker acted
+// (workflow is Maker → Checker), so its presence proves the checker is
+// the more recent writer.
+function remarkAttribution(dto) {
+  const makerStatus   = dto?.makerStatus   || null
+  const checkerStatus = dto?.checkerStatus || null
+  if (checkerStatus) {
+    return {
+      actor: 'HO Checker',
+      status: checkerStatus,
+      label: checkerStatus === 'REVERT'   ? 'HO Checker sent this back'
+           : checkerStatus === 'REJECT'   ? 'HO Checker rejected this'
+           : checkerStatus === 'APPROVED' ? 'HO Checker approved with a note'
+                                          : 'HO Checker remark',
+    }
+  }
+  if (makerStatus) {
+    return {
+      actor: 'HO Maker',
+      status: makerStatus,
+      label: makerStatus === 'REVERT'   ? 'HO Maker sent this back'
+           : makerStatus === 'REJECT'   ? 'HO Maker rejected this'
+           : makerStatus === 'APPROVED' ? 'HO Maker approved with a note'
+                                        : 'HO Maker remark',
+    }
+  }
+  return { actor: 'Reviewer', status: null, label: 'Reviewer remark' }
 }
 
 function MetaBit({ label, value }) {
@@ -842,18 +879,31 @@ function statusVisuals(status, theme, viewerMode) {
     // callers) and the two new derived values (WITH_CHECKER / PENDING)
     // land here. Kept in one switch so the pill renders the right chip
     // regardless of which one the caller passes.
+    //
+    // `viewerMode` personalises which side of the workflow the label
+    // speaks from:
+    //   • 'maker'     — HO Maker workspace
+    //   • 'checker'   — HO Checker workspace
+    //   • 'submitter' — GT PMU read-only view of their own submission
+    //   • undefined   — third-party views (queue lists, activity trails):
+    //                   neutral role-agnostic labels
     case 'APPROVED':     return { label: 'Approved', color: t.palette.success }
     case 'REJECT':       return { label: 'Rejected', color: t.palette.error }
-    case 'REVERT':       return { label: 'Reverted', color: t.palette.warning }
+    case 'REVERT': {
+      if (viewerMode === 'submitter') return { label: 'Sent back for changes', color: t.palette.warning }
+      return                                 { label: 'Reverted',              color: t.palette.warning }
+    }
     case 'WITH_CHECKER': {
-      if (viewerMode === 'checker') return { label: 'Awaiting your review',   color: t.palette.warning }
-      if (viewerMode === 'maker')   return { label: 'Sent to HO Checker',     color: t.palette.info }
-      return                                { label: 'Awaiting HO Checker',   color: t.palette.info }
+      if (viewerMode === 'checker')   return { label: 'Awaiting your review',        color: t.palette.warning }
+      if (viewerMode === 'maker')     return { label: 'Sent to HO Checker',          color: t.palette.info }
+      if (viewerMode === 'submitter') return { label: 'With HO Checker for sign-off', color: t.palette.info }
+      return                                 { label: 'Awaiting HO Checker',         color: t.palette.info }
     }
     case 'PENDING': {
-      if (viewerMode === 'maker')   return { label: 'Awaiting your review',   color: t.palette.warning }
-      if (viewerMode === 'checker') return { label: 'Awaiting HO Maker',      color: t.palette.info }
-      return                                { label: 'Awaiting HO Maker',     color: t.palette.info }
+      if (viewerMode === 'maker')     return { label: 'Awaiting your review',       color: t.palette.warning }
+      if (viewerMode === 'checker')   return { label: 'Awaiting HO Maker',          color: t.palette.info }
+      if (viewerMode === 'submitter') return { label: 'Awaiting HO Maker review',   color: t.palette.info }
+      return                                 { label: 'Awaiting HO Maker',          color: t.palette.info }
     }
     default:             return { label: 'Awaiting HO Maker', color: t.palette.info }
   }
