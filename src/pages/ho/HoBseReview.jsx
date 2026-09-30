@@ -301,16 +301,27 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
     iaMapped: !!initial.iaMapped,
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
-  const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), [])
-  const save = useCallback(async () => {
-    setSaving(true)
-    try { await onSave(d) } finally { setSaving(false) }
-  }, [onSave, d])
+  const set = useCallback((k) => (v) => {
+    setD((p) => ({ ...p, [k]: v }))
+    if (error) setError('')
+  }, [error])
 
-  // Onboarding has no "recommendation" — treat "any onboarding value present"
-  // as the saved indicator so the chip appears once HO has filled it in.
-  const onboarded = initial.dateOfJoining || initial.approvedSalary != null || initial.iaMapped
+  // UAT 2026-09-30 items 39 / 40 / 41 / 42.
+  //   • 39 — Date of Joining cannot be a past date.
+  //   • 40 — Date of Joining cannot be earlier than Committee Approval date.
+  //   • 41 — Approved Salary and Approved TA are required and must be > 0.
+  //   • 42 — Once the record has been onboarded (DOJ set on the backend),
+  //          Date of Joining becomes read-only so the joining date can't
+  //          be silently rewritten post-hoc.
+  const committeeApprovalIso = (initial.committeeDate || '').slice(0, 10)
+  const onboarded = !!initial.dateOfJoining
+    || initial.approvedSalary != null
+    || !!initial.iaMapped
+  const dojLocked = !!initial.dateOfJoining
+  const todayIsoStr = todayIso()
+
   // Manual dirty-check because iaMapped is a boolean coerced from a string.
   const dirty =
     String(d.approvedSalary ?? '') !== String(initial.approvedSalary ?? '') ||
@@ -318,10 +329,51 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
     (d.dateOfJoining || '') !== (initial.dateOfJoining || '').slice(0, 10) ||
     !!d.iaMapped !== !!initial.iaMapped
 
+  const validate = useCallback(() => {
+    const salary = Number(d.approvedSalary)
+    const ta = Number(d.approvedTravelAllowance)
+    if (d.approvedSalary === '' || d.approvedSalary == null || !Number.isFinite(salary) || salary <= 0) {
+      return 'Approved salary is required and must be greater than 0.'
+    }
+    if (d.approvedTravelAllowance === '' || d.approvedTravelAllowance == null || !Number.isFinite(ta) || ta <= 0) {
+      return 'Approved TA is required and must be greater than 0.'
+    }
+    // Only enforce the DOJ rules when the field is still editable —
+    // once dojLocked, we're saving other fields (IA mapped / salary
+    // corrections) against a joining date the backend already accepted.
+    if (!dojLocked) {
+      if (!d.dateOfJoining) return 'Date of joining is required.'
+      if (d.dateOfJoining < todayIsoStr) {
+        return 'Date of joining cannot be a past date.'
+      }
+      if (committeeApprovalIso && d.dateOfJoining < committeeApprovalIso) {
+        return 'Date of joining cannot be earlier than the committee approval date.'
+      }
+    }
+    return ''
+  }, [d, dojLocked, todayIsoStr, committeeApprovalIso])
+
+  const save = useCallback(async () => {
+    const problem = validate()
+    if (problem) { setError(problem); return }
+    setSaving(true)
+    try { await onSave(d) } finally { setSaving(false) }
+  }, [validate, onSave, d])
+
+  // `min` bound for the date picker — whichever is later of today or the
+  // committee approval date. Empty when the field is locked (item 42).
+  const dojMin = dojLocked
+    ? undefined
+    : (committeeApprovalIso && committeeApprovalIso > todayIsoStr
+        ? committeeApprovalIso
+        : todayIsoStr)
+
   return (
     <SectionCard
       title="Onboarding"
-      subtitle="Confirm salary, travel allowance, joining date and IA mapping."
+      subtitle={dojLocked
+        ? 'Salary, TA and IA mapping remain editable; joining date is locked once onboarded.'
+        : 'Confirm salary, travel allowance, joining date and IA mapping.'}
       action={
         <Stack direction="row" spacing={1} alignItems="center">
           <Chip size="small" color="success" icon={<CheckCircleOutlineIcon />} label="Committee approved" />
@@ -340,13 +392,19 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
     >
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <MoneyField value={d.approvedSalary} onChange={set('approvedSalary')} label="Approved salary (₹/month)" />
+          <MoneyField value={d.approvedSalary} onChange={set('approvedSalary')} label="Approved salary (₹/month) *" />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <MoneyField value={d.approvedTravelAllowance} onChange={set('approvedTravelAllowance')} label="Approved TA (₹/month)" />
+          <MoneyField value={d.approvedTravelAllowance} onChange={set('approvedTravelAllowance')} label="Approved TA (₹/month) *" />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <DateField value={d.dateOfJoining} onChange={set('dateOfJoining')} label="Date of joining" />
+          <DateField
+            value={d.dateOfJoining}
+            onChange={set('dateOfJoining')}
+            label={dojLocked ? 'Date of joining (locked)' : 'Date of joining *'}
+            inputProps={dojLocked ? { readOnly: true } : { min: dojMin }}
+            disabled={dojLocked}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
@@ -359,6 +417,9 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
           </TextField>
         </Grid>
       </Grid>
+      {error && (
+        <Typography sx={{ mt: 1.5, fontSize: 13, color: 'error.main' }}>{error}</Typography>
+      )}
       <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save onboarding details" color="success" />
     </SectionCard>
   )
@@ -379,13 +440,15 @@ const RecommendationSelect = memo(function RecommendationSelect({ value, onChang
   )
 })
 
-const DateField = memo(function DateField({ value, onChange, label }) {
+const DateField = memo(function DateField({ value, onChange, label, inputProps, disabled }) {
   return (
     <TextField
       fullWidth size="small" type="date" label={label}
       InputLabelProps={{ shrink: true }}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      inputProps={inputProps}
+      disabled={disabled}
     />
   )
 })

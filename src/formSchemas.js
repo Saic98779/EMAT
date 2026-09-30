@@ -6,10 +6,20 @@ import { clustersOf } from './clusters'
 
 const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
 // Human names / designations — letters, spaces, dots, hyphens, apostrophes.
-// Must start with a letter. Rejects digits and stray punctuation. Length
-// between 2 and 80 to catch stray single-char input without being restrictive.
+// Must start with a letter. Rejects digits and stray punctuation.
+//
+// UAT 2026-09-30 item 28 — earlier the regex was
+// `/^[A-Za-z][A-Za-z\s.'-]{1,79}$/`, which capped total length at 80 chars
+// regardless of the field's declared `max` (150 for Apex / Nodal Name +
+// Designation). Users typing beyond 80 chars saw the misleading
+// "Letters, spaces, dots, hyphens or apostrophes only (no numbers)"
+// message even when their input WAS valid alphabetics — the pattern was
+// silently the shorter-of-the-two limit. Length is now driven entirely
+// by each field's `max` (via FormRenderer's length check that emits
+// "Keep it under N characters."), so the pattern only enforces the
+// character-class contract.
 const NAME_PATTERN = {
-  re: /^[A-Za-z][A-Za-z\s.'-]{1,79}$/,
+  re: /^[A-Za-z][A-Za-z\s.'-]*$/,
   msg: 'Letters, spaces, dots, hyphens or apostrophes only (no numbers)',
 }
 // Accepts optional http/https, an optional `www.` (or any subdomain) prefix,
@@ -257,8 +267,18 @@ export const makeInPrincipleSchema = ({
       { name: 'cluster_which', label: 'If yes, which cluster', type: 'select', span: 12, required: true,
         showIf: (v) => v.cluster_mapped === 'yes',
         optionsFrom: (v) => { const c = clustersOf(v.state).map((x) => x.name); return c.length ? c : ['No identified cluster listed for this State'] } },
+      // UAT 2026-09-30 item 31 — cap at 1,000,000 so a runaway paste /
+      // typo doesn't sail through. India-wide MSME registrations sit at
+      // ~40M; per-district counts realistically top out well below 1M.
       { name: 'msme_count', label: 'Number of MSMEs (without traders) in district', type: 'number', span: 12, required: true,
-        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+        placeholder: 'e.g. 5000',
+        help: 'Whole number, up to 10,00,000.',
+        validate: (v) => {
+          if (v === '') return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          if (Number(v) > 1000000) return 'Cannot exceed 10,00,000'
+          return ''
+        } },
     ] },
     { n: 6, title: 'Existing Infra Details', fields: [
       { name: '_members', label: 'Membership', type: 'subheading', span: 12 },
@@ -415,24 +435,55 @@ export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = [], geo
     ] },
     { n: 3, title: 'Experience', fields: [
       { name: 'experience_status', label: 'Prior Experience', type: 'select', options: ['Yes', 'No'], span: 12, required: true },
+      // UAT 2026-09-30 item 37 — when Prior Experience = Yes, at least
+      // one of Years or Months must be > 0 (0y/0m is meaningless).
+      // Cross-field guard lives on both fields so whichever the user
+      // touches last surfaces the error.
       { name: 'experience_years', label: 'Experience — Years', type: 'number', span: 6,
         showIf: (v) => v.experience_status === 'Yes', required: true,
-        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+        validate: (v, values) => {
+          if (v === '') return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          const years  = Number(v) || 0
+          const months = Number(values?.experience_months) || 0
+          if (years === 0 && months === 0) return 'Enter total experience — years and months cannot both be zero.'
+          return ''
+        } },
       { name: 'experience_months', label: 'Experience — Months', type: 'number', span: 6,
         showIf: (v) => v.experience_status === 'Yes', required: true,
-        validate: (v) => {
+        validate: (v, values) => {
           if (v === '') return ''
           if (!/^\d+$/.test(String(v))) return 'Whole number only'
           if (Number(v) > 11) return '0–11 months'
+          const years  = Number(values?.experience_years) || 0
+          const months = Number(v) || 0
+          if (years === 0 && months === 0) return 'Enter total experience — years and months cannot both be zero.'
           return ''
         } },
     ] },
     { n: 4, title: 'Employment & Salary', fields: [
       { name: 'employment_status', label: 'Employment Status', type: 'select', options: ['Working', 'Resigned'], span: 12, required: true },
+      // UAT 2026-09-30 item 38 — Working candidates must have a real
+      // current salary + a real notice period. Zero was slipping past
+      // the plain `required: true` guard because "0" is technically a
+      // filled numeric value.
       { name: 'current_salary', label: 'Current Salary (₹ / month)', type: 'number', span: 6, prefix: '₹',
-        showIf: (v) => v.employment_status === 'Working', required: true },
+        showIf: (v) => v.employment_status === 'Working', required: true,
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n)) return 'Enter a valid amount'
+          if (n <= 0) return 'Current salary must be greater than 0.'
+          return ''
+        } },
       { name: 'notice_period', label: 'Minimum Notice Period (Days)', type: 'number', span: 6,
-        showIf: (v) => v.employment_status === 'Working', required: true },
+        showIf: (v) => v.employment_status === 'Working', required: true,
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          if (Number(v) <= 0) return 'Notice period must be greater than 0.'
+          return ''
+        } },
       { name: 'last_drawn_salary', label: 'Last Drawn Salary (₹ / month)', type: 'number', span: 12, prefix: '₹',
         showIf: (v) => v.employment_status === 'Resigned', required: true },
       { name: 'resignation_doc', label: 'Resignation Acceptance / Relieving Letter', type: 'file', span: 12,

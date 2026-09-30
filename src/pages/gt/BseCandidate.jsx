@@ -10,19 +10,25 @@ import { uploadFilesBatch } from '../../apis/files'
 import { encodeFilename } from '../../fileFieldLabels'
 import { useData } from '../../store'
 import {
-  useAllStages, usePincodeDistricts, usePincodeStates,
-  useRegistrationsByStages, useUsersByRole,
+  usePincodeDistricts, usePincodeStates,
+  useIAs, useUsersByRole,
 } from '../../queries'
 import { formatUser } from '../../apis/users'
-import { stageIdOf } from '../../apis/stageActions'
 
 // Sub-stages an IA can sit at once it's past In-Principle (L1) approval.
 // The BSE proposal form lets GT link the candidate to any post-L1 IA
 // regardless of where it currently sits in the L2 / documentation
-// chain. Backend's /industry-association-registrations/stage/{id}
-// returns IAs at ONE stage at a time, so we fan out for each of these
-// sub-stages in parallel and union the results.
-const BSE_ELIGIBLE_SUBSTAGES = [
+// chain.
+//
+// UAT 2026-09-30 — earlier we fanned out to `/registrations/stage/{id}`
+// once per sub-stage (12 parallel calls, doubled by React Strict Mode).
+// That storm slowed the page AND thrashed the schema options as each
+// query resolved in turn, which caused the IA dropdown to reset its
+// selection whenever the user clicked (FormRenderer nulls `selVal` when
+// the picked option briefly disappears from the option list). Switched
+// to a single `useIAs()` fetch + client-side filter — one HTTP round
+// trip, one stable option list, dropdown selection sticks.
+const BSE_ELIGIBLE_SUBSTAGES = new Set([
   'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
   'SUSTAINABILITY_MATRIX_SUBMITTED',
   'SUSTAINABILITY_MATRIX_APPROVED',
@@ -35,7 +41,7 @@ const BSE_ELIGIBLE_SUBSTAGES = [
   'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
   'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER',
   'DOCUMENTATION_OF_IA',
-]
+])
 
 // Every File instance picked across all file-typed fields, tagged with the
 // field name so DocUpload can later show which slot each file came from.
@@ -79,31 +85,30 @@ export default function BseCandidate() {
   }), [])
 
   // Only IAs whose In-Principle Approval is cleared (any post-L1 stage)
-  // are eligible for BSE proposal. Backend endpoint 2026-09-28:
-  //   GET /industry-association-registrations/stage/{stageId}
-  // returns IAs currently AT that specific sub-stage; we fan out across
-  // every post-L1 sub-stage and union the results. Much lighter on the
-  // wire than pulling the entire IA list and filtering client-side.
-  const stagesQ = useAllStages()
-  const eligibleStageIds = useMemo(
-    () => BSE_ELIGIBLE_SUBSTAGES
-      .map((key) => stageIdOf(stagesQ.data, key))
-      .filter((n) => n != null),
-    [stagesQ.data],
-  )
-  const iasQ = useRegistrationsByStages(eligibleStageIds)
-  const approvedIAs = useMemo(
-    () => (iasQ.data || [])
-      .filter((r) => r && r.id != null)
+  // are eligible for BSE proposal. Single `useIAs()` fetch + client-side
+  // `currentStage` filter — see the comment above the substage set for
+  // why we moved off `useRegistrationsByStages`. The returned rows are
+  // already the wrapped shape from `useIAs` (`{ id, name, raw, … }`),
+  // so we normalise from `.raw` where the underlying DTO fields live.
+  const iasQ = useIAs()
+  const approvedIAs = useMemo(() => {
+    const rows = iasQ.data || []
+    return rows
+      .filter((r) => {
+        const stage = r?.raw?.currentStage || r?.currentStage
+        return r && r.id != null && BSE_ELIGIBLE_SUBSTAGES.has(stage)
+      })
       .map((r) => ({
         id: r.id,
-        name: r.industryAssociationName || String(r.id),
-        state: r.state || '',
-        district: r.district || '',
-        raw: r,
-      })),
-    [iasQ.data],
-  )
+        name: r.raw?.industryAssociationName || r.name || String(r.id),
+        state: r.raw?.state || r.state || '',
+        district: r.raw?.district || r.district || '',
+        raw: r.raw || r,
+      }))
+    // Stable key so a re-fetch returning the same rows doesn't spawn a
+    // fresh reference and thrash the schema/dropdown option identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(iasQ.data || []).map((r) => `${r?.id}:${r?.raw?.currentStage || r?.currentStage || ''}`).join('|')])
 
   // "Offer Letter Vendor" dropdown — now sourced from user accounts with role
   // `MANPOWER_AGENCY` (via GET /users/by-role) rather than the standalone
