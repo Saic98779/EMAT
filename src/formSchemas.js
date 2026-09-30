@@ -48,16 +48,21 @@ export function grantSumProblem(values) {
 }
 
 // Validator for CIBIL/SMART report dates on the appraisal — spec says they
-// must be dated after the parent In-Principle registration was created.
-// The parent IA's createdAt is threaded into form values under
-// `_ia_created_at` by AppraisalForm on seed.
+// must be dated after the parent In-Principle registration was created
+// AND not in the future (UAT 2026-09-30 — a due-diligence report can't
+// have a date that hasn't happened yet). The parent IA's createdAt is
+// threaded into form values under `_ia_created_at` by AppraisalForm on
+// seed.
 const afterIaCreation = (v, values) => {
   if (!v) return ''
   const iaIso = values?._ia_created_at
-  if (!iaIso) return ''
   const d = new Date(v)
+  if (isNaN(d.getTime())) return ''
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  if (d.getTime() > today.getTime()) return 'Date cannot be in the future.'
+  if (!iaIso) return ''
   const iaD = new Date(iaIso)
-  if (isNaN(d.getTime()) || isNaN(iaD.getTime())) return ''
+  if (isNaN(iaD.getTime())) return ''
   // Normalize IA timestamp to start-of-day so a same-day report is not
   // rejected on hour-of-day differences.
   const iaDay = new Date(iaD.getFullYear(), iaD.getMonth(), iaD.getDate())
@@ -267,16 +272,16 @@ export const makeInPrincipleSchema = ({
       { name: 'cluster_which', label: 'If yes, which cluster', type: 'select', span: 12, required: true,
         showIf: (v) => v.cluster_mapped === 'yes',
         optionsFrom: (v) => { const c = clustersOf(v.state).map((x) => x.name); return c.length ? c : ['No identified cluster listed for this State'] } },
-      // UAT 2026-09-30 item 31 — cap at 1,000,000 so a runaway paste /
-      // typo doesn't sail through. India-wide MSME registrations sit at
-      // ~40M; per-district counts realistically top out well below 1M.
+      // UAT 2026-09-30 item 31 — cap at 1,00,00,000 (1 crore) per client
+      // update so a runaway paste / typo doesn't sail through, while
+      // leaving headroom for the largest metro districts.
       { name: 'msme_count', label: 'Number of MSMEs (without traders) in district', type: 'number', span: 12, required: true,
         placeholder: 'e.g. 5000',
-        help: 'Whole number, up to 10,00,000.',
+        help: 'Whole number, up to 1,00,00,000.',
         validate: (v) => {
           if (v === '') return ''
           if (!/^\d+$/.test(String(v))) return 'Whole number only'
-          if (Number(v) > 1000000) return 'Cannot exceed 10,00,000'
+          if (Number(v) > 10000000) return 'Cannot exceed 1,00,00,000'
           return ''
         } },
     ] },
@@ -747,7 +752,7 @@ export const appraisalSchema = {
       { name: '_dd_ia', label: 'Due Diligence of IA', type: 'subheading', span: 12 },
       { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
       { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
-      { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // Ranking is typically a short grade string ("A+", "B", "AAA") —
       // override the FormRenderer default 3-char minimum.
       { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3, min: 1 },
@@ -767,7 +772,7 @@ export const appraisalSchema = {
       { name: '_dd_ia_smart', label: 'SMART Report — IA', type: 'subheading', span: 12 },
       { name: 'smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
       { name: 'smart_ref_no', label: 'SMART Report Reference No.', type: 'text', span: 6, showIf: (v) => v.smart_verified === 'yes' },
-      { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.smart_verified === 'yes', maxDate: 'today', validate: afterIaCreation },
       { name: 'smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.smart_verified === 'yes' },
 
       { name: '_dd_ia_web', label: 'Web Search', type: 'subheading', span: 12 },
@@ -777,7 +782,7 @@ export const appraisalSchema = {
       { name: '_dd_holder', label: 'Comments on Due Diligence of IA Office Holder', type: 'subheading', span: 12 },
       { name: '_dd_holder_cibil', label: 'IA Office Holder — CIBIL', type: 'subheading', span: 12 },
       { name: 'holder_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
-      { name: 'holder_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'holder_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // CIBIL individual scores are numeric in the range 300–900. Anything
       // outside that band is either a typo or a corporate CMR (which has
       // its own field). Reject letters and out-of-range numbers.
@@ -795,13 +800,13 @@ export const appraisalSchema = {
 
       { name: '_dd_holder_smart', label: 'IA Office Holder — SMART', type: 'subheading', span: 12 },
       { name: 'holder_smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
-      { name: 'holder_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.holder_smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'holder_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.holder_smart_verified === 'yes', maxDate: 'today', validate: afterIaCreation },
       { name: 'holder_smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.holder_smart_verified === 'yes' },
 
       { name: '_dd_owner', label: 'Comments on Due Diligence of IA Beneficial Owner/s', type: 'subheading', span: 12 },
       { name: '_dd_owner_cibil', label: 'IA Beneficial Owner/s — CIBIL (extant KYC policy)', type: 'subheading', span: 12 },
       { name: 'owner_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
-      { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // Ranking/score is a short grade string — see cibil_ranking above.
       { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3, min: 1 },
       { name: 'owner_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
@@ -809,7 +814,7 @@ export const appraisalSchema = {
 
       { name: '_dd_owner_smart', label: 'IA Beneficial Owner/s — SMART', type: 'subheading', span: 12 },
       { name: 'owner_smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
-      { name: 'owner_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.owner_smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'owner_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.owner_smart_verified === 'yes', maxDate: 'today', validate: afterIaCreation },
       { name: 'owner_smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.owner_smart_verified === 'yes' },
     ] },
     { n: 5, title: 'Nearest SIDBI Branch Office', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
@@ -1045,7 +1050,7 @@ export const appraisalSchema = {
         } },
     ] },
     { n: 14, title: 'Delegation of Power', fields: [
-      { name: 'dop_date', label: 'DoP date (as per extant PDIV DoP)', type: 'date', span: 6 },
+      { name: 'dop_date', label: 'DoP date (as per extant PDIV DoP)', type: 'date', span: 6, maxDate: 'today' },
       // UAT 2026-09-28 §1.c.vii — free-text reference note capped at 500 chars.
       { name: 'dop_reference', label: 'DoP Reference', type: 'textarea', span: 12, rows: 2, max: 500,
         placeholder: 'e.g. Extant PDIV DoP dated 12-Aug-2025, para 4.3 (a)',

@@ -339,6 +339,7 @@ function ReviewPanel({ dto, onDone }) {
                 InputLabelProps={{ shrink: true }}
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
+                inputProps={{ max: new Date().toISOString().slice(0, 10) }}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>

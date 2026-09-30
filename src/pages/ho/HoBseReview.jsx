@@ -210,12 +210,24 @@ const HoBlock = memo(function HoBlock({ initial, onSave }) {
     remarks: initial.hoRemarks || '',
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
-  const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), [])
+  const set = useCallback((k) => (v) => {
+    setD((p) => ({ ...p, [k]: v }))
+    if (error) setError('')
+  }, [error])
+  // UAT 2026-09-30 — no future dates on a reviewer's own decision.
+  // Cap the native picker at today AND validate at save so a paste /
+  // DevTools bypass can't sneak one through.
+  const todayIsoStr = todayIso()
   const save = useCallback(async () => {
+    if (d.date && d.date > todayIsoStr) {
+      setError('Recommendation date cannot be in the future.')
+      return
+    }
     setSaving(true)
     try { await onSave(d) } finally { setSaving(false) }
-  }, [onSave, d])
+  }, [onSave, d, todayIsoStr])
 
   const dirty = isDirty(d, initial, HO_MAPPING)
 
@@ -230,12 +242,15 @@ const HoBlock = memo(function HoBlock({ initial, onSave }) {
           <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} label="Recommendation" />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <DateField value={d.date} onChange={set('date')} label="Date" />
+          <DateField value={d.date} onChange={set('date')} label="Date" inputProps={{ max: todayIsoStr }} />
         </Grid>
         <Grid size={{ xs: 12, sm: 5 }}>
           <TextInput value={d.remarks} onChange={set('remarks')} label="Remarks" />
         </Grid>
       </Grid>
+      {error && (
+        <Typography sx={{ mt: 1, fontSize: 13, color: 'error.main' }}>{error}</Typography>
+      )}
       <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save HO recommendation" />
     </SectionCard>
   )
@@ -254,12 +269,23 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
     remarks: initial.committeeRemarks || '',
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
-  const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), [])
+  const set = useCallback((k) => (v) => {
+    setD((p) => ({ ...p, [k]: v }))
+    if (error) setError('')
+  }, [error])
+  // UAT 2026-09-30 — same "no future date" rule as HO / PMU: a
+  // committee can't record a decision dated in the future.
+  const todayIsoStr = todayIso()
   const save = useCallback(async () => {
+    if (d.date && d.date > todayIsoStr) {
+      setError('Committee date cannot be in the future.')
+      return
+    }
     setSaving(true)
     try { await onSave(d) } finally { setSaving(false) }
-  }, [onSave, d])
+  }, [onSave, d, todayIsoStr])
 
   const dirty = isDirty(d, initial, COMMITTEE_MAPPING)
 
@@ -274,12 +300,15 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
           <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} label="Committee status" />
         </Grid>
         <Grid size={{ xs: 12, sm: 8 }}>
-          <DateField value={d.date} onChange={set('date')} label="Committee date" />
+          <DateField value={d.date} onChange={set('date')} label="Committee date" inputProps={{ max: todayIsoStr }} />
         </Grid>
         <Grid size={12}>
           <TextInput value={d.remarks} onChange={set('remarks')} label="Committee remarks" multiline />
         </Grid>
       </Grid>
+      {error && (
+        <Typography sx={{ mt: 1, fontSize: 13, color: 'error.main' }}>{error}</Typography>
+      )}
       <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save committee decision" />
     </SectionCard>
   )

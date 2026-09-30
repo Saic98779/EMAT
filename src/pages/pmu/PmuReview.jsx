@@ -56,6 +56,13 @@ export default function PmuReview() {
       setToast({ severity: 'error', msg: 'This candidate\'s id is missing — reopen from the PMU queue.' })
       return
     }
+    // UAT 2026-09-30 — reject a future decision date at save-time too,
+    // in case the user pasted / DevTools-hacked past the native picker
+    // `max` bound. Empty falls back to today via `d.date || todayIso()`.
+    if (d.date && d.date > todayIso()) {
+      setToast({ severity: 'warning', msg: 'Recommendation date cannot be in the future.' })
+      return
+    }
     try {
       const patch = toUpdatePayload({
         pmuRecommendation: d.recommendation,
@@ -219,6 +226,10 @@ const RecommendationSelect = memo(function RecommendationSelect({ value, onChang
   )
 })
 
+// UAT 2026-09-30 — a reviewer's own decision date can never be in the
+// future (they can't say "I recommended this next month"). Cap the
+// native picker at today via `max`. `todayIso` is defined at the top
+// of this file (line 22).
 const DateField = memo(function DateField({ value, onChange }) {
   return (
     <TextField
@@ -226,6 +237,7 @@ const DateField = memo(function DateField({ value, onChange }) {
       InputLabelProps={{ shrink: true }}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      inputProps={{ max: todayIso() }}
     />
   )
 })
