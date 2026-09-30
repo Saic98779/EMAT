@@ -28,6 +28,17 @@ import { formatUser } from '../../apis/users'
 // the picked option briefly disappears from the option list). Switched
 // to a single `useIAs()` fetch + client-side filter — one HTTP round
 // trip, one stable option list, dropdown selection sticks.
+// Backend sometimes emits `currentStage` as "STAGE.SUB_STAGE" and
+// sometimes as the bare "SUB_STAGE" enum; strip the dotted prefix so
+// downstream `BSE_ELIGIBLE_SUBSTAGES.has(...)` matches either shape.
+// Mirrors `stripStagePrefix` in apis/industryAssociations.js — kept
+// locally so BseCandidate doesn't have to import from an internal.
+const stripStageDot = (raw) => {
+  if (!raw || typeof raw !== 'string') return raw
+  const dot = raw.indexOf('.')
+  return dot >= 0 ? raw.slice(dot + 1) : raw
+}
+
 const BSE_ELIGIBLE_SUBSTAGES = new Set([
   'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
   'SUSTAINABILITY_MATRIX_SUBMITTED',
@@ -95,7 +106,12 @@ export default function BseCandidate() {
     const rows = iasQ.data || []
     return rows
       .filter((r) => {
-        const stage = r?.raw?.currentStage || r?.currentStage
+        // Prefer the wrapper's already-stripped `currentStage` (see
+        // `iaFromDto` in apis/industryAssociations.js:394) — the raw
+        // DTO field may still carry the "STAGE.SUB_STAGE" dotted form,
+        // which wouldn't match our bare-key `BSE_ELIGIBLE_SUBSTAGES`
+        // set and would cause every eligible IA to be silently dropped.
+        const stage = r?.currentStage || stripStageDot(r?.raw?.currentStage)
         return r && r.id != null && BSE_ELIGIBLE_SUBSTAGES.has(stage)
       })
       .map((r) => ({
@@ -108,7 +124,7 @@ export default function BseCandidate() {
     // Stable key so a re-fetch returning the same rows doesn't spawn a
     // fresh reference and thrash the schema/dropdown option identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(iasQ.data || []).map((r) => `${r?.id}:${r?.raw?.currentStage || r?.currentStage || ''}`).join('|')])
+  }, [(iasQ.data || []).map((r) => `${r?.id}:${r?.currentStage || r?.raw?.currentStage || ''}`).join('|')])
 
   // "Offer Letter Vendor" dropdown — now sourced from user accounts with role
   // `MANPOWER_AGENCY` (via GET /users/by-role) rather than the standalone
