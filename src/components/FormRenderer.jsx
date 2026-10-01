@@ -11,6 +11,7 @@ import MyLocationIcon from '@mui/icons-material/MyLocation'
 import { alpha } from '@mui/material/styles'
 import FileChip from './FileChip'
 import usePincodeLookup from './usePincodeLookup'
+import { useValidatePan } from '../queries'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -657,11 +658,113 @@ function pincodeCtx(f, values) {
   }
 }
 
+// PAN field driven off the backend validation endpoint. Schema opts in
+// with `panLookup: true`; the component fires a React-Query lookup as
+// soon as the typed value matches the 10-char PAN regex and writes a
+// bookkeeping key into form values that the schema's `validate` can
+// consume to block submit:
+//   _pan_duplicate       — true | false | null (null while loading / before match)
+//   _pan_lookup_failed   — the backend check 500'd; show a soft warning
+//                          and let the user proceed (backend's own
+//                          unique constraint will catch a clash on save)
+//
+// Helper text under the input updates live:
+//   • "Checking…"               while the query is in-flight
+//   • "PAN already registered"  on duplicate (also sets the field's error state)
+//   • "PAN is available"        on success / not duplicate (muted green hint)
+//   • field's normal `help`     before a full PAN has been typed
+function PanField({ f, value, error, options, onChange, changeFor }) {
+  const q = useValidatePan(value)
+  const duplicate = q.data?.data?.duplicate
+  const lookupFailed = !!q.error
+
+  // Mirror the lookup state into form values so the schema `validate`
+  // on `pan_no` can read `values._pan_duplicate` and block submit.
+  // Using a ref to compare prev/next avoids writing on every render.
+  const lastRef = useRef({ dup: undefined, failed: undefined })
+  useEffect(() => {
+    if (f.readOnly) return
+    const dup = (typeof duplicate === 'boolean') ? duplicate : null
+    if (lastRef.current.dup !== dup) {
+      lastRef.current.dup = dup
+      changeFor('_pan_duplicate')(dup)
+    }
+    const failed = lookupFailed || null
+    if (lastRef.current.failed !== failed) {
+      lastRef.current.failed = failed
+      changeFor('_pan_lookup_failed')(failed)
+    }
+  }, [duplicate, lookupFailed, f.readOnly, changeFor])
+
+  // Collapse the duplicate state into the field's `error` channel so
+  // the input turns red and the submit guard via `_pan_duplicate` +
+  // the schema's own validate catches it.
+  const liveError = duplicate === true ? 'This PAN is already registered to another IA.' : error
+
+  // Live-status strip rendered BELOW the field (not inside helperText,
+  // because the counter / schema help would compete for that slot and
+  // MUI helperText can't be coloured per state). The strip only shows
+  // for the three non-idle states, so a user who hasn't typed a full
+  // PAN sees nothing extra.
+  const strip = q.isFetching
+    ? { label: 'Checking PAN…', tone: 'info' }
+    : duplicate === true
+      ? { label: 'This PAN is already registered to another IA.', tone: 'error' }
+      : duplicate === false
+        ? { label: 'PAN is available.', tone: 'success' }
+        : lookupFailed
+          ? { label: "Couldn't verify PAN right now — you can continue; the server will double-check on save.", tone: 'warning' }
+          : null
+
+  return (
+    <>
+      <Field
+        f={{ ...f, panLookup: undefined }}
+        value={value}
+        error={liveError}
+        options={options}
+        onChange={onChange}
+        changeFor={changeFor}
+      />
+      {strip && <PanStatusStrip label={strip.label} tone={strip.tone} span={f.span || 6} />}
+    </>
+  )
+}
+
+// Thin coloured line that renders directly under the PAN input. Grid
+// span matches the input's own span so it sits flush beneath — not in
+// its own full-width row that would push surrounding fields down.
+function PanStatusStrip({ label, tone, span }) {
+  return (
+    <Grid size={{ xs: 12, sm: span }}>
+      <Box
+        sx={(t) => {
+          const palette = t.palette[tone] || t.palette.info
+          return {
+            mt: -1.5, mb: 0.5,
+            display: 'flex', alignItems: 'center', gap: 0.75,
+            px: 1.25, py: 0.5, borderRadius: 1,
+            bgcolor: alpha(palette.main, 0.1),
+            color: palette.dark,
+            fontSize: 12.5, fontWeight: 600,
+          }
+        }}
+      >
+        <Box component="span" sx={(t) => ({ fontSize: 10, color: (t.palette[tone] || t.palette.info).main })}>●</Box>
+        <Box component="span">{label}</Box>
+      </Box>
+    </Grid>
+  )
+}
+
 // Individual field. Wrapped in memo — receives primitives + stable callbacks
 // so a keystroke on field A won't cause field B to re-render.
 const Field = memo(function Field({ f, value, error, computed, options, verified, onChange, onVerify, changeFor }) {
   if (f.pincodeLookup) {
     return <PincodeField f={f} value={value} error={error} ctx={computed} options={options} onChange={onChange} changeFor={changeFor} />
+  }
+  if (f.panLookup) {
+    return <PanField f={f} value={value} error={error} options={options} onChange={onChange} changeFor={changeFor} />
   }
   if (f.type === 'coordinates_capture') {
     return <CoordinatesCapture f={f} changeFor={changeFor} />

@@ -124,9 +124,33 @@ export const makeInPrincipleSchema = ({
   sections: [
     { n: 1, title: 'Constitution of IA', fields: [
       { name: 'email', label: 'IA Email', type: 'email', span: 6, required: true },
+      // UAT 2026-10-01 — live PAN uniqueness check against
+      // `GET /validations/pan?panNo=…`. The `panLookup: true` flag asks
+      // FormRenderer to wrap this input in `<PanField>`, which fires the
+      // query as soon as the 10-char PAN pattern matches and writes
+      // `_pan_duplicate: true/false` back into form values. The schema
+      // validate below reads that bookkeeping flag so submit is blocked
+      // on a duplicate without having to replicate the API call at
+      // every submit call site. `dependsOn: ['_pan_duplicate']` forces
+      // SectionCard to re-render when the lookup resolves.
       { name: 'pan_no', label: 'IA PAN', type: 'text', span: 6, required: true,
-        // 10-char PAN — 5 letters + 4 digits + 1 letter (e.g. AABCS3480N).
-        validate: (v) => (!v ? '' : (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(v).trim().toUpperCase()) ? '' : '10-char PAN, e.g. AABCS3480N')) },
+        panLookup: true,
+        // Suppress the generic "N / 500" counter so the live PAN status
+        // ("Checking PAN…", "PAN is available.", "PAN already registered")
+        // can own the helper-text slot — FormRenderer's `helperText`
+        // priority is error > counter > help, so without this the
+        // success message would be hidden by the counter.
+        counter: false,
+        max: 10,
+        min: 10,
+        dependsOn: ['_pan_duplicate'],
+        validate: (v, values) => {
+          if (!v) return ''
+          const normalised = String(v).trim().toUpperCase()
+          if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(normalised)) return '10-char PAN, e.g. AABCS3480N'
+          if (values?._pan_duplicate === true) return 'This PAN is already registered to another IA.'
+          return ''
+        } },
       { name: 'constitution_type', label: 'Constitution', type: 'select', span: 6, required: true,
         options: ['Societies Registration Act 1860', 'Section 8 Company', 'Trust', 'Other'] },
       { name: 'constitution_other', label: 'If Other — specify', type: 'text', span: 6, required: true,

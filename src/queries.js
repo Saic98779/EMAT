@@ -57,6 +57,7 @@ import {
 } from './apis/vendors'
 import { listFiles, FILE_STAGE } from './apis/files'
 import { listPincodeStates, listPincodeDistricts } from './apis/pincodes'
+import { validatePan } from './apis/validations'
 import {
   listVendorDisbursements, getVendorDisbursement,
   updateVendorDisbursement, reviewerUpdateVendorDisbursement,
@@ -366,6 +367,34 @@ export function usePincodeDistricts(state) {
     queryKey: ['pincodes', 'districts', state || ''],
     enabled: !!state,
     queryFn: ({ signal }) => listPincodeDistricts(state, { signal }),
+    ...FOREVER,
+  })
+}
+
+// UAT 2026-10-01 — live PAN duplicate check. The IA onboarding form
+// used to let the user fill the whole L1 record and only discover a
+// PAN collision via the backend's unique-constraint 400 on submit.
+// `/validations/pan` returns `{ panNo, duplicate }` synchronously, so
+// we fire it as soon as the typed value matches the 10-char PAN regex
+// and surface the result inline on the field.
+//
+// Cached forever per PAN — the answer only changes when another IA
+// claims that PAN, which is a rare write path and worth a stale read
+// vs. refetching on every keystroke.
+export function useValidatePan(panNo) {
+  const normalised = String(panNo || '').toUpperCase().trim()
+  const looksLikePan = /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(normalised)
+  return useQuery({
+    queryKey: ['validations', 'pan', normalised],
+    enabled: looksLikePan,
+    queryFn: ({ signal }) => validatePan(normalised, { signal }),
+    // When the endpoint 500s (e.g. deployed backend hasn't picked up
+    // the /validations/pan handler yet) React Query's default of 3
+    // retries fires 4 requests per typed PAN and spams DevTools. One
+    // attempt is enough: the UI already degrades to a soft "couldn't
+    // verify" message, and the backend's own unique-constraint catches
+    // a real duplicate at save-time.
+    retry: false,
     ...FOREVER,
   })
 }
