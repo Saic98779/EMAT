@@ -68,7 +68,7 @@ function recordToDefaults(record) {
   }
 }
 
-export default function DiaSurvey({ editId = null, initialRecord = null } = {}) {
+export default function DiaSurvey({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const existingAttachment = initialRecord?.attachment || null
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
@@ -132,6 +132,7 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
           if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
           return
         }
       }

@@ -18,6 +18,7 @@ import { useAuth } from '../../auth'
 import { useContentList } from '../../queries'
 import { CONTENT_REVIEW_TYPES } from '../checker/contentReviewConfig'
 import { StatusPill } from '../checker/CheckerReview'
+import { wasResubmitted } from '../checker/CheckerQueue'
 import { deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
 
 // ContentTypeList
@@ -140,7 +141,15 @@ function ContentRow({ type, cfg, row }) {
   const status = deriveStatus(row)
   const primaryKey = cfg.columns[0]?.key
   const secondaryCols = cfg.columns.slice(1)
-  const isRevert = status === DERIVED_STATUS.REVERT
+  // UAT 2026-10-01 — distinguish a plain REVERT (reviewer sent it back,
+  // user hasn't acted) from a RESUBMITTED row (user edited + resubmitted
+  // but the backend's maker/checker status fields haven't been cleared
+  // yet). `wasResubmitted` keys off `createdBy === updatedBy` on a REVERT
+  // row — if the submitter was the last writer, they've already fixed
+  // it. Show a cheerful "Resubmitted" chip instead of the alarming
+  // "Reverted" one.
+  const resubmitted = wasResubmitted(row)
+  const isRevert = status === DERIVED_STATUS.REVERT && !resubmitted
 
   return (
     <Box
@@ -211,10 +220,31 @@ function ContentRow({ type, cfg, row }) {
               </Typography>
             </Stack>
           )}
+          {resubmitted && (
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.75 }}>
+              <HistoryRoundedIcon sx={{ fontSize: 13, color: theme.palette.info.dark }} />
+              <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: theme.palette.info.dark }}>
+                Resubmitted — awaiting re-review by HO Maker.
+              </Typography>
+            </Stack>
+          )}
         </Box>
 
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flexShrink: 0 }}>
-          <StatusPill status={status} />
+          {resubmitted
+            ? (
+              <Chip
+                size="small"
+                label="Resubmitted"
+                sx={{
+                  bgcolor: alpha(theme.palette.info.main, 0.14),
+                  color: theme.palette.info.dark,
+                  fontWeight: 700,
+                  letterSpacing: '0.02em',
+                }}
+              />
+            )
+            : <StatusPill status={status} viewerMode="submitter" />}
           <ArrowForwardRoundedIcon sx={{ fontSize: 16, color: theme.palette.text.disabled }} />
         </Stack>
       </Stack>

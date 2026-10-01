@@ -120,7 +120,17 @@ export default function PmuResubmit() {
           typeLabel={cfg.label}
           backTo={`/gt/pmu/list/${type}/${id}`}
         />
-        <Form editId={id} initialRecord={dto} />
+        {/* UAT 2026-10-01 — on a successful resubmit the form stays
+            mounted on the edit URL and the "Resubmit for Approval" CTA
+            lingers, making it look like nothing happened. Pass a
+            navigate-back callback so each DIA form jumps the user back
+            to the per-type list, where the row shows the new
+            "Resubmitted" chip from ContentTypeList. */}
+        <Form
+          editId={id}
+          initialRecord={dto}
+          onResubmitDone={() => navigate(`/gt/pmu/list/${type}`, { replace: true })}
+        />
       </Box>
     </Suspense>
   )

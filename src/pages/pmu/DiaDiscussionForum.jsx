@@ -37,7 +37,7 @@ function recordToDefaults(record) {
   }
 }
 
-export default function DiaDiscussionForum({ editId = null, initialRecord = null } = {}) {
+export default function DiaDiscussionForum({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
   const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
@@ -69,6 +69,7 @@ export default function DiaDiscussionForum({ editId = null, initialRecord = null
         msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {

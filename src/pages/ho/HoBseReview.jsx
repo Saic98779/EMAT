@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Box, Card, CardContent, Grid, Stack, Typography, Button, Chip, Divider,
@@ -7,10 +7,12 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SaveIcon from '@mui/icons-material/Save'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined'
 import { SectionCard } from '../../components/shared'
 import DocUpload from '../../components/DocUpload'
 import { useBse, useUpdateBse } from '../../queries'
 import { toUpdatePayload, fromDto } from '../../apis/bseRecommendations'
+import { uploadFile, viewFile } from '../../apis/files'
 
 // SIDBI HO Maker workspace for a single BSE recommendation.
 //
@@ -82,6 +84,11 @@ export default function HoBseReview() {
     committeeRecommendation: d.recommendation,
     committeeDate: d.date || todayIso(),
     committeeRemarks: d.remarks,
+    // UAT 2026-10-01 — attach the Minutes-of-Meeting filename when the
+    // committee block has one (either freshly picked in this session or
+    // already saved on the DTO). Only sent when non-empty so a save of
+    // just the recommendation / date / remarks doesn't null the file.
+    ...(d.committeeMom ? { committeeMom: d.committeeMom } : null),
   }), [doSave])
 
   const saveOnboarding = useCallback((d) => doSave('Onboarding details', {
@@ -134,7 +141,7 @@ export default function HoBseReview() {
             <CandidateProfile view={view} />
             <UpstreamRecommendations dto={dto} />
             <HoBlock initial={dto} onSave={saveHo} />
-            <CommitteeBlock initial={dto} onSave={saveCommittee} />
+            <CommitteeBlock initial={dto} onSave={saveCommittee} bseId={uuid} />
             {committeeApproved && <OnboardingBlock initial={dto} onSave={saveOnboarding} />}
           </Stack>
         </Grid>
@@ -260,16 +267,23 @@ const COMMITTEE_MAPPING = [
   ['recommendation', 'committeeRecommendation', false],
   ['date', 'committeeDate', true],
   ['remarks', 'committeeRemarks', false],
+  ['committeeMom', 'committeeMom', false],
 ]
 
-const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
+const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave, bseId }) {
   const [d, setD] = useState({
     recommendation: initial.committeeRecommendation || '',
     date: (initial.committeeDate || '').slice(0, 10),
     remarks: initial.committeeRemarks || '',
+    // UAT 2026-10-01 — committee MoM filename (goes into backend
+    // `committeeMom` column). Pre-seed from the DTO so an existing file
+    // shows in the "Currently attached" line.
+    committeeMom: initial.committeeMom || '',
   })
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
+  const momInputRef = useRef(null)
 
   const set = useCallback((k) => (v) => {
     setD((p) => ({ ...p, [k]: v }))
@@ -286,6 +300,29 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
     setSaving(true)
     try { await onSave(d) } finally { setSaving(false) }
   }, [onSave, d, todayIsoStr])
+
+  // MoM upload — same pattern used by `PanelSubmissionUpload`. The file
+  // goes to the server immediately against this BSE record's id; the
+  // returned filename sits in `d.committeeMom` and gets persisted on the
+  // next "Save committee decision" click.
+  const pickMom = () => momInputRef.current?.click()
+  const onMomChosen = useCallback(async (e) => {
+    const file = e.target.files?.[0]
+    if (momInputRef.current) momInputRef.current.value = ''
+    if (!file || !bseId) return
+    setUploading(true)
+    try {
+      const res = await uploadFile(bseId, 'bse', bseId, file)
+      const filename = res?.filename || file.name
+      setD((p) => ({ ...p, committeeMom: filename }))
+      setError('')
+    } catch (err) {
+      setError(err?.message || 'Upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }, [bseId])
+  const viewMom = () => d.committeeMom && bseId && viewFile(bseId, 'bse', bseId, d.committeeMom)
 
   const dirty = isDirty(d, initial, COMMITTEE_MAPPING)
 
@@ -304,6 +341,51 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
         </Grid>
         <Grid size={12}>
           <TextInput value={d.remarks} onChange={set('remarks')} label="Committee remarks" multiline />
+        </Grid>
+        {/* MoM upload row — UAT 2026-10-01. Pattern mirrors the panel
+            approval letter uploader on PanelSubmissionUpload. */}
+        <Grid size={12}>
+          <Box
+            sx={{
+              mt: 0.5, p: 1.5, borderRadius: 1.5,
+              border: 1, borderColor: 'divider',
+              bgcolor: 'action.hover',
+              display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap',
+            }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'text.disabled' }}>
+                Minutes of Meeting (MoM)
+              </Typography>
+              {d.committeeMom
+                ? (
+                  <Typography sx={{ mt: 0.25, fontSize: 13, fontWeight: 600, color: 'text.primary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.committeeMom}>
+                    {d.committeeMom}
+                  </Typography>
+                )
+                : (
+                  <Typography sx={{ mt: 0.25, fontSize: 12.5, color: 'text.secondary' }}>
+                    No MoM attached yet. Upload the signed committee minutes (PDF).
+                  </Typography>
+                )}
+            </Box>
+            {d.committeeMom && bseId && (
+              <Button size="small" onClick={viewMom} sx={{ textTransform: 'none' }}>
+                View
+              </Button>
+            )}
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={uploading ? <CircularProgress size={14} /> : <CloudUploadOutlinedIcon />}
+              disabled={uploading || !bseId}
+              onClick={pickMom}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+            >
+              {d.committeeMom ? 'Replace file' : 'Choose PDF'}
+            </Button>
+            <input ref={momInputRef} type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={onMomChosen} />
+          </Box>
         </Grid>
       </Grid>
       {error && (
