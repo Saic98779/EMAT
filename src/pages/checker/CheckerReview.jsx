@@ -209,7 +209,7 @@ export default function CheckerReview({
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={3600}
+        autoHideDuration={5000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

@@ -322,7 +322,7 @@ function RegistrationForm({ ws }) {
         />
         <Snackbar
           open={!!activeToast}
-          autoHideDuration={4200}
+          autoHideDuration={5000}
           onClose={closeToast}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
@@ -404,7 +404,7 @@ function RegistrationForm({ ws }) {
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={4200}
+        autoHideDuration={5000}
         onClose={clearToast}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

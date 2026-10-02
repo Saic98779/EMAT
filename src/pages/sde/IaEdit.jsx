@@ -190,7 +190,7 @@ export default function IaEdit() {
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={3500}
+        autoHideDuration={5000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

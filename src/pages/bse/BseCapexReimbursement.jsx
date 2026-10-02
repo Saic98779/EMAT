@@ -403,7 +403,7 @@ export default function BseCapexReimbursement() {
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={4000}
+        autoHideDuration={5000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

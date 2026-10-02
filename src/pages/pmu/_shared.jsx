@@ -114,7 +114,7 @@ export function PmuFormShell({
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={4200}
+        autoHideDuration={5000}
         onClose={onToastClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

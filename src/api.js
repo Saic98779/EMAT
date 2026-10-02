@@ -412,10 +412,28 @@ function sanitizeErrorMessage(raw) {
   if (ora) {
     // eslint-disable-next-line no-console
     console.warn('[api] suppressed Oracle error from backend:', s)
-    if (ora[1] === '12899') return 'One of the fields is longer than the server allows. Please shorten it and try again.'
+    if (ora[1] === '12899') {
+      // UAT 2026-10-02 items 49 / 51 — extract the offending column
+      // name + its actual-vs-max byte counts from the full Oracle text
+      // so the user knows which field to shorten. Format of the raw
+      // error (verified live):
+      //   ORA-12899: value too large for column
+      //     "EMAT"."TABLE_NAME"."COLUMN_NAME" (actual: 530, maximum: 500)
+      const detail = s.match(/\"[^\"]+\"\.\"[^\"]+\"\.\"([A-Z0-9_]+)\"[^(]*\(actual:\s*(\d+)[^)]*maximum:\s*(\d+)/i)
+      if (detail) {
+        const field = humaniseColumnName(detail[1])
+        return `${field} is longer than the server allows (${detail[2]} chars entered, maximum ${detail[3]}). Please shorten it and try again.`
+      }
+      return 'One of the fields is longer than the server allows. Please shorten it and try again.'
+    }
     if (ora[1] === '00001') return 'A record with the same identifier already exists.'
     if (ora[1] === '02291') return 'A required linked record is missing. Please refresh and try again.'
-    if (ora[1] === '01400') return 'A required field is missing. Please fill it in and try again.'
+    if (ora[1] === '01400') {
+      // Same treatment for "cannot insert NULL" — surface the column.
+      const col = s.match(/\"[^\"]+\"\.\"[^\"]+\"\.\"([A-Z0-9_]+)\"/)
+      if (col) return `${humaniseColumnName(col[1])} is required. Please fill it in and try again.`
+      return 'A required field is missing. Please fill it in and try again.'
+    }
     return 'Something went wrong on the server. Please try again — if it keeps happening, share this timestamp with support.'
   }
 
@@ -454,4 +472,61 @@ function sanitizeErrorMessage(raw) {
 
 function safeJson(t) {
   try { return JSON.parse(t) } catch { return null }
+}
+
+// Human-readable name for an Oracle column so an ORA-12899 / ORA-01400
+// error can tell the user which field to fix.
+//
+// Explicit mappings cover the frequently-reported ones (UAT 2026-10-02
+// items 49 / 51 flagged `CONSTITUTION_OTHER` and the three
+// `SECTOR_N_PROBLEMS` columns). Anything not listed falls back to
+// snake-case → "Title Case" conversion so even an unmapped column
+// still reads as prose instead of a shouting backend identifier.
+const COLUMN_LABELS = {
+  CONSTITUTION_OTHER:       'Constitution — If Other, specify',
+  SECTOR_1:                 'Sector #1',
+  SECTOR_1_PROBLEMS:        'Sector #1 — Key problems',
+  SECTOR_2:                 'Sector #2',
+  SECTOR_2_PROBLEMS:        'Sector #2 — Key problems',
+  SECTOR_3:                 'Sector #3',
+  SECTOR_3_PROBLEMS:        'Sector #3 — Key problems',
+  GRANT_DETAILS:            'Grant Details proposed',
+  JUSTIFICATION:            'Justification for choosing this IA',
+  SELECTION_CRITERIA:       'Basis of selection',
+  WILLINGNESS_COMMENTS:     'Willingness comments',
+  ENVISAGED_OUTPUT:         'Envisaged Output',
+  ENVISAGED_OUTCOME:        'Envisaged Outcome',
+  ENVISAGED_IMPACT:         'Envisaged Impact',
+  ADVERSE_REMARKS:          'Adverse remarks details',
+  PAID_SERVICES_DETAILS:    'Details of paid services',
+  INFRASTRUCTURE_TYPE:      'IT infrastructure available',
+  SECRETARIAT_STAFF:        'Secretariat staff',
+  ADDRESS:                  'Full postal address',
+  APPROVAL_LETTER:          'Approval letter filename',
+  WEB_REPORT:               'Web search report filename',
+  PAN_NO:                   'IA PAN',
+  EMAIL:                    'IA Email',
+  INDUSTRY_ASSOCIATION_NAME: 'Industry Association name',
+  COMMITTEE_COMMENTS:       'Committee comments',
+  CLUSTER_EXPERT_COMMENTS:  "Cluster Expert's remarks",
+  DOP_REFERENCE:            'DoP Reference',
+  RECOMMENDATION_REMARKS:   'Recommendation remarks',
+  STAGE_COMMENTS:           'Reviewer remarks',
+  REMARK:                   'Reviewer remark',
+  HO_REMARKS:               'HO Maker remarks',
+  PMU_REMARKS:              'PMU remarks',
+  GT_REMARKS:               'GT Field Manager remarks',
+  COMMITTEE_REMARKS:        'Committee remarks',
+}
+
+function humaniseColumnName(raw) {
+  const key = String(raw || '').toUpperCase()
+  if (COLUMN_LABELS[key]) return `"${COLUMN_LABELS[key]}"`
+  // Snake-case fallback: GRANT_PROPOSED → "Grant Proposed"
+  return `"${key
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')}"`
 }

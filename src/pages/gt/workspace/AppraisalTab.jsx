@@ -179,7 +179,7 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
       )}
       <Snackbar
         open={!!toast}
-        autoHideDuration={4200}
+        autoHideDuration={5000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

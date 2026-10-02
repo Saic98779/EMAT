@@ -196,7 +196,19 @@ const SdeDecisionBar = memo(function SdeDecisionBar({
     // reviewer can see which field to fix.
     if (!snapshot.isValid()) {
       snapshot.showAllErrors()
-      onDone?.({ severity: 'warning', msg: 'Please fix the highlighted fields before ' + d.label.toLowerCase() + '.' })
+      // UAT 2026-10-02 item 66 — the toast used to just say "Please fix
+      // the highlighted fields" with no clue which section / field was
+      // the problem. The SDE sees multiple sections marked "Done" and no
+      // Approve button, and has to scroll the whole form hunting red
+      // outlines. Now use `firstProblem()` (already exposed on the form
+      // ref) to name the first blocking field right in the toast.
+      const problem = snapshot.firstProblem?.()
+      onDone?.({
+        severity: 'warning',
+        msg: problem
+          ? `Can't ${d.label.toLowerCase()} — ${problem}`
+          : `Please fix the highlighted fields before ${d.label.toLowerCase()}.`,
+      })
       return
     }
 

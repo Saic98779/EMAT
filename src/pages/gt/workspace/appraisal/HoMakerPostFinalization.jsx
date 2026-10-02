@@ -346,7 +346,7 @@ export default function HoMakerPostFinalization({ iaId, iaName, appraisal }) {
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={4200}
+        autoHideDuration={5000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

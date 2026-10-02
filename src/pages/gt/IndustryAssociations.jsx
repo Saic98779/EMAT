@@ -416,7 +416,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                 <TableCell>
                   <Typography variant="body2">{branchLabel(ia, branchNameById)}</Typography>
                 </TableCell>
-                <TableCell><StatusChip status={ia.status} /></TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}><StatusChip status={ia.status} /></TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                     {rowAction(ia, navigate, basePath, { isClusterExpert })}
@@ -465,7 +465,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={3000}
+        autoHideDuration={5000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
