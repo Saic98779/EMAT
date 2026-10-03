@@ -498,7 +498,7 @@ const ReadMoneyField = memo(function ReadMoneyField({ label, value, helperText }
 function natureOfPaymentTemplate({ currentAmount }) {
   return `Payment towards Capacity Building of IA officials/members.
 
-<<detail about the event>>
+Detail about the event ____________
 
 The present disbursement is of Rs.${fmt(currentAmount)}/- towards the organisation of ____________. The event impact assessment report has been submitted and is placed below.`
 }

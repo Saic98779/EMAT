@@ -429,7 +429,7 @@ export const salarySchema = {
       { name: 'agency_gstin', label: 'GSTIN of the Agency', type: 'text', span: 6 },
       { name: 'sidbi_gstin', label: 'GSTIN of SIDBI', type: 'text', span: 6, default: '09AABCS3480N5ZS', readOnly: true },
       { name: 'nature_payment', label: 'Nature of Payment', type: 'textarea', span: 12,
-        default: 'Payment towards Salary for the month <<MMM-YYYY>> of ____ BSEs. BSE-wise Details in Annexure I.' },
+        default: 'Payment towards Salary for the month MMM-YYYY of ____ BSEs. BSE-wise Details in Annexure I.' },
     ] },
     { n: 2, title: 'Invoice Details', fields: [
       { name: 'invoice_date', label: 'Invoice Date', type: 'text', span: 3, placeholder: 'DD/MM/YYYY' },
@@ -526,7 +526,7 @@ export const salaryRequestSchema = {
       { name: 'agency_gstin', label: 'GSTIN of the Agency', type: 'text', span: 6 },
       { name: 'sidbi_gstin', label: 'GSTIN of SIDBI', type: 'text', span: 6, default: '09AABCS3480N5ZS', readOnly: true },
       { name: 'nature_payment', label: 'Nature of Payment', type: 'textarea', span: 12,
-        default: 'Payment towards Salary for the month <<MMM-YYYY>> of ____ BSEs. BSE-wise Details enclosed.' },
+        default: 'Payment towards Salary for the month MMM-YYYY of ____ BSEs. BSE-wise Details enclosed.' },
     ] },
     { n: 2, title: 'Invoice Details', fields: [
       { name: 'invoice_date', label: 'Invoice Date', type: 'text', span: 3, placeholder: 'DD/MM/YYYY' },

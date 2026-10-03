@@ -12,6 +12,7 @@ import theme from './theme'
 import { AuthProvider } from './auth'
 import { DataProvider } from './store'
 import App from './App'
+import InputGuard from './components/InputGuard'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      <InputGuard />
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>

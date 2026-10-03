@@ -11,6 +11,7 @@ import MyLocationIcon from '@mui/icons-material/MyLocation'
 import { alpha } from '@mui/material/styles'
 import FileChip from './FileChip'
 import usePincodeLookup from './usePincodeLookup'
+import { charsetError, charsetForField } from '../inputCharsets'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -77,6 +78,12 @@ export function fieldError(f, value, values, { showRequired = false } = {}) {
   if (f.type === 'repeater') return repeaterProblem(f, trimmed)
   if (trimmed === '' || trimmed == null) return ''
   const isFreeText = f.type === 'text' || f.type === 'textarea'
+  // Disallowed special characters (security audit) — see inputCharsets.js.
+  // Skipped for read-only fields: their value is autofetched, not typed.
+  if ((isFreeText || f.type === 'email') && !f.readOnly && typeof trimmed === 'string') {
+    const bad = charsetError(trimmed, charsetForField(f))
+    if (bad) return bad
+  }
   if (isFreeText && typeof trimmed === 'string') {
     const minLen = f.min ?? 3
     const maxLen = f.max ?? 500
@@ -321,6 +328,10 @@ function cellError(col, v, row) {
   const raw = v ?? ''
   const trimmed = typeof raw === 'string' ? raw.trim() : raw
   if (trimmed === '' || trimmed == null) return ''
+  if (typeof trimmed === 'string' && col.type !== 'number' && col.type !== 'date') {
+    const bad = charsetError(trimmed, charsetForField(col))
+    if (bad) return bad
+  }
   if (col.validate) { const e = col.validate(trimmed, row || {}); if (e) return e }
   if (col.type === 'number' && !Number.isFinite(Number(trimmed))) return 'Enter a number'
   const p = col.pattern
@@ -386,7 +397,7 @@ function RepeaterCell({ col, row, onChange, readOnly, showLabel = false }) {
       error={!!err}
       helperText={err || undefined}
       InputProps={{ readOnly }}
-      inputProps={col.type === 'number' ? { min: 0, step: 'any' } : undefined}
+      inputProps={col.type === 'number' ? { min: 0, step: 'any' } : { 'data-charset': charsetForField(col) }}
       sx={readOnly ? { '& .MuiInputBase-root': { bgcolor: 'action.hover' } } : undefined}
     >
       {isSelect && !readOnly && col.options.map((o) => {
@@ -937,6 +948,8 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
         // number field.
         onWheel={isNumber ? (e) => e.target.blur() : undefined}
         inputProps={{
+          // Read by the global InputGuard to decide which characters may be typed.
+          'data-charset': charsetForField(f),
           maxLength: effectiveMax,
           max: dateMax,
           // For number fields, always cap the minimum at 0 (so browser
