@@ -589,6 +589,19 @@ const OthersRow = memo(function OthersRow({ index, item, checked, onToggle, init
                 multiline
                 minRows={2}
                 maxRows={6}
+                // UAT 2026-10-03 — surface the 500-char cap with a live
+                // right-aligned counter (red at the cap). The input
+                // slice above already enforces it on state writes; the
+                // `maxLength` here also stops a native paste past 500.
+                inputProps={{ maxLength: 500 }}
+                helperText={`${text.length} / 500`}
+                FormHelperTextProps={{
+                  sx: {
+                    textAlign: 'right',
+                    color: text.length >= 500 ? 'error.main' : 'text.disabled',
+                    m: 0, mt: 0.25, fontSize: 11,
+                  },
+                }}
                 slotProps={{
                   input: {
                     sx: {

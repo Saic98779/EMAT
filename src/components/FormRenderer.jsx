@@ -243,7 +243,7 @@ const MAX_UPLOAD_LABEL = '5 MB'
 // by every Uploader, so already-uploaded files can be opened for viewing.
 const FileScopeContext = createContext(null)
 
-function Uploader({ value, label, help, required, error, onChange, readOnly }) {
+function Uploader({ value, label, help, required, error, onChange, readOnly, single = false }) {
   const scope = useContext(FileScopeContext)
   // Two separate rejection buckets so we can show a distinct message for
   // "wrong type" vs "too big" — otherwise the user has to guess which rule
@@ -261,19 +261,36 @@ function Uploader({ value, label, help, required, error, onChange, readOnly }) {
       if (f.size > MAX_UPLOAD_BYTES) { badSize.push(f); continue }
       allowed.push(f)
     }
-    if (allowed.length) onChange([...(value || []), ...allowed])
+    if (allowed.length) {
+      // UAT 2026-10-03 — `single: true` on the schema field means
+      // picking a new file REPLACES whatever was there (one file max).
+      // Default stays additive (append picked to existing).
+      onChange(single ? [allowed[0]] : [...(value || []), ...allowed])
+    }
     setRejectedType(badType.map((f) => f.name))
     setRejectedSize(badSize.map((f) => f.name))
     e.target.value = ''
-  }, [value, onChange])
+  }, [value, onChange, single])
   const removeAt = useCallback((idx) => onChange((value || []).filter((_, i) => i !== idx)), [value, onChange])
+  const hasFile = docs.length > 0
   return (
     <Framed label={label} required={required} error={error}>
       {!readOnly && (
         <>
-          <Button component="label" size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ mt: 0.25 }}>
-            Upload
-            <input type="file" hidden multiple accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
+          <Button
+            component="label"
+            size="small"
+            variant="outlined"
+            startIcon={<UploadFileIcon />}
+            sx={{ mt: 0.25 }}
+            // In single-file mode, grey the button out once a file is
+            // picked — the user has to remove it before picking another.
+            // Prevents the "I clicked Upload again and nothing happened"
+            // confusion that would otherwise happen with multiple={false}.
+            disabled={single && hasFile}
+          >
+            {single && hasFile ? 'File attached' : 'Upload'}
+            <input type="file" hidden multiple={!single} accept={ALLOWED_UPLOAD_ACCEPT} onChange={pick} />
           </Button>
           <Typography variant="caption" color={error ? 'error.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
             Only .doc, .docx, .pdf, .jpg, .jpeg, .png files — max {MAX_UPLOAD_LABEL} each
@@ -906,7 +923,7 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     )
   }
   if (f.type === 'file') {
-    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} help={f.help} required={f.required} error={error} onChange={onChange} readOnly={f.readOnly} /></Grid>
+    return <Grid size={{ xs: 12, sm: f.span || 6 }}><Uploader value={value} label={f.label} help={f.help} required={f.required} error={error} onChange={onChange} readOnly={f.readOnly} single={f.single === true} /></Grid>
   }
   if (f.type === 'repeater') {
     return (

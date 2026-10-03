@@ -128,27 +128,35 @@ export default function IaWorkspaceLayout() {
   // ahead into a form that isn't ready yet.
   //   • L1             — needs the eligibility matrix on record
   //   • Sustainability — needs L1 fully approved
-  //   • Action Plan    — needs Sustainability submitted
+  //   • Action Plan    — needs Sustainability SUBMITTED (not CE-approved)
   //   • Appraisal      — needs Action Plan CE-approved (stage 4 COMPLETED)
   const views = useMemo(() => {
     const stagesByKey = new Map((workflow?.stages || []).map((s) => [s.key, s]))
     const eligibilityDone = stagesByKey.get(STAGE.ELIGIBILITY_MATRIX)?.status === STATUS.COMPLETED
     const l1Done = stagesByKey.get(STAGE.IN_PRINCIPLE_APPROVAL_OF_IA)?.status === STATUS.COMPLETED
-    const sustainabilityDone = stagesByKey.get(STAGE.SUSTAINABILITY_MATRIX)?.status === STATUS.COMPLETED
+    // UAT 2026-10-03 — Action Plan should unlock as soon as GT SUBMITS
+    // the Sustainability Matrix, not when CE approves it. The whole
+    // point of the parallel-tracks workflow is that GT can fill the
+    // Action Plan while CE is reviewing sustainability. Previously this
+    // checked `status === COMPLETED` which required CE approval, so a
+    // GT user who navigated away from Action Plan (e.g. to glance at
+    // L1) found the tab locked when they tried to return.
+    const sustainabilityStage = stagesByKey.get(STAGE.SUSTAINABILITY_MATRIX)
+    const sustainabilitySubmitted = sustainabilityStage?.subStages?.[0]?.status === STATUS.COMPLETED
     const actionPlanDone = stagesByKey.get(STAGE.ACTION_PLAN)?.status === STATUS.COMPLETED
 
     const disabledFor = (key) => {
       if (isNew) return key !== 'overview' && key !== 'l1' // draft mode: nothing else exists
       if (key === 'l1') return !eligibilityDone
       if (key === 'sustainability') return !l1Done
-      if (key === 'action-plan') return !sustainabilityDone
+      if (key === 'action-plan') return !sustainabilitySubmitted
       if (key === 'appraisal') return !actionPlanDone
       return false
     }
     const disabledReason = (key) => {
       if (key === 'l1') return 'Complete the Eligibility Matrix first.'
       if (key === 'sustainability') return 'Opens once In-Principle Approval (L1) is granted.'
-      if (key === 'action-plan') return 'Opens once the Sustainability Matrix is submitted.'
+      if (key === 'action-plan') return 'Opens once the Sustainability Matrix has been submitted.'
       if (key === 'appraisal') return 'Opens once the Cluster Expert approves the Action Plan.'
       return ''
     }

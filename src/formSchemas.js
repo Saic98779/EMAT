@@ -18,9 +18,17 @@ const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
 // by each field's `max` (via FormRenderer's length check that emits
 // "Keep it under N characters."), so the pattern only enforces the
 // character-class contract.
+// UAT 2026-10-03 — original pattern was defensively narrow (no commas,
+// no parens, no slashes) which was my own call, never a client ask.
+// Common Indian name forms carry commas ("Smith, John"), suffixes
+// ("John A. Smith, Jr."), parenthetical honorifics ("Dr. (Smt.) …"),
+// and slashes ("S/o …"). The only character class we really need to
+// reject is digits — a human's name never contains them. Angle
+// brackets are also blocked, but that's handled upstream by the
+// generic "HTML tags are not allowed" check in FormRenderer.
 const NAME_PATTERN = {
-  re: /^[A-Za-z][A-Za-z\s.'-]*$/,
-  msg: 'Letters, spaces, dots, hyphens or apostrophes only (no numbers)',
+  re: /^[A-Za-z][^0-9<>]*$/,
+  msg: 'Numbers are not allowed in a name.',
 }
 // Accepts optional http/https, an optional `www.` (or any subdomain) prefix,
 // a domain with at least one dot, optional port, and an optional path /
@@ -345,8 +353,11 @@ export const makeInPrincipleSchema = ({
       { name: 'building', label: 'Building of IA', type: 'select', span: 6, required: true,
         options: ['Owned office', 'Rented office', 'Leased office', 'Office of office bearer'] },
       { name: 'declaration_signed', label: 'Declaration signed by office bearer', type: 'yesno', span: 6, required: true },
-      { name: 'electricity_bill', label: 'Electricity bill (proof)', type: 'file', span: 6 },
-      { name: 'telephone_bill', label: 'Telephone bill (proof)', type: 'file', span: 6 },
+      // UAT 2026-10-03 — single file only (one bill scan per field).
+      // `single: true` makes the Uploader replace instead of append and
+      // disables the Upload button once a file is attached.
+      { name: 'electricity_bill', label: 'Electricity bill (proof)', type: 'file', span: 6, single: true },
+      { name: 'telephone_bill', label: 'Telephone bill (proof)', type: 'file', span: 6, single: true },
 
       { name: '_amenities', label: 'IT & staff', type: 'subheading', span: 12 },
       // Free-text descriptions instead of the earlier Yes/No + checkbox
