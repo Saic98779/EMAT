@@ -33,8 +33,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Sub-stages where Cluster Expert has a decision affordance — keep in sync
 // with `TRANSITIONS` in `src/apis/stageActions.js`. Anything not in this
 // set is either upstream of CE or already past their turn.
+//
+// UAT 2026-10-03 — tightened again after the previous version let
+// "Detailed Pending" rows (currentStage `CLUSTER_EXPERT_APPROVED` and
+// `SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED`) leak into the CE
+// queue. Those two mean "CE finished, waiting for L2 to be submitted"
+// — the CE has nothing to action on them.
+//
+// `SUSTAINABILITY_MATRIX_APPROVED` is retained because in the parallel-
+// tracks flow it means "sustainability approved, action plan still
+// awaiting CE" — CE still has work to do on the row.
+//
+// Known trade-off: if a CE approves the ACTION PLAN first (while
+// sustainability is still pending), `currentStage` becomes
+// `CLUSTER_EXPERT_APPROVED` and the IA falls out of the queue — the
+// CE would have to open it from a bookmark / direct link to finish
+// sustainability. That's rare enough vs the cost of letting every
+// "Detailed Pending" row show up for CE.
 const CE_ACTIONABLE_STAGES = new Set([
   'SUSTAINABILITY_MATRIX_SUBMITTED',      // CE approve/revert/reject (added 2026-09-27)
+  'SUSTAINABILITY_MATRIX_APPROVED',       // CE may still owe action-plan review in parallel-tracks mode
   'ACTION_PLAN_SUBMITTED',                // CE approve/revert on the action plan
   'DETAILED_APPRAISAL_APPROVAL_BY_SDE',   // CE comments before HO Maker
 ])
@@ -146,11 +164,25 @@ function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
   // CE gets dropped on the appraisal tab, which is locked until earlier
   // stages clear.
   if (isClusterExpert) {
-    const ceTab = ia.currentStage === 'SUSTAINABILITY_MATRIX_SUBMITTED'
-      ? 'sustainability'
-      : ia.currentStage === 'ACTION_PLAN_SUBMITTED'
-        ? 'action-plan'
-        : (ia.appraisal ? 'appraisal' : 'overview')
+    // UAT 2026-10-02/03 — route to the tab that still needs CE action.
+    //   • SUSTAINABILITY_MATRIX_SUBMITTED → sustainability tab (first review)
+    //   • ACTION_PLAN_SUBMITTED           → action-plan tab (first review)
+    //   • SUSTAINABILITY_MATRIX_APPROVED  → action-plan tab (parallel-tracks
+    //                                       edge case where CE approved
+    //                                       sustainability first and the
+    //                                       action plan still awaits CE)
+    //   • DETAILED_APPRAISAL_APPROVAL_BY_SDE → appraisal tab (CE comments)
+    //
+    // `CLUSTER_EXPERT_APPROVED` is deliberately NOT routed here — rows
+    // at that stage are filtered out of `iasFiltered` above because they
+    // mean CE is finished and only cause confusion ("Detailed Pending"
+    // rows that route to L1).
+    const cs = ia.currentStage
+    const ceTab =
+        cs === 'SUSTAINABILITY_MATRIX_SUBMITTED' ? 'sustainability'
+      : cs === 'ACTION_PLAN_SUBMITTED'           ? 'action-plan'
+      : cs === 'SUSTAINABILITY_MATRIX_APPROVED'  ? 'action-plan'
+      : (ia.appraisal ? 'appraisal' : 'overview')
     return (
       <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
         onClick={go(`${workspaceBase}/ias/${ia.id}/workspace/${ceTab}`)} sx={ACTION_SX}>

@@ -53,13 +53,25 @@ export function grantSumProblem(values) {
 // have a date that hasn't happened yet). The parent IA's createdAt is
 // threaded into form values under `_ia_created_at` by AppraisalForm on
 // seed.
+// Parse a "YYYY-MM-DD" string as LOCAL midnight. `new Date("YYYY-MM-DD")`
+// parses as UTC midnight, which in IST (+5:30) becomes the next day's
+// 05:30 AM local — comparing that to local-midnight "today" misreads
+// today's own date as 5½ hours in the future. See the same fix on
+// `incorporation_date` further down. Falls back to the generic Date
+// constructor for non-ISO inputs.
+const parseLocalDate = (v) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''))
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? null : d
+}
 const afterIaCreation = (v, values) => {
   if (!v) return ''
-  const iaIso = values?._ia_created_at
-  const d = new Date(v)
-  if (isNaN(d.getTime())) return ''
+  const d = parseLocalDate(v)
+  if (!d) return ''
   const today = new Date(); today.setHours(0, 0, 0, 0)
   if (d.getTime() > today.getTime()) return 'Date cannot be in the future.'
+  const iaIso = values?._ia_created_at
   if (!iaIso) return ''
   const iaD = new Date(iaIso)
   if (isNaN(iaD.getTime())) return ''

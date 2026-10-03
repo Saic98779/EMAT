@@ -377,13 +377,27 @@ export default function AppraisalForm({
   // `useRef`), only its `.current` payload changes.
   useEffect(() => {
     if (!formRef) return
+    // Preserve any stepper-published hooks on the ref (e.g.
+    // `goToFirstMissing`) across re-renders. StepperLayout augments
+    // this object with its own methods inside its own useEffect; we
+    // don't want to overwrite them here.
+    const prev = formRef.current || {}
     formRef.current = {
+      ...prev,
       values,
       seeded,
       isValid: () => firstProblem(schema, values) == null,
       firstProblem: () => firstProblem(schema, values),
       collectFiles,
       showAllErrors: () => setShowAllErrors(true),
+      // UAT 2026-10-03 — count of sections the user still needs to
+      // address (missing required or has an error). SDE's decision bar
+      // uses this for a "Show missing (N)" affordance so they can find
+      // the blocking fields without clicking Approve first.
+      missingCount: () => {
+        const parts = schema.sections.map((s) => sectionState(s, values))
+        return parts.filter((st) => st !== 'done' && st !== 'optional-empty').length
+      },
     }
   })
 
@@ -537,6 +551,7 @@ export default function AppraisalForm({
         registrationId={registrationId}
         readOnly={readOnly}
         renderFooter={renderFooter}
+        formRef={formRef}
       />
     )
   }
@@ -581,7 +596,7 @@ export default function AppraisalForm({
 function StepperLayout({
   schema, values, setValue, showAllErrors, setShowAllErrors, submit, busy, canSave, submitLabel,
   viewSustainability, sustainOpen, setSustainOpen, existing, registrationId,
-  readOnly = false, renderFooter = null,
+  readOnly = false, renderFooter = null, formRef = null,
 }) {
   const theme = useTheme()
   const sections = schema.sections
@@ -596,8 +611,13 @@ function StepperLayout({
     for (const sec of sections) map[sec.n] = sectionState(sec, values)
     return map
   }, [sections, values])
+  // UAT 2026-10-03 — treat `done` AND `optional-empty` as "nothing more
+  // needed from the user" for the submit gate. An optional-only section
+  // (e.g. Annexure VI) legitimately may be submitted empty; it just
+  // shouldn't DISPLAY as green/done when it is. See `sectionState` below
+  // for the state definitions.
   const completedCount = useMemo(
-    () => Object.values(completion).filter((s) => s === 'done').length,
+    () => Object.values(completion).filter((s) => s === 'done' || s === 'optional-empty').length,
     [completion],
   )
   const canSubmit = canSave && !busy && completedCount === sections.length
@@ -612,6 +632,25 @@ function StepperLayout({
   const goPrev = useCallback(() => setActiveIndex((i) => Math.max(0, i - 1)), [])
   const goNext = useCallback(() => setActiveIndex((i) => Math.min(sections.length - 1, i + 1)), [sections.length])
   const goTo = useCallback((i) => setActiveIndex(i), [])
+
+  // UAT 2026-10-03 — publish a "jump to first incomplete section" hook
+  // on the shared formRef so parent-owned footers (like SdeDecisionBar
+  // on the L2 review) can wire a "Show missing (N)" button that lights
+  // up every red inline error AND scrolls the stepper to the first
+  // blocker. Without this the SDE's decision bar had no way to drive
+  // the stepper's active index.
+  useEffect(() => {
+    if (!formRef) return
+    const isDone = (st) => st === 'done' || st === 'optional-empty'
+    formRef.current = {
+      ...(formRef.current || {}),
+      goToFirstMissing: () => {
+        if (typeof setShowAllErrors === 'function') setShowAllErrors(true)
+        const idx = sections.findIndex((s) => !isDone(completion[s.n]))
+        if (idx >= 0) setActiveIndex(idx)
+      },
+    }
+  })
   const onSubmit = useCallback(() => {
     if (!canSubmit) {
       // Flip on the "show ALL errors" flag so every required-but-empty
@@ -621,7 +660,10 @@ function StepperLayout({
       // missing — the same "why is the button disabled?" UX bug the
       // stepper's warning-coloured dots try (but fail) to answer alone.
       if (typeof setShowAllErrors === 'function') setShowAllErrors(true)
-      const firstBad = sections.findIndex((s) => completion[s.n] !== 'done')
+      // `optional-empty` is also acceptable — skip past it when hunting
+      // for the first truly-blocking section.
+      const isDone = (st) => st === 'done' || st === 'optional-empty'
+      const firstBad = sections.findIndex((s) => !isDone(completion[s.n]))
       if (firstBad >= 0) setActiveIndex(firstBad)
       return
     }
@@ -716,17 +758,35 @@ function StepperLayout({
 
 // Section-level state for the stepper — same three buckets the L1
 // stepper uses.
+// Section state the stepper and submit-gate both read:
+//   'done'           — user filled at least one field, no errors / no required missing
+//   'optional-empty' — section has no required fields AND is empty (e.g. Annexure VI).
+//                      Doesn't block submit, but displays as un-filled so the stepper
+//                      doesn't lie that it's "done".
+//   'empty'          — section has required fields AND nothing is filled; needs attention
+//   'error' / 'partial' — section has something filled AND an issue
 function sectionState(sec, values) {
+  // UAT 2026-10-03 — `disclaimer` fields (Annexure V/VI legal notes etc.)
+  // used to leak through this filter and get counted as "visible inputs".
+  // Combined with the "no errors + nothing missing = done" return below,
+  // an all-optional section like Annexure VI showed up green even when
+  // completely empty. Treat disclaimer the same as subheading /
+  // computed / coordinates_capture: not a user input at all.
   const visible = (sec.fields || []).filter((f) => {
-    if (['subheading', 'computed', 'coordinates_capture'].includes(f.type)) return false
+    if (['subheading', 'computed', 'coordinates_capture', 'disclaimer'].includes(f.type)) return false
     if (typeof f.showIf === 'function' && !f.showIf(values)) return false
     return true
   })
+  // Sections where every field is either filtered out or hidden by
+  // `showIf` have nothing for the user to action — keep as 'done' so
+  // the stepper doesn't block submit.
   if (visible.length === 0) return 'done'
   let hasError = false
   let hasFilled = false
   let hasMissing = false
+  let hasRequired = false
   for (const f of visible) {
+    if (f.required) hasRequired = true
     const v = values[f.name]
     const filled = Array.isArray(v)
       ? v.length > 0
@@ -737,5 +797,12 @@ function sectionState(sec, values) {
     if (err) hasError = true
   }
   if (hasError || hasMissing) return hasFilled ? 'error' : 'empty'
+  // UAT 2026-10-03 — "no errors, nothing filled" is NOT done. Previously
+  // this returned 'done' and Annexure VI (optional-only, empty) showed
+  // up green in the stepper. Now return a distinct 'optional-empty' when
+  // the section has no required fields (so submit still proceeds — see
+  // `completedCount` above), and plain 'empty' when it has required
+  // fields the user hasn't filled.
+  if (!hasFilled) return hasRequired ? 'empty' : 'optional-empty'
   return 'done'
 }
