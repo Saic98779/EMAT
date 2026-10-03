@@ -893,11 +893,15 @@ export const appraisalSchema = {
       // these fields when it force-marks the appraisal form's inputs.
       // Sector name fields — override the FormRenderer default 3-char
       // minimum so short codes / numbers ("IT", "1", "R&D") are accepted.
-      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true, min: 1 },
+      // UAT 2026-10-02 — sector NAME headings capped at 100 chars (was
+      // defaulting to the FormRenderer 500 fallback). The "3 to 5 key
+      // problems" descriptions keep the 500-char allowance since they
+      // need room for prose.
+      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true, min: 1, max: 100 },
       { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
-      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1, optional: true },
+      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1, max: 100, optional: true },
       { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
-      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1, optional: true },
+      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1, max: 100, optional: true },
       { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
       { name: 'financing_scope', label: 'Scope for financing — description (50–75 words)', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5',

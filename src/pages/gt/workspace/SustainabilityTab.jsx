@@ -81,6 +81,49 @@ export default function SustainabilityTab() {
     navigate(`${ws.basePath || '/gt'}/ias/${ws.iaId}/workspace/appraisal`)
   }, [navigate, ws.iaId, ws.basePath])
 
+  // CE decision affordance — UAT 2026-10-02 bugfix. Must live at the
+  // top level of the component so React sees the same hook count every
+  // render; the earlier version wrapped this `useMemo` inside the
+  // `if (showResult)` branch and crashed with "Rendered more hooks than
+  // during the previous render" the moment the branch flipped post-submit.
+  //
+  // Why we don't use `ws.decisionsForCurrent` here: that lookup reads
+  // from `ia.currentStage`, which is a SINGLE enum value. In the
+  // parallel sustainability + action-plan tracks, `currentStage`
+  // reflects whichever sub-stage was most recently written. When both
+  // tracks are submitted, only ONE track has decisions available, and
+  // the OTHER tab was inheriting those decisions by kind — meaning
+  // clicking "Approve" on Sustainability could actually fire the
+  // Action Plan sub-stage transition.
+  //
+  // Fix: derive CE decisions from THIS track's own sub-stage state.
+  // CE sees the Approve/Revert/Reject bar on sustainability iff GT has
+  // submitted the matrix AND no CE decision has been recorded on it yet.
+  const sustainabilityStage = ws.workflow?.stages?.find((x) => x.key === STAGE.SUSTAINABILITY_MATRIX)
+  const sustainabilityNeedsCe = ws.viewerRole === 'CLUSTER_EXPERT'
+    && sustainabilityStage?.subStages?.[0]?.status === STATUS.COMPLETED
+    && sustainabilityStage?.subStages?.[1]?.status !== STATUS.COMPLETED
+    && sustainabilityStage?.status !== STATUS.REJECTED
+  const ceDecisions = useMemo(() => {
+    if (!sustainabilityNeedsCe) return []
+    const build = (to, kind, label) => {
+      const stageId = stageIdOf(stagesQ.data, to)
+      return stageId != null ? { kind, to, label, stageId } : null
+    }
+    return [
+      build('SUSTAINABILITY_MATRIX_APPROVED', DECISION.APPROVE, 'Approve sustainability'),
+      build('SUSTAINABILITY_MATRIX_REVERTED', DECISION.REVERT,  'Send back to GT'),
+      build('SUSTAINABILITY_MATRIX_REJECTED', DECISION.REJECT,  'Reject'),
+    ].filter(Boolean)
+  }, [sustainabilityNeedsCe, stagesQ.data])
+  // Composite completion — if action plan is already CE-approved, the
+  // sustainability approve should fire the composite stageId so both
+  // tracks + currentStage advance to Detailed Appraisal in one write.
+  const actionPlanStage = ws.workflow?.stages?.find((x) => x.key === STAGE.ACTION_PLAN)
+  const actionPlanApproved = actionPlanStage?.status === STATUS.COMPLETED
+  const compositeStageId = stageIdOf(stagesQ.data, 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED')
+  const isCeReviewer = ceDecisions.length > 0
+
   // Ref-mirror the changing dependencies so `submit` itself stays stable —
   // otherwise the memoized LiveScorePanel + MatrixSubmitBar re-render on
   // every answer change because their onSubmit prop is a fresh function.
@@ -170,49 +213,10 @@ export default function SustainabilityTab() {
     // "Weak" because local answers reset to null after submit.
     const persistedScore = dto.totalScore ?? score
     const persistedTier = TIERS.find((t) => persistedScore >= t.min) || TIERS[TIERS.length - 1]
-    // CE decision affordance — UAT 2026-10-02 bugfix.
-    //
-    // Why we don't use `ws.decisionsForCurrent` here anymore: that lookup
-    // reads from `ia.currentStage`, which is a SINGLE enum value. In the
-    // parallel sustainability + action-plan tracks, `currentStage`
-    // reflects whichever sub-stage was most recently written. When both
-    // tracks are submitted, only ONE track has decisions available, and
-    // the OTHER tab was inheriting those decisions by kind — meaning
-    // clicking "Approve" on Sustainability could actually fire the
-    // Action Plan sub-stage transition. Classic UAT item 63 cause.
-    //
-    // Fix: derive CE decisions from THIS track's own sub-stage state
-    // (via the workflow helper), independent of `currentStage`. CE sees
-    // the Approve/Revert/Reject bar on sustainability if and only if GT
-    // has submitted the sustainability matrix AND no CE decision has
-    // been recorded on it yet.
-    const isCeViewer = ws.viewerRole === 'CLUSTER_EXPERT'
-    const sustainabilityStage = ws.workflow?.stages?.find((x) => x.key === STAGE.SUSTAINABILITY_MATRIX)
-    const sustainabilitySubmissionDone = sustainabilityStage?.subStages?.[0]?.status === STATUS.COMPLETED
-    const sustainabilityCeDone = sustainabilityStage?.subStages?.[1]?.status === STATUS.COMPLETED
-    const sustainabilityNeedsCe = isCeViewer && sustainabilitySubmissionDone && !sustainabilityCeDone
-      && sustainabilityStage?.status !== STATUS.REJECTED
-    const ceDecisions = useMemo(() => {
-      if (!sustainabilityNeedsCe) return []
-      const build = (to, kind, label) => {
-        const stageId = stageIdOf(stagesQ.data, to)
-        return stageId != null ? { kind, to, label, stageId } : null
-      }
-      return [
-        build('SUSTAINABILITY_MATRIX_APPROVED', DECISION.APPROVE, 'Approve sustainability'),
-        build('SUSTAINABILITY_MATRIX_REVERTED', DECISION.REVERT,  'Send back to GT'),
-        build('SUSTAINABILITY_MATRIX_REJECTED', DECISION.REJECT,  'Reject'),
-      ].filter(Boolean)
-    }, [sustainabilityNeedsCe, stagesQ.data])
-    const isCeReviewer = ceDecisions.length > 0
-    // Composite completion — if action plan is already CE-approved,
-    // this sustainability approve should advance the IA all the way to
-    // Detailed Appraisal via stageId 20 (SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED).
-    // Backend doesn't auto-advance; frontend has to send the composite
-    // stageId explicitly on the "last" approval (confirmed by Sameer 2026-09-27).
-    const actionPlanStage = ws.workflow?.stages?.find((x) => x.key === STAGE.ACTION_PLAN)
-    const actionPlanApproved = actionPlanStage?.status === STATUS.COMPLETED
-    const compositeStageId = stageIdOf(stagesQ.data, 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED')
+    // `ceDecisions`, `isCeReviewer`, `actionPlanApproved`,
+    // `compositeStageId` are all derived at the top of the component
+    // (above the early returns) so the hook count is stable across
+    // renders. See the comment block up there for the full rationale.
     return (
       <>
         <ReadOnlyMatrix
