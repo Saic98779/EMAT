@@ -196,7 +196,7 @@ export default function HoIaReview() {
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={3200}
+        autoHideDuration={5000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

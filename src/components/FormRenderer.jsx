@@ -12,6 +12,7 @@ import { alpha } from '@mui/material/styles'
 import FileChip from './FileChip'
 import usePincodeLookup from './usePincodeLookup'
 import { charsetError, charsetForField } from '../inputCharsets'
+import { useValidatePan } from '../queries'
 import FunctionsIcon from '@mui/icons-material/Functions'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -89,6 +90,12 @@ export function fieldError(f, value, values, { showRequired = false } = {}) {
     const maxLen = f.max ?? 500
     if (trimmed.length < minLen) return `Enter at least ${minLen} characters.`
     if (trimmed.length > maxLen) return `Keep it under ${maxLen} characters.`
+    // UAT 2026-09-30 obs. 7 — backend rejects any submission containing
+    // `<` or `>` (Jackson-level "Malformed request body" that used to
+    // surface as a raw stacktrace toast). Catch it here so IA
+    // registration / appraisal / matrix forms all show a friendly
+    // "HTML tags are not allowed." instead.
+    if (/[<>]/.test(trimmed)) return 'HTML tags are not allowed.'
   }
   const p = f.pattern || (f.type === 'email' && PATTERNS.email) || (f.type === 'tel' && PATTERNS.phone)
   if (p && !p.re.test(String(trimmed))) return p.msg
@@ -603,23 +610,26 @@ function CoordinatesCapture({ f, changeFor }) {
   )
 }
 
-// Pincode input that resolves the district from the pincode master and
-// checks the pincode belongs to the IA's state. Schema opts in with
-// `pincodeLookup: { stateField, districtField }`. Results land in the form
-// values so the (sync) validators can see them:
-//   _pincode_error          — message when the pincode is outside the state
-//   _pincode_districts      — districts the pincode maps to (district options)
-//   _pincode_lookup_failed  — master unreachable; district falls back to a
-//                             manual pick
-// Read-only fields never write.
-function PincodeField({ f, value, error, ctx, onChange, changeFor }) {
-  const { districtField = 'district' } = f.pincodeLookup
-  const res = usePincodeLookup(ctx?.state, value)
+// Pincode field driven off the backend pincode master. Schema opts in
+// with `pincodeLookup: { stateField, districtField }`. This component
+// fetches two lists based on the current {state, district} and writes
+// them into the form values as bookkeeping keys other fields read:
+//   _pincode_districts       — the state's districts (District dropdown)
+//   _district_pincodes       — the district's pincodes (Pincode dropdown)
+//   _pincode_lookup_failed   — master unreachable; District dropdown
+//                              falls back to the static state → districts
+//                              map so the user can pick manually
+//
+// The user picks pincode from a dropdown (no manual typing, no
+// after-the-fact validation). One API call when the state resolves and
+// one more when the district is picked; both cached forever.
+function PincodeField({ f, value, error, ctx, options, onChange, changeFor }) {
+  const res = usePincodeLookup(ctx?.state, ctx?.district)
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
 
   useEffect(() => {
-    if (f.readOnly || res.status === 'loading') return
+    if (f.readOnly) return
     const cur = ctxRef.current || {}
     const put = (name, next, prev) => {
       const same = Array.isArray(next) && Array.isArray(prev)
@@ -627,30 +637,24 @@ function PincodeField({ f, value, error, ctx, onChange, changeFor }) {
         : (next ?? null) === (prev ?? null)
       if (!same) changeFor(name)(next)
     }
-    const mismatch = res.status === 'mismatch'
-    const hits = res.status === 'ok' ? res.districts : null
-    const failed = res.status === 'unavailable' || (hits != null && hits.length === 0)
-    put('_pincode_error', mismatch ? `Pincode ${String(value).trim()} is not in ${res.state}` : null, cur.error)
-    put('_pincode_districts', hits && hits.length ? hits : null, cur.districts)
+    const districts = Array.isArray(res.districts) && res.districts.length ? res.districts : null
+    const pincodes = Array.isArray(res.pincodes) && res.pincodes.length ? res.pincodes : null
+    const failed = res.status === 'unavailable'
+    put('_pincode_districts', districts, cur.districts)
+    put('_district_pincodes', pincodes, cur.pincodes)
     put('_pincode_lookup_failed', failed || null, cur.failed)
-    if (mismatch && cur.district) changeFor(districtField)('')
-    if (hits && hits.length) {
-      const keep = hits.find((d) => String(d).toLowerCase() === String(cur.district ?? '').toLowerCase())
-      const next = keep || (hits.length === 1 ? hits[0] : '')
-      if (next !== cur.district) changeFor(districtField)(next)
-    }
-  }, [res, f.readOnly, value, districtField, changeFor])
+  }, [res, f.readOnly, changeFor])
 
   const help = res.status === 'loading'
-    ? 'Checking pincode…'
-    : res.status === 'ok' && res.districts.length
-      ? `District auto-filled: ${res.districts.join(' / ')}`
-      : res.status === 'unavailable' || (res.status === 'ok' && !res.districts.length)
-        ? "Couldn't look up this pincode — pick the district manually."
+    ? 'Loading pincodes…'
+    : res.status === 'unavailable'
+      ? "Couldn't reach the pincode master."
+      : (ctx?.district && Array.isArray(res.pincodes) && res.pincodes.length === 0)
+        ? `No pincodes on record for ${ctx.district}.`
         : f.help
   return (
     <Field f={{ ...f, pincodeLookup: undefined, help }} value={value} error={error}
-      onChange={onChange} changeFor={changeFor} />
+      options={options} onChange={onChange} changeFor={changeFor} />
   )
 }
 
@@ -659,17 +663,119 @@ function pincodeCtx(f, values) {
   return {
     state: values[stateField],
     district: values[districtField],
-    error: values._pincode_error,
     districts: values._pincode_districts,
+    pincodes: values._district_pincodes,
     failed: values._pincode_lookup_failed,
   }
+}
+
+// PAN field driven off the backend validation endpoint. Schema opts in
+// with `panLookup: true`; the component fires a React-Query lookup as
+// soon as the typed value matches the 10-char PAN regex and writes a
+// bookkeeping key into form values that the schema's `validate` can
+// consume to block submit:
+//   _pan_duplicate       — true | false | null (null while loading / before match)
+//   _pan_lookup_failed   — the backend check 500'd; show a soft warning
+//                          and let the user proceed (backend's own
+//                          unique constraint will catch a clash on save)
+//
+// Helper text under the input updates live:
+//   • "Checking…"               while the query is in-flight
+//   • "PAN already registered"  on duplicate (also sets the field's error state)
+//   • "PAN is available"        on success / not duplicate (muted green hint)
+//   • field's normal `help`     before a full PAN has been typed
+function PanField({ f, value, error, options, onChange, changeFor }) {
+  const q = useValidatePan(value)
+  const duplicate = q.data?.data?.duplicate
+  const lookupFailed = !!q.error
+
+  // Mirror the lookup state into form values so the schema `validate`
+  // on `pan_no` can read `values._pan_duplicate` and block submit.
+  // Using a ref to compare prev/next avoids writing on every render.
+  const lastRef = useRef({ dup: undefined, failed: undefined })
+  useEffect(() => {
+    if (f.readOnly) return
+    const dup = (typeof duplicate === 'boolean') ? duplicate : null
+    if (lastRef.current.dup !== dup) {
+      lastRef.current.dup = dup
+      changeFor('_pan_duplicate')(dup)
+    }
+    const failed = lookupFailed || null
+    if (lastRef.current.failed !== failed) {
+      lastRef.current.failed = failed
+      changeFor('_pan_lookup_failed')(failed)
+    }
+  }, [duplicate, lookupFailed, f.readOnly, changeFor])
+
+  // Collapse the duplicate state into the field's `error` channel so
+  // the input turns red and the submit guard via `_pan_duplicate` +
+  // the schema's own validate catches it.
+  const liveError = duplicate === true ? 'This PAN is already registered to another IA.' : error
+
+  // Live-status strip rendered BELOW the field (not inside helperText,
+  // because the counter / schema help would compete for that slot and
+  // MUI helperText can't be coloured per state). The strip only shows
+  // for the three non-idle states, so a user who hasn't typed a full
+  // PAN sees nothing extra.
+  const strip = q.isFetching
+    ? { label: 'Checking PAN…', tone: 'info' }
+    : duplicate === true
+      ? { label: 'This PAN is already registered to another IA.', tone: 'error' }
+      : duplicate === false
+        ? { label: 'PAN is available.', tone: 'success' }
+        : lookupFailed
+          ? { label: "Couldn't verify PAN right now — you can continue; the server will double-check on save.", tone: 'warning' }
+          : null
+
+  return (
+    <>
+      <Field
+        f={{ ...f, panLookup: undefined }}
+        value={value}
+        error={liveError}
+        options={options}
+        onChange={onChange}
+        changeFor={changeFor}
+      />
+      {strip && <PanStatusStrip label={strip.label} tone={strip.tone} span={f.span || 6} />}
+    </>
+  )
+}
+
+// Thin coloured line that renders directly under the PAN input. Grid
+// span matches the input's own span so it sits flush beneath — not in
+// its own full-width row that would push surrounding fields down.
+function PanStatusStrip({ label, tone, span }) {
+  return (
+    <Grid size={{ xs: 12, sm: span }}>
+      <Box
+        sx={(t) => {
+          const palette = t.palette[tone] || t.palette.info
+          return {
+            mt: -1.5, mb: 0.5,
+            display: 'flex', alignItems: 'center', gap: 0.75,
+            px: 1.25, py: 0.5, borderRadius: 1,
+            bgcolor: alpha(palette.main, 0.1),
+            color: palette.dark,
+            fontSize: 12.5, fontWeight: 600,
+          }
+        }}
+      >
+        <Box component="span" sx={(t) => ({ fontSize: 10, color: (t.palette[tone] || t.palette.info).main })}>●</Box>
+        <Box component="span">{label}</Box>
+      </Box>
+    </Grid>
+  )
 }
 
 // Individual field. Wrapped in memo — receives primitives + stable callbacks
 // so a keystroke on field A won't cause field B to re-render.
 const Field = memo(function Field({ f, value, error, computed, options, verified, onChange, onVerify, changeFor }) {
   if (f.pincodeLookup) {
-    return <PincodeField f={f} value={value} error={error} ctx={computed} onChange={onChange} changeFor={changeFor} />
+    return <PincodeField f={f} value={value} error={error} ctx={computed} options={options} onChange={onChange} changeFor={changeFor} />
+  }
+  if (f.panLookup) {
+    return <PanField f={f} value={value} error={error} options={options} onChange={onChange} changeFor={changeFor} />
   }
   if (f.type === 'coordinates_capture') {
     return <CoordinatesCapture f={f} changeFor={changeFor} />
@@ -688,6 +794,28 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
               color: 'text.secondary',
               letterSpacing: '0.06em',
               textTransform: 'uppercase',
+            }}
+          >
+            {f.label}
+          </Typography>
+        </Box>
+      </Grid>
+    )
+  }
+  if (f.type === 'disclaimer') {
+    // Static text footer for a section — italic + muted, rendered as
+    // the last grid item so it sits below all inputs. Used for the
+    // Annexure V / VI legal disclaimers (UAT 2026-09-28 §5.ii/§5.iii).
+    return (
+      <Grid size={12}>
+        <Box sx={{ mt: 1, pt: 1.5, borderTop: '1px dashed', borderColor: 'divider' }}>
+          <Typography
+            sx={{
+              fontSize: 12,
+              fontStyle: 'italic',
+              color: 'text.secondary',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
             }}
           >
             {f.label}
@@ -1006,7 +1134,7 @@ const isFilled = (v) => {
 const isVisible = (f, values) => !f.showIf || f.showIf(values)
 
 function sectionDone(sec, values) {
-  const inputs = sec.fields.filter((f) => !['subheading', 'computed', 'coordinates_capture'].includes(f.type) && isVisible(f, values))
+  const inputs = sec.fields.filter((f) => !['subheading', 'computed', 'coordinates_capture', 'disclaimer'].includes(f.type) && isVisible(f, values))
   if (inputs.length === 0) return false
   const anyFilled = inputs.some((f) => isFilled(values[f.name]))
   const allValid = inputs.every((f) => (!f.required || isFilled(values[f.name])) && !fieldError(f, values[f.name], values))

@@ -19,6 +19,9 @@ export const FILE_FIELD_LABELS = {
   nabard_blacklist_file: 'NABARD Blacklist Document',
   holder_cibil_file: 'Office Holder — CIBIL Report',
   owner_cibil_file: 'Beneficial Owner — CIBIL Report',
+  // HO Checker's final-sign-off upload — the signed panel approval
+  // letter. Backend stores the filename on `pennalApprovalLetter`.
+  panel_approval_letter: 'Panel Approval Letter',
   // BSE candidate proposal (GT Field Manager) — these are the slugs used
   // by `makeBseCandidateSchema` field names.
   resume_file: 'Resume',

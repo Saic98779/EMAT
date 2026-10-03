@@ -9,7 +9,23 @@ import { alpha, useTheme } from '@mui/material/styles'
 import { PageHeader } from '../../components/shared'
 import { useContentRecord } from '../../queries'
 import { CONTENT_REVIEW_TYPES } from '../checker/contentReviewConfig'
-import { deriveStatus, DERIVED_STATUS } from '../../apis/contentStatus'
+import { deriveStatus, DERIVED_STATUS, CONTENT_STATUS } from '../../apis/contentStatus'
+
+// UAT 2026-09-30 — the DIA workflow now has HO Maker as the primary
+// reviewer and HO Checker as the final signer. Either role can revert
+// back to GT PMU, so the resubmit banner must name whichever actually
+// did the reverting on THIS row rather than always saying "checker".
+//
+// Read the two status fields directly: whichever holds REVERT is the
+// reverting actor. `checkerStatus === REVERT` wins over
+// `makerStatus === REVERT` because the workflow is Maker → Checker; if
+// both somehow held REVERT (legacy data), the checker's revert is the
+// more recent one and should be surfaced.
+function revertActorLabel(dto) {
+  if (dto?.checkerStatus === CONTENT_STATUS.REVERT) return 'HO Checker'
+  if (dto?.makerStatus === CONTENT_STATUS.REVERT)   return 'HO Maker'
+  return 'reviewer'
+}
 
 // PmuResubmit
 // ────────────────────────────────────────────────────────────────────────
@@ -75,7 +91,7 @@ export default function PmuResubmit() {
       <Box sx={{ maxWidth: 720, mx: 'auto', pt: 4 }}>
         <Alert severity="info" sx={{ mb: 2 }}>
           This submission is <b>{dtoStatus.toLowerCase()}</b> — it can't be edited.
-          You can only edit submissions the checker has reverted.
+          You can only edit submissions that a reviewer has reverted.
         </Alert>
         <Button
           variant="outlined"
@@ -88,6 +104,7 @@ export default function PmuResubmit() {
     )
   }
 
+  const actor = revertActorLabel(dto)
   return (
     <Suspense
       fallback={
@@ -97,17 +114,34 @@ export default function PmuResubmit() {
       }
     >
       <Box sx={{ maxWidth: 1080, mx: 'auto', pb: 10 }}>
-        <RevertBanner remark={dto.remark} typeLabel={cfg.label} backTo={`/gt/pmu/list/${type}/${id}`} />
-        <Form editId={id} initialRecord={dto} />
+        <RevertBanner
+          actor={actor}
+          remark={dto.remark}
+          typeLabel={cfg.label}
+          backTo={`/gt/pmu/list/${type}/${id}`}
+        />
+        {/* UAT 2026-10-01 — on a successful resubmit the form stays
+            mounted on the edit URL and the "Resubmit for Approval" CTA
+            lingers, making it look like nothing happened. Pass a
+            navigate-back callback so each DIA form jumps the user back
+            to the per-type list, where the row shows the new
+            "Resubmitted" chip from ContentTypeList. */}
+        <Form
+          editId={id}
+          initialRecord={dto}
+          onResubmitDone={() => navigate(`/gt/pmu/list/${type}`, { replace: true })}
+        />
       </Box>
     </Suspense>
   )
 }
 
 // Prominent banner above the resubmit form — makes it obvious the user
-// is in edit mode and surfaces the checker's remark so they know what to
-// fix. Also gives an escape hatch back to the read-only view.
-function RevertBanner({ remark, typeLabel, backTo }) {
+// is in edit mode and surfaces the reverter's remark so they know what
+// to fix. `actor` is either "HO Maker" or "HO Checker" (from
+// `revertActorLabel` above); we surface it in both the headline and the
+// remark line so GT PMU knows who they're responding to.
+function RevertBanner({ actor = 'reviewer', remark, typeLabel, backTo }) {
   const theme = useTheme()
   return (
     <Box
@@ -121,17 +155,17 @@ function RevertBanner({ remark, typeLabel, backTo }) {
         <HistoryRoundedIcon sx={{ fontSize: 22, color: theme.palette.warning.dark, mt: 0.15 }} />
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: theme.palette.warning.dark }}>
-            The checker sent this {typeLabel} back for changes.
+            The {actor} sent this {typeLabel} back for changes.
           </Typography>
           {remark
             ? (
               <Typography sx={{ mt: 0.5, fontSize: 13, whiteSpace: 'pre-wrap', color: theme.palette.text.primary }}>
-                <b>Checker's remark:</b> {remark}
+                <b>{actor}'s remark:</b> {remark}
               </Typography>
             )
             : (
               <Typography sx={{ mt: 0.5, fontSize: 12.5, color: theme.palette.text.secondary }}>
-                No remark was recorded — reach out to the checker for guidance.
+                No remark was recorded — reach out to the {actor} for guidance.
               </Typography>
             )}
           <Typography sx={{ mt: 0.5, fontSize: 12, color: theme.palette.text.secondary }}>

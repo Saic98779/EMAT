@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
 import {
   Controller, FormProvider, useFormContext,
 } from 'react-hook-form'
@@ -114,7 +114,7 @@ export function PmuFormShell({
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={4200}
+        autoHideDuration={5000}
         onClose={onToastClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
@@ -375,12 +375,24 @@ export const CHAR_LIMITS = Object.freeze({
 // enforces both "must be filled" (required only) AND "≤ max chars".
 // Pair with `capChars(max)` on the TextField's `inputProps` for the
 // browser-level cap.
+//
+// UAT 2026-09-30 obs. 7 — the backend rejects any submission that
+// contains `<` or `>` in a text field (Jackson-level `Malformed request
+// body` error), but until today that rejection surfaced as a raw
+// stack-trace-flavoured toast. Catch it client-side here so every DIA
+// / PMU form gets a friendly "HTML tags are not allowed." message
+// instead. Matches the backend's actual rule (single `<` or `>` is
+// enough to trigger it — no need to be smart about matching pairs).
+const ANGLE_BRACKETS_RE = /[<>]/
+const HTML_TAG_MSG = 'HTML tags are not allowed.'
+
 export function requiredText(max = CHAR_LIMITS.MEDIUM) {
   return {
     validate: (v) => {
       const s = String(v ?? '')
       if (!s.trim()) return 'Required.'
       if (s.length > max) return `Max ${max} characters.`
+      if (ANGLE_BRACKETS_RE.test(s)) return HTML_TAG_MSG
       return true
     },
   }
@@ -389,12 +401,39 @@ export function optionalText(max = CHAR_LIMITS.MEDIUM) {
   return {
     validate: (v) => {
       const s = String(v ?? '')
-      return s.length > max ? `Max ${max} characters.` : true
+      if (s.length > max) return `Max ${max} characters.`
+      if (ANGLE_BRACKETS_RE.test(s)) return HTML_TAG_MSG
+      return true
     },
   }
 }
 // Convenience for the `inputProps` slot — pairs 1:1 with a rules helper.
 export const capChars = (max = CHAR_LIMITS.MEDIUM) => ({ maxLength: max })
+
+// Compose the shared "no HTML tags" check with whatever `rules` the
+// caller passed to a RhfTextField. RHF's `validate` may be undefined,
+// a bare function, or an object of named validators — handle each.
+// Skips date / number / file inputs where `<` / `>` can't appear
+// anyway, so they don't pay the composition cost.
+const HTML_SKIPPED_TYPES = new Set(['date', 'number', 'file', 'tel', 'time', 'checkbox', 'radio'])
+function composeAngleBracketRule(rules, inputType) {
+  if (HTML_SKIPPED_TYPES.has(inputType)) return rules
+  const check = (v) => (ANGLE_BRACKETS_RE.test(String(v ?? '')) ? HTML_TAG_MSG : true)
+  if (!rules) return { validate: check }
+  const existing = rules.validate
+  if (!existing) return { ...rules, validate: check }
+  if (typeof existing === 'function') {
+    return {
+      ...rules,
+      validate: (v, all) => {
+        const r = check(v)
+        return r === true ? existing(v, all) : r
+      },
+    }
+  }
+  // Object-of-validators shape.
+  return { ...rules, validate: { __noHtmlTags: check, ...existing } }
+}
 
 // ── Perf helpers ────────────────────────────────────────────────────
 // Stable references for the inline-object props we hand to TextField
@@ -523,21 +562,48 @@ export function RhfTextField({
   name, rules, defaultValue = '', helperText, ...rest
 }) {
   const { control } = useFormContext()
+  // Derive a `{used} / {max}` counter from inputProps.maxLength so DIA
+  // forms show the same running-length hint IA forms already do via
+  // FormRenderer. Opt out per-field with `counter={false}`. Error text
+  // beats counter; explicit `helperText` still wins over the counter
+  // when the field is idle.
+  const max = rest?.inputProps?.maxLength
+  const counterEnabled = rest?.counter !== false && Number.isFinite(max)
+  // Strip the local prop so it doesn't reach the DOM.
+  const { counter, ...cleanRest } = rest || {}
+  void counter
+  // UAT 2026-09-30 obs. 7 — inject an "HTML tags are not allowed."
+  // guard on every free-text RHF field so `<t>` / `<script>` / lone `<`
+  // etc. get caught client-side with a friendly message, instead of
+  // going to the backend and coming back as a raw Jackson stacktrace.
+  // Non-text inputs (date / number / file) are skipped.
+  const composedRules = useMemo(
+    () => composeAngleBracketRule(rules, rest?.type),
+    [rules, rest?.type],
+  )
   return (
     <Controller
       name={name}
       control={control}
-      rules={rules}
+      rules={composedRules}
       defaultValue={defaultValue}
-      render={({ field, fieldState }) => (
-        <FormTextField
-          {...rest}
-          {...field}
-          value={field.value ?? ''}
-          error={!!fieldState.error}
-          helperText={fieldState.error?.message || helperText}
-        />
-      )}
+      render={({ field, fieldState }) => {
+        const value = field.value ?? ''
+        const counterText = counterEnabled ? `${String(value).length} / ${max}` : null
+        const helper = fieldState.error?.message
+          || helperText
+          || counterText
+          || undefined
+        return (
+          <FormTextField
+            {...cleanRest}
+            {...field}
+            value={value}
+            error={!!fieldState.error}
+            helperText={helper}
+          />
+        )
+      }}
     />
   )
 }

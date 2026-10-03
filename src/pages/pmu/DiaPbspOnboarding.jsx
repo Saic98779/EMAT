@@ -6,10 +6,10 @@ import {
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
   CHAR_LIMITS, capChars,
 } from './_shared'
-import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, resubmitContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — PBSP Onboarding (Panel BDS Provider)
-// GT_PMU raises; SIDBI HO Checker approves. Fields mirror the backend
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off. Fields mirror the backend
 // `CreateBdsServiceProvidersOnboardingRequest` DTO 1:1 (see FIELDS.backend).
 
 const CONSTITUTION_OPTIONS = [
@@ -32,7 +32,7 @@ const FIELDS = {
   providerName:          { backend: 'bdsProviderName',                label: 'BDS provider name',              required: true, cap: CHAR_LIMITS.SHORT },
   doi:                   { backend: 'doi',                            label: 'Date of incorporation',          required: true, type: 'date' },
   constitution:          { backend: 'constitution',                   label: 'Constitution',                   required: true, type: 'select', options: CONSTITUTION_OPTIONS },
-  address:               { backend: 'address',                        label: 'Address',                        required: true, multiline: true, cap: CHAR_LIMITS.LONG },
+  address:               { backend: 'address',                        label: 'Address',                        required: true, multiline: true, cap: CHAR_LIMITS.MEDIUM },
   state:                 { backend: 'state',                          label: 'State',                          required: true, cap: CHAR_LIMITS.SHORT },
   district:              { backend: 'district',                       label: 'District',                       required: true, cap: CHAR_LIMITS.SHORT },
   pinCode:               { backend: 'pinCode',                        label: 'PIN code',                       required: true, validate: 'pin', cap: CHAR_LIMITS.SHORT },
@@ -52,7 +52,7 @@ const FIELDS = {
   nodalContactName:      { backend: 'nodalContactName',               label: 'Nodal contact name',             required: true, cap: CHAR_LIMITS.MEDIUM },
   contactNumber:         { backend: 'contactNumber',                  label: 'Nodal contact number',           required: true, validate: 'phone', cap: CHAR_LIMITS.SHORT },
   emailId:               { backend: 'emailId',                        label: 'Email ID',                       required: true, validate: 'email', cap: CHAR_LIMITS.SHORT },
-  areaOfExpertise:       { backend: 'areaOfExpertise',                label: 'Area of expertise',              required: true, multiline: true, cap: CHAR_LIMITS.LONG },
+  areaOfExpertise:       { backend: 'areaOfExpertise',                label: 'Area of expertise',              required: true, multiline: true, cap: CHAR_LIMITS.MEDIUM },
   totLeadCasesGen:       { backend: 'totLeadCasesGen',                label: 'Total lead cases generated',     type: 'number' },
   casesSanctionedAmt:    { backend: 'casesSanctionedAmt',             label: 'Cases sanctioned amount',        type: 'currency' },
   casesDisbursedAmt:     { backend: 'casesDisbursedAmt',              label: 'Cases disbursed amount',         type: 'currency' },
@@ -90,7 +90,7 @@ function recordToDefaults(record) {
   return out
 }
 
-export default function DiaPbspOnboarding({ editId = null, initialRecord = null } = {}) {
+export default function DiaPbspOnboarding({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
   const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
@@ -106,13 +106,14 @@ export default function DiaPbspOnboarding({ editId = null, initialRecord = null 
     setSubmitting(true)
     try {
       const payload = buildPayload(values)
-      if (isEdit) await updateContent(DIA_ENDPOINTS.PBSP, editId, payload)
+      if (isEdit) await resubmitContent(DIA_ENDPOINTS.PBSP, editId, payload)
       else await createContent(DIA_ENDPOINTS.PBSP, payload)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -126,8 +127,8 @@ export default function DiaPbspOnboarding({ editId = null, initialRecord = null 
     <PmuFormShell
       title={isEdit ? 'Resubmit PBSP Onboarding' : 'PBSP Onboarding'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Add a Panel BDS Provider — submits to SIDBI HO Checker for approval.'}
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
+        : 'Add a Panel BDS Provider — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}

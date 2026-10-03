@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -15,6 +15,7 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { PageHeader, StatusChip, Mono } from '../../components/shared'
+import StatusFilterBar from '../../components/StatusFilterBar'
 import { deleteIndustryAssociation } from '../../apis/industryAssociations'
 import { useIAs, useBranchesByStates, keys } from '../../queries'
 import { useAuth } from '../../auth'
@@ -32,11 +33,77 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Sub-stages where Cluster Expert has a decision affordance — keep in sync
 // with `TRANSITIONS` in `src/apis/stageActions.js`. Anything not in this
 // set is either upstream of CE or already past their turn.
+//
+// UAT 2026-10-03 — tightened again after the previous version let
+// "Detailed Pending" rows (currentStage `CLUSTER_EXPERT_APPROVED` and
+// `SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED`) leak into the CE
+// queue. Those two mean "CE finished, waiting for L2 to be submitted"
+// — the CE has nothing to action on them.
+//
+// `SUSTAINABILITY_MATRIX_APPROVED` is retained because in the parallel-
+// tracks flow it means "sustainability approved, action plan still
+// awaiting CE" — CE still has work to do on the row.
+//
+// Known trade-off: if a CE approves the ACTION PLAN first (while
+// sustainability is still pending), `currentStage` becomes
+// `CLUSTER_EXPERT_APPROVED` and the IA falls out of the queue — the
+// CE would have to open it from a bookmark / direct link to finish
+// sustainability. That's rare enough vs the cost of letting every
+// "Detailed Pending" row show up for CE.
 const CE_ACTIONABLE_STAGES = new Set([
   'SUSTAINABILITY_MATRIX_SUBMITTED',      // CE approve/revert/reject (added 2026-09-27)
+  'SUSTAINABILITY_MATRIX_APPROVED',       // CE may still owe action-plan review in parallel-tracks mode
   'ACTION_PLAN_SUBMITTED',                // CE approve/revert on the action plan
   'DETAILED_APPRAISAL_APPROVAL_BY_SDE',   // CE comments before HO Maker
 ])
+
+// Life-cycle buckets for the shared IA list page. Each bucket matches
+// on the record's `currentStage` (backend enum) — cheaper + more
+// accurate than pattern-matching the display `status` string. Keep the
+// order aligned with the actual workflow so the filter reads like a
+// timeline (Draft → L1 → Matrix → Action Plan → L2 → Approved).
+const IA_STATUS_FILTERS = [
+  { key: 'all',        label: 'All',                tone: 'default' },
+  { key: 'eligibility',label: 'Eligibility',        tone: 'info',    stages: new Set(['ELIGIBILITY_MATRIX']) },
+  { key: 'l1',         label: 'In-Principle (L1)',  tone: 'info',    stages: new Set([
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SUBMITTED',
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_APPROVAL',
+  ]) },
+  { key: 'sustain',    label: 'Sustainability',     tone: 'info',    stages: new Set([
+    'SUSTAINABILITY_MATRIX_SUBMITTED',
+    'SUSTAINABILITY_MATRIX_APPROVED',
+  ]) },
+  { key: 'action_plan',label: 'Action Plan',        tone: 'info',    stages: new Set([
+    'ACTION_PLAN_SUBMITTED',
+    'CLUSTER_EXPERT_APPROVED',
+    'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED',
+  ]) },
+  { key: 'l2',         label: 'Detailed Appraisal', tone: 'info',    stages: new Set([
+    'DETAILED_APPRAISAL_SUBMITTED',
+    'DETAILED_APPRAISAL_APPROVAL_BY_SDE',
+    'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED',
+    'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER',
+  ]) },
+  { key: 'approved',   label: 'Approved',           tone: 'success', stages: new Set([
+    'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER',
+    'DOCUMENTATION_OF_IA',
+  ]) },
+  { key: 'reverted',   label: 'Reverted',           tone: 'warning', stages: new Set([
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REVERTED',
+    'SUSTAINABILITY_MATRIX_REVERTED',
+    'CLUSTER_EXPERT_REVERTED',
+    'DETAILED_APPRAISAL_REVERTED_BY_SDE',
+    'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+    'DETAILED_APPRAISAL_REVERTED_BY_HO_CHECKER',
+  ]) },
+  { key: 'rejected',   label: 'Rejected',           tone: 'error',   stages: new Set([
+    'IN_PRINCIPLE_APPROVAL_OF_IA_SDE_REJECTED',
+    'SUSTAINABILITY_MATRIX_REJECTED',
+    'DETAILED_APPRAISAL_REJECTED_BY_SDE',
+    'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+    'DETAILED_APPRAISAL_REJECTED_BY_HO_CHECKER',
+  ]) },
+]
 
 // Timestamp used to sort the list — accept either `raw.createdAt` (backend
 // primary source) or `raw.updatedAt` as a fallback. Returns 0 when parsing
@@ -97,11 +164,25 @@ function rowAction(ia, navigate, basePath, { isClusterExpert = false } = {}) {
   // CE gets dropped on the appraisal tab, which is locked until earlier
   // stages clear.
   if (isClusterExpert) {
-    const ceTab = ia.currentStage === 'SUSTAINABILITY_MATRIX_SUBMITTED'
-      ? 'sustainability'
-      : ia.currentStage === 'ACTION_PLAN_SUBMITTED'
-        ? 'action-plan'
-        : (ia.appraisal ? 'appraisal' : 'overview')
+    // UAT 2026-10-02/03 — route to the tab that still needs CE action.
+    //   • SUSTAINABILITY_MATRIX_SUBMITTED → sustainability tab (first review)
+    //   • ACTION_PLAN_SUBMITTED           → action-plan tab (first review)
+    //   • SUSTAINABILITY_MATRIX_APPROVED  → action-plan tab (parallel-tracks
+    //                                       edge case where CE approved
+    //                                       sustainability first and the
+    //                                       action plan still awaits CE)
+    //   • DETAILED_APPRAISAL_APPROVAL_BY_SDE → appraisal tab (CE comments)
+    //
+    // `CLUSTER_EXPERT_APPROVED` is deliberately NOT routed here — rows
+    // at that stage are filtered out of `iasFiltered` above because they
+    // mean CE is finished and only cause confusion ("Detailed Pending"
+    // rows that route to L1).
+    const cs = ia.currentStage
+    const ceTab =
+        cs === 'SUSTAINABILITY_MATRIX_SUBMITTED' ? 'sustainability'
+      : cs === 'ACTION_PLAN_SUBMITTED'           ? 'action-plan'
+      : cs === 'SUSTAINABILITY_MATRIX_APPROVED'  ? 'action-plan'
+      : (ia.appraisal ? 'appraisal' : 'overview')
     return (
       <Button size="small" variant="outlined" color="primary" startIcon={<EditNoteIcon />}
         onClick={go(`${workspaceBase}/ias/${ia.id}/workspace/${ceTab}`)} sx={ACTION_SX}>
@@ -227,6 +308,20 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
   const [confirm, setConfirm] = useState(null) // IA pending soft-delete
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState({ severity: '', msg: '' })
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  // Per-bucket counts drive the badges on each filter pill. Computed off
+  // the already-role-filtered `ias` list so numbers reflect what the
+  // user is actually allowed to see.
+  const statusCounts = useMemo(() => {
+    const out = {}
+    for (const f of IA_STATUS_FILTERS) {
+      out[f.key] = f.stages ? ias.filter((i) => f.stages.has(i.currentStage)).length : ias.length
+    }
+    return out
+  }, [ias])
+  const activeStatus = IA_STATUS_FILTERS.find((f) => f.key === statusFilter) || IA_STATUS_FILTERS[0]
+  const iasVisible = activeStatus.stages ? ias.filter((i) => activeStatus.stages.has(i.currentStage)) : ias
 
   const doDelete = async () => {
     if (!confirm?.id) return
@@ -253,7 +348,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
         subtitle={
           initialLoading
             ? 'Loading…'
-            : `${ias.length} association${ias.length === 1 ? '' : 's'} across the appraisal pipeline`
+            : `${iasVisible.length} of ${ias.length} association${ias.length === 1 ? '' : 's'} shown`
         }
         action={
           <Stack direction="row" spacing={1}>
@@ -313,6 +408,13 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
           <CircularProgress />
         </Box>
       ) : (
+      <>
+      <StatusFilterBar
+        label="Filter"
+        value={statusFilter}
+        onChange={setStatusFilter}
+        filters={IA_STATUS_FILTERS.map((f) => ({ key: f.key, label: f.label, tone: f.tone, count: statusCounts[f.key] }))}
+      />
       <Card>
         <Table sx={{ '& tbody tr:last-of-type td': { border: 0 } }}>
           <TableHead>
@@ -324,17 +426,20 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {!iasLoading && ias.length === 0 && !iasError && (
+            {!iasLoading && iasVisible.length === 0 && !iasError && (
               <TableRow>
                 <TableCell colSpan={4} align="center" sx={{ py: 6 }}>
                   <Typography color="text.secondary">
-                    No Industry Associations yet.
-                    {canInitiate && ' Click “In-Principle Approval” to add the first one.'}
+                    {ias.length === 0
+                      ? (canInitiate
+                          ? 'No Industry Associations yet. Click “In-Principle Approval” to add the first one.'
+                          : 'No Industry Associations yet.')
+                      : `Nothing matches “${activeStatus.label}”. Pick another filter to widen the view.`}
                   </Typography>
                 </TableCell>
               </TableRow>
             )}
-            {ias.map((ia) => (
+            {iasVisible.map((ia) => (
               <TableRow key={ia.id} hover onClick={() => navigate(`${basePath}/${ia.id}`)} sx={{ cursor: 'pointer' }}>
                 <TableCell>
                   <Typography fontWeight={700} fontSize="0.95rem">{ia.name}</Typography>
@@ -343,7 +448,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
                 <TableCell>
                   <Typography variant="body2">{branchLabel(ia, branchNameById)}</Typography>
                 </TableCell>
-                <TableCell><StatusChip status={ia.status} /></TableCell>
+                <TableCell sx={{ whiteSpace: 'nowrap' }}><StatusChip status={ia.status} /></TableCell>
                 <TableCell align="right">
                   <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                     {rowAction(ia, navigate, basePath, { isClusterExpert })}
@@ -365,6 +470,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
           </TableBody>
         </Table>
       </Card>
+      </>
       )}
 
       <Dialog
@@ -391,7 +497,7 @@ export default function IndustryAssociations({ basePath = '/gt/ias' }) {
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={3000}
+        autoHideDuration={5000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

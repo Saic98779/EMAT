@@ -44,10 +44,37 @@ export function statusColor(status) {
 }
 
 // Soft-filled chip: light tinted background + dark text.
+// UAT 2026-10-02 item 62 — IA Onboarding list was showing truncated
+// labels like "In-Principle · Awaitin…" because MUI's `.MuiChip-label`
+// defaults to `overflow: hidden; text-overflow: ellipsis`. Opt the
+// label out of truncation and let the chip grow with the content so
+// users see the full status.
+const NO_TRUNCATE_LABEL_SX = {
+  '& .MuiChip-label': {
+    overflow: 'visible',
+    textOverflow: 'clip',
+    whiteSpace: 'nowrap',
+  },
+  maxWidth: 'none',
+}
+
 export function StatusChip({ status, size = 'small' }) {
   const color = statusColor(status)
-  if (color === 'default') return <Chip label={status} size={size} variant="outlined" />
-  return <Chip label={status} size={size} sx={{ bgcolor: `${color}.light`, color: `${color}.dark`, fontWeight: 700 }} />
+  if (color === 'default') {
+    return <Chip label={status} size={size} variant="outlined" sx={NO_TRUNCATE_LABEL_SX} />
+  }
+  return (
+    <Chip
+      label={status}
+      size={size}
+      sx={{
+        bgcolor: `${color}.light`,
+        color: `${color}.dark`,
+        fontWeight: 700,
+        ...NO_TRUNCATE_LABEL_SX,
+      }}
+    />
+  )
 }
 
 // Gradient hero header for dashboards.

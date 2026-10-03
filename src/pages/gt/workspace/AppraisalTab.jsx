@@ -5,6 +5,7 @@ import { useIaWorkspace } from '../../../components/workspace/IaWorkspaceLayout'
 import AppraisalForm from '../../../components/AppraisalForm'
 import AppraisalReviewView from './appraisal/AppraisalReviewView'
 import SdeL2ReviewEdit from './appraisal/SdeL2ReviewEdit'
+import HoMakerPostFinalization from './appraisal/HoMakerPostFinalization'
 import { STAGE } from '../../../apis/registrationStages'
 import { STATUS } from '../../../apis/workflow'
 import { useAppraisalByRegistration } from '../../../queries'
@@ -104,24 +105,52 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
     )
   }
 
-  // SDE at the L2 decision point owns the Due Diligence block, so route
-  // them into the editable review surface instead of the read-only one.
-  // Every other reviewer (Cluster Expert commenting, HO Maker signing
-  // off) still uses AppraisalReviewView — their sections are read-only
-  // by role and their own contributions ride the sticky decision bar.
+  // SDE, HO Maker, and HO Checker all get the editable review surface
+  // at their respective decision points:
+  //   • SDE at DETAILED_APPRAISAL_SUBMITTED — owns Due Diligence
+  //   • HO Maker at DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED — client
+  //     UAT 2026-09-28 §5.vi: HO Maker must be able to modify what SDE
+  //     submitted before recording their approve/reject/revert
+  //   • HO Checker at DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER — final
+  //     sign-off + owns the panel-letter upload
+  // Only Cluster Expert stays on the read-only AppraisalReviewView —
+  // their contribution is the sticky-bar comments field, not appraisal
+  // edits.
   const isSdeAtL2Submit = isReviewer
     && ws.viewerRole === 'SIDBI_SDE'
     && ws.ia?.currentStage === 'DETAILED_APPRAISAL_SUBMITTED'
+  const isHoMakerAtCeSubmit = isReviewer
+    && ws.viewerRole === 'SIDBI_HO_MAKER'
+    && ws.ia?.currentStage === 'DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED'
+  const isHoCheckerAtFinal = isReviewer
+    && ws.viewerRole === 'SIDBI_HO_CHECKER'
+    && ws.ia?.currentStage === 'DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER'
+  const useEditableReview = isSdeAtL2Submit || isHoMakerAtCeSubmit || isHoCheckerAtFinal
+
+  // Post-finalisation committee screen for HO Maker (UAT 2026-09-28
+  // §5.viii + §5.ix). Once HO Checker signs off, HO Maker sees a
+  // dedicated screen with PDF generation, sanction marking (Sanctioned
+  // / Rejected / Deferred), an approved-file uploader (formerly the
+  // panel letter — moved from HO Checker per client 2026-09-28), and
+  // committee comments.
+  const isHoMakerPostFinal = ws.viewerRole === 'SIDBI_HO_MAKER'
+    && ws.ia?.currentStage === 'DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER'
 
   return (
     <>
-      {isSdeAtL2Submit ? (
+      {useEditableReview ? (
         <SdeL2ReviewEdit
           iaId={ws.iaId}
           iaName={ws.ia?.name}
           appraisal={appraisal}
           decisions={decisions}
           onDone={(result) => result && setToast(result)}
+        />
+      ) : isHoMakerPostFinal ? (
+        <HoMakerPostFinalization
+          iaId={ws.iaId}
+          iaName={ws.ia?.name}
+          appraisal={appraisal}
         />
       ) : isReviewer ? (
         <AppraisalReviewView
@@ -150,7 +179,7 @@ function AppraisalTabBody({ ws, toast, setToast, onSaved }) {
       )}
       <Snackbar
         open={!!toast}
-        autoHideDuration={4200}
+        autoHideDuration={5000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

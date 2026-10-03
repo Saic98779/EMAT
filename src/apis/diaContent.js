@@ -58,6 +58,30 @@ export function updateContent(path, id, body) {
   return apiFetch(`/${path}/${encodeURIComponent(id)}`, { method: 'PUT', body })
 }
 
+// PMU resubmit path — PUT the corrected DTO with the status fields
+// nulled out in the same body, so the record re-enters the Maker queue
+// in one round trip.
+//
+// NOTE: an earlier version of this helper also fired a follow-up
+// `PATCH /{path}/{id}/status` with `{makerStatus: null, checkerStatus:
+// null}` as "belt-and-braces". The live backend hard-rejects that call
+// with 400 `"Maker status must not be null"` (the /status endpoint has
+// @NotNull on both fields — see `updateContentStatus` in
+// `apis/contentStatus.js`). The PATCH was wrapped in a try/catch so no
+// user-visible error surfaced, but it generated a 400 on every single
+// resubmit and polluted DevTools. Removed — the PUT above is the only
+// write we need. If a future backend relaxes the /status validator we
+// can reintroduce it, but there's no benefit today.
+export async function resubmitContent(path, id, body) {
+  const resetBody = {
+    ...body,
+    makerStatus: null,
+    checkerStatus: null,
+    remark: null,
+  }
+  return apiFetch(`/${path}/${encodeURIComponent(id)}`, { method: 'PUT', body: resetBody })
+}
+
 // POST /bdsp/import — multipart CSV / Excel bulk upload. Each row becomes
 // one BDSP record and rides the same HO Checker approval workflow.
 export async function importBdspRows(file, { signal } = {}) {

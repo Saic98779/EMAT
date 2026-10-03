@@ -136,19 +136,19 @@ const STAGE_TEMPLATE = {
       { label: 'SDE Approval',                  keys: ['DETAILED_APPRAISAL_APPROVAL_BY_SDE'] },
       { label: 'Cluster Expert Comments',       keys: ['DETAILED_APPRAISAL_CE_COMMENTS_SUBMITTED'] },
       { label: 'HO Maker Approval',             keys: ['DETAILED_APPRAISAL_APPROVAL_BY_HO_MAKER'] },
-      // "Panel Submission" removed on 2026-09-23 per client UAT feedback —
-      // it's not part of the workflow they want to display. Backend still
-      // emits DETAILED_APPRAISAL_SUBMITTED_BY_PANEL if a panel step runs;
-      // the timeline / status pages continue to handle it, but the stage
-      // tracker no longer shows it as a step.
+      // HO Checker added 2026-09-28 (backend sub-stage ids 24/25/26).
+      // Final signer on the L2 appraisal — sits after HO Maker approves.
+      { label: 'HO Checker Approval',           keys: ['DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER'] },
     ],
     rejectionKeys: [
       'DETAILED_APPRAISAL_REJECTED_BY_SDE',
       'DETAILED_APPRAISAL_REJECTED_BY_HO_MAKER',
+      'DETAILED_APPRAISAL_REJECTED_BY_HO_CHECKER',
     ],
     revertKeys: [
       'DETAILED_APPRAISAL_REVERTED_BY_SDE',
       'DETAILED_APPRAISAL_REVERTED_BY_HO_MAKER',
+      'DETAILED_APPRAISAL_REVERTED_BY_HO_CHECKER',
     ],
   },
 

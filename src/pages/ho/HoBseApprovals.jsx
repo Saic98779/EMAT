@@ -8,18 +8,28 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import SearchIcon from '@mui/icons-material/Search'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { PageHeader, Mono } from '../../components/shared'
+import StatusFilterBar from '../../components/StatusFilterBar'
 import { useBseList } from '../../queries'
 
 const ACTION_SX = { whiteSpace: 'nowrap', minWidth: 0, textTransform: 'none' }
 
-// Workflow gate: HO only sees records that PMU has RECOMMENDED and that HO
-// hasn't decided yet. Applied client-side because the `/ho-recommendation`
-// endpoint currently returns already-decided records, not the pending set.
-function isHoPending(r) {
-  const pmu = String(r.raw?.pmuRecommendation || '').toLowerCase()
-  const ho = String(r.raw?.hoRecommendation || '').trim()
-  return pmu === 'recommended' && !ho
-}
+// Workflow bucket helpers driving the filter chips (UAT 2026-09-28).
+const pmuOf = (r) => String(r?.raw?.pmuRecommendation || '').toLowerCase()
+const hoOf  = (r) => String(r?.raw?.hoRecommendation  || '').toLowerCase()
+function isHoPending(r) { return pmuOf(r) === 'recommended' && !hoOf(r) }
+function isHoApproved(r) { return hoOf(r) === 'recommended' }
+function isHoRejected(r) { return hoOf(r) === 'not recommended' || hoOf(r) === 'rejected' }
+function isHoSentBack(r) { return hoOf(r) === 'sent back' || hoOf(r) === 'reverted' }
+function isPmuPending(r) { return !pmuOf(r) || pmuOf(r) === 'draft' }
+
+const BSE_FILTERS = [
+  { key: 'pending',    label: 'Pending my review', tone: 'warning', match: isHoPending },
+  { key: 'approved',   label: 'I approved',        tone: 'success', match: isHoApproved },
+  { key: 'rejected',   label: 'I rejected',        tone: 'error',   match: isHoRejected },
+  { key: 'sent_back',  label: 'Sent back',         tone: 'warning', match: isHoSentBack },
+  { key: 'pmu_pending',label: 'PMU review pending',tone: 'info',    match: isPmuPending },
+  { key: 'all',        label: 'All',               tone: 'default', match: null },
+]
 
 // BSE recommendations waiting for the SIDBI HO Maker's decision. Row click
 // (or "Review") opens the HoBseReview page for the record.
@@ -27,8 +37,19 @@ export default function HoBseApprovals() {
   const navigate = useNavigate()
   const { data: all = [], isLoading, isFetching, error, refetch } = useBseList()
   const [q, setQ] = useState('')
+  const [filter, setFilter] = useState('pending')
 
-  const rows = useMemo(() => all.filter(isHoPending), [all])
+  const counts = useMemo(() => {
+    const out = {}
+    for (const f of BSE_FILTERS) out[f.key] = f.match ? all.filter(f.match).length : all.length
+    return out
+  }, [all])
+
+  const activeFilter = BSE_FILTERS.find((f) => f.key === filter) || BSE_FILTERS[0]
+  const rows = useMemo(
+    () => (activeFilter.match ? all.filter(activeFilter.match) : all),
+    [all, activeFilter],
+  )
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -52,6 +73,13 @@ export default function HoBseApprovals() {
             {refetching ? 'Refreshing…' : 'Refresh'}
           </Button>
         }
+      />
+
+      <StatusFilterBar
+        label="Filter"
+        value={filter}
+        onChange={setFilter}
+        filters={BSE_FILTERS.map((f) => ({ key: f.key, label: f.label, tone: f.tone, count: counts[f.key] }))}
       />
 
       <TextField

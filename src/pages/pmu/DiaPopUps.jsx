@@ -5,11 +5,11 @@ import {
   CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
-  createContent, updateContent, uploadContentAttachments, DIA_ENDPOINTS,
+  createContent, updateContent, resubmitContent, uploadContentAttachments, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — Pop-Ups
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 
 const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp'
 const INITIAL = { topic: '', relevance: '', startDate: '', endDate: '', attachments: [] }
@@ -25,7 +25,7 @@ function recordToDefaults(record) {
   }
 }
 
-export default function DiaPopUps({ editId = null, initialRecord = null } = {}) {
+export default function DiaPopUps({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const existingAttachment = initialRecord?.attachments || null
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
@@ -51,7 +51,7 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
         attachments: isEdit ? existingAttachment : null,
       }
       const savedId = isEdit
-        ? (await updateContent(DIA_ENDPOINTS.POPUPS, editId, dto))?.id ?? editId
+        ? (await resubmitContent(DIA_ENDPOINTS.POPUPS, editId, dto))?.id ?? editId
         : (await createContent(DIA_ENDPOINTS.POPUPS, dto))?.id
       if (values.attachments?.length && savedId) {
         try {
@@ -67,9 +67,10 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
       }
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -83,9 +84,9 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
     <PmuFormShell
       title={isEdit ? 'Resubmit Pop-Up' : 'Pop-Ups'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Schedule a pop-up — submits to SIDBI HO Checker for approval.'}
-      approvalNote="Once submitted, this pop-up goes to the SIDBI HO Checker for approval. It becomes live only after approval and stays visible for the duration you set."
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
+        : 'Schedule a pop-up — submits to SIDBI HO Maker for approval.'}
+      approvalNote="Once submitted, this pop-up goes to SIDBI HO Maker for approval (HO Checker signs off after). It becomes live only after approval and stays visible for the duration you set."
       methods={methods}
       onSubmit={submit}
       onReset={reset}
@@ -102,8 +103,8 @@ export default function DiaPopUps({ editId = null, initialRecord = null } = {}) 
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the pop-up"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>

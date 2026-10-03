@@ -238,7 +238,7 @@ export default function Vendors() {
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={3000}
+        autoHideDuration={5000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

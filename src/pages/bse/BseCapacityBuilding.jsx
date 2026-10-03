@@ -303,6 +303,7 @@ export default function BseCapacityBuilding() {
                 InputLabelProps={{ shrink: true }}
                 value={v.invoiceDate}
                 onChange={(e) => set('invoiceDate', e.target.value)}
+                inputProps={{ max: new Date().toISOString().slice(0, 10) }}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>
@@ -383,7 +384,7 @@ export default function BseCapacityBuilding() {
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={4000}
+        autoHideDuration={5000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

@@ -1,9 +1,10 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, Stack, TextField, Typography,
 } from '@mui/material'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import SaveIcon from '@mui/icons-material/Save'
 import { alpha, useTheme } from '@mui/material/styles'
 
 import { DECISION } from '../../../../apis/stageActions'
@@ -131,6 +132,52 @@ const SdeDecisionBar = memo(function SdeDecisionBar({
     setPendingDecision(d)
   }, [comments, onDone])
 
+  // Save-only path — PUT the current form snapshot without advancing
+  // the workflow. Lets the SDE persist DD edits mid-review without
+  // committing to an approve/reject/revert yet. Mirrors the "Save
+  // changes" affordance L1's SdeL1EditableView provides.
+  const onSaveOnly = useCallback(async () => {
+    if (!appraisalId) {
+      onDone?.({ severity: 'error', msg: 'Appraisal record not loaded yet — try again in a moment.' })
+      return
+    }
+    const snapshot = formRef?.current
+    if (!snapshot || !snapshot.seeded) {
+      onDone?.({ severity: 'warning', msg: 'Form is still loading — please wait a moment.' })
+      return
+    }
+    if (!snapshot.isValid()) {
+      snapshot.showAllErrors()
+      onDone?.({ severity: 'warning', msg: 'Please fix the highlighted fields before saving.' })
+      return
+    }
+    setBusyKind('save')
+    try {
+      const values = snapshot.values || {}
+      // No stageId / stageComments / isSidbeApproved — pure form save.
+      const body = toAppraisalUpdatePayload(values, iaId)
+      await updateAppraisal(appraisalId, body)
+
+      const pending = snapshot.collectFiles ? snapshot.collectFiles() : []
+      if (pending.length) {
+        const tagged = pending.map(({ file, slug }) => encodeFilename(file, slug))
+        try { await uploadFilesBatch(iaId, 'registration', iaId, tagged) } catch (err) {
+          onDone?.({ severity: 'warning', msg: `Saved — but ${pending.length} file${pending.length === 1 ? '' : 's'} failed to upload (${err.message || 'unknown error'}).` })
+          return
+        }
+      }
+
+      qc.invalidateQueries({ queryKey: keys.appraisals.detail(appraisalId), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.appraisals.byRegistration(iaId), refetchType: 'all' })
+      qc.invalidateQueries({ queryKey: keys.ias.detail(iaId), refetchType: 'all' })
+      onDone?.({ severity: 'success', msg: 'Changes saved. Decision still pending.' })
+    } catch (err) {
+      onDone?.({ severity: 'error', msg: err?.message || 'Failed to save changes.' })
+    } finally {
+      setBusyKind(null)
+    }
+  }, [appraisalId, formRef, iaId, onDone, qc])
+
   const confirm = useCallback(async () => {
     const d = pendingDecision
     if (!d) return
@@ -149,7 +196,19 @@ const SdeDecisionBar = memo(function SdeDecisionBar({
     // reviewer can see which field to fix.
     if (!snapshot.isValid()) {
       snapshot.showAllErrors()
-      onDone?.({ severity: 'warning', msg: 'Please fix the highlighted fields before ' + d.label.toLowerCase() + '.' })
+      // UAT 2026-10-02 item 66 — the toast used to just say "Please fix
+      // the highlighted fields" with no clue which section / field was
+      // the problem. The SDE sees multiple sections marked "Done" and no
+      // Approve button, and has to scroll the whole form hunting red
+      // outlines. Now use `firstProblem()` (already exposed on the form
+      // ref) to name the first blocking field right in the toast.
+      const problem = snapshot.firstProblem?.()
+      onDone?.({
+        severity: 'warning',
+        msg: problem
+          ? `Can't ${d.label.toLowerCase()} — ${problem}`
+          : `Please fix the highlighted fields before ${d.label.toLowerCase()}.`,
+      })
       return
     }
 
@@ -270,6 +329,24 @@ const SdeDecisionBar = memo(function SdeDecisionBar({
             spacing={1}
             sx={{ flexShrink: 0, alignSelf: { xs: 'flex-end', md: 'auto' } }}
           >
+            {/* UAT 2026-10-03 — "Show missing (N)" button mirrors the
+                affordance the L1 (RegistrationFooter) and GT L2 flows
+                already have. Lets the SDE find the blocking fields
+                without having to click Approve first just to see what's
+                wrong. Only rendered when there's actually something
+                incomplete; a form in a submittable state hides it. */}
+            <ShowMissingButton formRef={formRef} />
+            <Button
+              onClick={onSaveOnly}
+              disabled={busyKind !== null}
+              variant="outlined"
+              color="inherit"
+              disableElevation
+              startIcon={busyKind === 'save' ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+              sx={{ textTransform: 'none', fontWeight: 600, py: 1, borderRadius: 1.5 }}
+            >
+              {busyKind === 'save' ? 'Saving…' : 'Save changes'}
+            </Button>
             {decisions.map((d) => {
               const busy = busyKind === d.kind
               const disabled = busyKind !== null
@@ -314,6 +391,40 @@ const SdeDecisionBar = memo(function SdeDecisionBar({
     </>
   )
 })
+
+// ── Show missing button ────────────────────────────────────────────────
+// UAT 2026-10-03 — exposes the number of still-incomplete sections and,
+// on click, flips every red inline error on + jumps the stepper to the
+// first blocking section. Mirrors the L1 (RegistrationFooter) UX for
+// the L2 SDE review. Polls the formRef on a lightweight 500 ms tick so
+// the badge count updates as the SDE types without us plumbing a
+// subscription through the memoized decision bar.
+function ShowMissingButton({ formRef }) {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    const tick = () => {
+      const api = formRef?.current
+      const n = typeof api?.missingCount === 'function' ? api.missingCount() : 0
+      setCount(n)
+    }
+    tick()
+    const id = window.setInterval(tick, 500)
+    return () => window.clearInterval(id)
+  }, [formRef])
+  if (count <= 0) return null
+  const click = () => formRef?.current?.goToFirstMissing?.()
+  return (
+    <Button
+      onClick={click}
+      variant="outlined"
+      color="warning"
+      disableElevation
+      sx={{ textTransform: 'none', fontWeight: 700, py: 1, borderRadius: 1.5 }}
+    >
+      Show missing ({count})
+    </Button>
+  )
+}
 
 // ── Confirm dialog ─────────────────────────────────────────────────────
 function ConfirmDialog({ pending, iaName, comments, busy, onCancel, onConfirm }) {

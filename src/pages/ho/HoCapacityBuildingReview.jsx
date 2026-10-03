@@ -131,7 +131,7 @@ export default function HoCapacityBuildingReview() {
         </Card>
       )}
 
-      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)}
+      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {toast && <Alert severity={toast.kind} variant="filled" onClose={() => setToast(null)}>{toast.msg}</Alert>}
       </Snackbar>
@@ -339,6 +339,7 @@ function ReviewPanel({ dto, onDone }) {
                 InputLabelProps={{ shrink: true }}
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
+                inputProps={{ max: new Date().toISOString().slice(0, 10) }}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>

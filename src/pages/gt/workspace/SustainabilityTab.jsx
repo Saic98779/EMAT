@@ -81,6 +81,49 @@ export default function SustainabilityTab() {
     navigate(`${ws.basePath || '/gt'}/ias/${ws.iaId}/workspace/appraisal`)
   }, [navigate, ws.iaId, ws.basePath])
 
+  // CE decision affordance — UAT 2026-10-02 bugfix. Must live at the
+  // top level of the component so React sees the same hook count every
+  // render; the earlier version wrapped this `useMemo` inside the
+  // `if (showResult)` branch and crashed with "Rendered more hooks than
+  // during the previous render" the moment the branch flipped post-submit.
+  //
+  // Why we don't use `ws.decisionsForCurrent` here: that lookup reads
+  // from `ia.currentStage`, which is a SINGLE enum value. In the
+  // parallel sustainability + action-plan tracks, `currentStage`
+  // reflects whichever sub-stage was most recently written. When both
+  // tracks are submitted, only ONE track has decisions available, and
+  // the OTHER tab was inheriting those decisions by kind — meaning
+  // clicking "Approve" on Sustainability could actually fire the
+  // Action Plan sub-stage transition.
+  //
+  // Fix: derive CE decisions from THIS track's own sub-stage state.
+  // CE sees the Approve/Revert/Reject bar on sustainability iff GT has
+  // submitted the matrix AND no CE decision has been recorded on it yet.
+  const sustainabilityStage = ws.workflow?.stages?.find((x) => x.key === STAGE.SUSTAINABILITY_MATRIX)
+  const sustainabilityNeedsCe = ws.viewerRole === 'CLUSTER_EXPERT'
+    && sustainabilityStage?.subStages?.[0]?.status === STATUS.COMPLETED
+    && sustainabilityStage?.subStages?.[1]?.status !== STATUS.COMPLETED
+    && sustainabilityStage?.status !== STATUS.REJECTED
+  const ceDecisions = useMemo(() => {
+    if (!sustainabilityNeedsCe) return []
+    const build = (to, kind, label) => {
+      const stageId = stageIdOf(stagesQ.data, to)
+      return stageId != null ? { kind, to, label, stageId } : null
+    }
+    return [
+      build('SUSTAINABILITY_MATRIX_APPROVED', DECISION.APPROVE, 'Approve sustainability'),
+      build('SUSTAINABILITY_MATRIX_REVERTED', DECISION.REVERT,  'Send back to GT'),
+      build('SUSTAINABILITY_MATRIX_REJECTED', DECISION.REJECT,  'Reject'),
+    ].filter(Boolean)
+  }, [sustainabilityNeedsCe, stagesQ.data])
+  // Composite completion — if action plan is already CE-approved, the
+  // sustainability approve should fire the composite stageId so both
+  // tracks + currentStage advance to Detailed Appraisal in one write.
+  const actionPlanStage = ws.workflow?.stages?.find((x) => x.key === STAGE.ACTION_PLAN)
+  const actionPlanApproved = actionPlanStage?.status === STATUS.COMPLETED
+  const compositeStageId = stageIdOf(stagesQ.data, 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED')
+  const isCeReviewer = ceDecisions.length > 0
+
   // Ref-mirror the changing dependencies so `submit` itself stays stable —
   // otherwise the memoized LiveScorePanel + MatrixSubmitBar re-render on
   // every answer change because their onSubmit prop is a fresh function.
@@ -170,22 +213,10 @@ export default function SustainabilityTab() {
     // "Weak" because local answers reset to null after submit.
     const persistedScore = dto.totalScore ?? score
     const persistedTier = TIERS.find((t) => persistedScore >= t.min) || TIERS[TIERS.length - 1]
-    // CE decision affordance — surface Approve/Revert/Reject when the
-    // workflow says CE has decisions available at this sub-stage
-    // (SUSTAINABILITY_MATRIX_SUBMITTED). Backend added the three
-    // sub-stages on 2026-09-27; wired via stageActions.js.
-    const ceDecisions = (ws.decisionsForCurrent || []).filter(
-      (d) => d.kind === DECISION.APPROVE || d.kind === DECISION.REVERT || d.kind === DECISION.REJECT,
-    )
-    const isCeReviewer = ceDecisions.length > 0
-    // Composite completion — if action plan is already CE-approved,
-    // this sustainability approve should advance the IA all the way to
-    // Detailed Appraisal via stageId 20 (SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED).
-    // Backend doesn't auto-advance; frontend has to send the composite
-    // stageId explicitly on the "last" approval (confirmed by Sameer 2026-09-27).
-    const actionPlanStage = ws.workflow?.stages?.find((x) => x.key === STAGE.ACTION_PLAN)
-    const actionPlanApproved = actionPlanStage?.status === STATUS.COMPLETED
-    const compositeStageId = stageIdOf(stagesQ.data, 'SUSTAINABILITY_MATRIX_AND_ACTION_PLAN_COMPLETED')
+    // `ceDecisions`, `isCeReviewer`, `actionPlanApproved`,
+    // `compositeStageId` are all derived at the top of the component
+    // (above the early returns) so the hook count is stable across
+    // renders. See the comment block up there for the full rationale.
     return (
       <>
         <ReadOnlyMatrix
@@ -371,7 +402,7 @@ function Toast({ toast, onClose }) {
   return (
     <Snackbar
       open={!!toast}
-      autoHideDuration={4200}
+      autoHideDuration={5000}
       onClose={onClose}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
     >
@@ -456,20 +487,56 @@ const CeSustainabilityDecisionBar = memo(function CeSustainabilityDecisionBar({ 
           boxShadow: '0 -6px 20px rgba(0,0,0,0.06)',
         }}
       >
+        {/* UAT 2026-10-02 item 63 — when CE approves this (Stage 3)
+            and Action Plan (Stage 4) is already CE-approved, the APPROVE
+            path sends the composite stageId that marks BOTH stages done
+            and advances the IA straight to Detailed Appraisal. Earlier
+            this happened silently and read as "Stage 4 auto-approved
+            without CE action". Surface a clear info strip so the CE
+            knows what the click actually does. */}
+        {otherTrackApproved && compositeStageId != null && (
+          <Box
+            sx={{
+              mb: 1.5, px: 1.5, py: 1, borderRadius: 1,
+              bgcolor: alpha(theme.palette.info.main, 0.08),
+              border: 1, borderColor: alpha(theme.palette.info.main, 0.3),
+              color: theme.palette.info.dark,
+              fontSize: 12.5, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 0.75,
+            }}
+          >
+            <Box component="span" sx={{ fontSize: 10 }}>●</Box>
+            Action Plan has already been approved. Approving the Sustainability Matrix now will mark both tracks complete and advance this IA to Detailed Appraisal.
+          </Box>
+        )}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1.5, md: 3 }} alignItems={{ md: 'center' }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: theme.palette.text.disabled, mb: 0.5 }}>
               Cluster Expert comment
             </Typography>
+            {/* UAT 2026-10-02 item 64 — backend's `stageComments` column
+                caps at 500 chars. Earlier the input accepted up to 1000
+                with no counter, so users wrote long comments and were
+                greeted with the "field too long" error on submit. Cap
+                the slice to 500 AND show a live counter (red once over). */}
             <TextField
               value={comment}
-              onChange={(e) => setComment(e.target.value.slice(0, 1000))}
+              onChange={(e) => setComment(e.target.value.slice(0, 500))}
               placeholder="Required to revert or reject · optional on approval"
               fullWidth
               size="small"
               multiline
               minRows={1}
               maxRows={4}
+              inputProps={{ maxLength: 500 }}
+              helperText={`${comment.length} / 500`}
+              FormHelperTextProps={{
+                sx: {
+                  textAlign: 'right',
+                  color: comment.length >= 500 ? 'error.main' : 'text.disabled',
+                  m: 0, mt: 0.25, fontSize: 11,
+                },
+              }}
             />
           </Box>
           <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignSelf: { xs: 'flex-end', md: 'auto' } }}>
@@ -480,6 +547,12 @@ const CeSustainabilityDecisionBar = memo(function CeSustainabilityDecisionBar({ 
               const color   = d.kind === DECISION.APPROVE ? 'success'
                             : d.kind === DECISION.REJECT  ? 'error'
                             : 'warning'
+              // Rename the APPROVE button when the composite path is live
+              // so the CE knows the click doesn't just approve this stage.
+              const willFireComposite = d.kind === DECISION.APPROVE && otherTrackApproved && compositeStageId != null
+              const label = busy
+                ? 'Recording…'
+                : (willFireComposite ? 'Approve & advance to Detailed Appraisal' : d.label)
               return (
                 <Button
                   key={d.kind + d.to}
@@ -489,9 +562,9 @@ const CeSustainabilityDecisionBar = memo(function CeSustainabilityDecisionBar({ 
                   color={color}
                   disableElevation
                   startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}
-                  sx={{ textTransform: 'none', fontWeight: 700, minWidth: 148, py: 1, borderRadius: 1.5 }}
+                  sx={{ textTransform: 'none', fontWeight: 700, minWidth: willFireComposite ? 268 : 148, py: 1, borderRadius: 1.5 }}
                 >
-                  {busy ? 'Recording…' : d.label}
+                  {label}
                 </Button>
               )
             })}

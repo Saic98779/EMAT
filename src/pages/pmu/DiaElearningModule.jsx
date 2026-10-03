@@ -7,11 +7,11 @@ import {
   CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
-  createContent, updateContent, uploadContentAttachments, DIA_ENDPOINTS,
+  createContent, updateContent, resubmitContent, uploadContentAttachments, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — E-learning Module
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 
 const ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.mkv'
 
@@ -44,7 +44,7 @@ function recordToDefaults(record) {
   }
 }
 
-export default function DiaElearningModule({ editId = null, initialRecord = null } = {}) {
+export default function DiaElearningModule({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const existingAttachment = initialRecord?.attachment || null
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
@@ -71,7 +71,7 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
         attachment: isEdit ? existingAttachment : null,
       }
       const savedId = isEdit
-        ? (await updateContent(DIA_ENDPOINTS.ELEARNING, editId, dto))?.id ?? editId
+        ? (await resubmitContent(DIA_ENDPOINTS.ELEARNING, editId, dto))?.id ?? editId
         : (await createContent(DIA_ENDPOINTS.ELEARNING, dto))?.id
       if (values.attachment && savedId) {
         try {
@@ -87,9 +87,10 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
       }
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -103,8 +104,8 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
     <PmuFormShell
       title={isEdit ? 'Resubmit E-learning Module' : 'E-learning Module'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Draft a module — submits to SIDBI HO Checker for approval.'}
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
+        : 'Draft a module — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
@@ -129,24 +130,24 @@ export default function DiaElearningModule({ editId = null, initialRecord = null
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance / rationale of the topic"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="brief" fullWidth required multiline minRows={3}
               label="Brief of the content"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="mainContent" fullWidth required multiline minRows={6}
               label="Main content"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
         </FieldRow>

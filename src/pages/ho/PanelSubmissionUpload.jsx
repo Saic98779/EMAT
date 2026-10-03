@@ -141,7 +141,7 @@ export default function PanelSubmissionUpload() {
 
       <Snackbar
         open={!!toast}
-        autoHideDuration={3500}
+        autoHideDuration={5000}
         onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

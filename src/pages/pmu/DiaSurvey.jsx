@@ -13,12 +13,12 @@ import {
   CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
-  createContent, updateContent, uploadContentAttachments,
+  createContent, updateContent, resubmitContent, uploadContentAttachments,
   toBackendChannels, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — Survey
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 
 const CHANNELS = [
   { value: 'Email', label: 'Email' },
@@ -68,7 +68,7 @@ function recordToDefaults(record) {
   }
 }
 
-export default function DiaSurvey({ editId = null, initialRecord = null } = {}) {
+export default function DiaSurvey({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const existingAttachment = initialRecord?.attachment || null
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
@@ -121,7 +121,7 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
         })),
       }
       const savedId = isEdit
-        ? (await updateContent(DIA_ENDPOINTS.SURVEY, editId, dto))?.id ?? editId
+        ? (await resubmitContent(DIA_ENDPOINTS.SURVEY, editId, dto))?.id ?? editId
         : (await createContent(DIA_ENDPOINTS.SURVEY, dto))?.id
       if (values.attachment && savedId) {
         try {
@@ -132,14 +132,15 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
         } catch (uploadErr) {
           setToast({ severity: 'warning', msg: `Saved, but attachment upload failed: ${uploadErr.message || 'unknown error'}.` })
           if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
           return
         }
       }
       setToast({
         severity: 'success',
         msg: isEdit
-          ? 'Resubmitted. The checker will re-review.'
-          : 'Submitted. Sent to SIDBI HO Checker for approval.',
+          ? 'Resubmitted. The maker will re-review.'
+          : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset({ ...INITIAL, questions: [makeQuestion()] })
     } catch (err) {
@@ -155,8 +156,8 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
     <PmuFormShell
       title={isEdit ? 'Resubmit Survey' : 'Survey'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Draft a survey — submits to SIDBI HO Checker for approval.'}
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
+        : 'Draft a survey — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
@@ -179,8 +180,8 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>
@@ -197,8 +198,9 @@ export default function DiaSurvey({ editId = null, initialRecord = null } = {}) 
           <FieldCell span={12}>
             <RhfTextField
               name="sample" fullWidth required type="number"
-              label="Sample size"
-              placeholder="e.g. 200"
+              label="Sample of the Survey"
+              placeholder="Total number of respondents (e.g. 200)"
+              helperText="Enter the target sample size — a whole number."
               inputProps={{ min: 1, step: 1 }}
               rules={REQUIRED_POSITIVE_INT}
             />
@@ -286,12 +288,12 @@ function QuestionCard({ index, onRemove, removable }) {
         <FieldCell span={{ xs: 12, md: 8 }}>
           <RhfTextField
             name={`${base}.text`} fullWidth required label="Question"
-            inputProps={capChars(CHAR_LIMITS.LONG)}
+            inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             rules={{
               validate: (v) => {
                 const s = String(v || '').trim()
                 if (!s) return 'Enter the question.'
-                if (s.length > CHAR_LIMITS.LONG) return `Max ${CHAR_LIMITS.LONG} characters.`
+                if (s.length > CHAR_LIMITS.MEDIUM) return `Max ${CHAR_LIMITS.MEDIUM} characters.`
                 return true
               },
             }}

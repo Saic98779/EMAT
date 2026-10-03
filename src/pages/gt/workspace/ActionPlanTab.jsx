@@ -96,12 +96,32 @@ function ActionPlanBody({ ws }) {
   const isAwaitingCe = actionPlanStatus === STATUS.IN_PROGRESS
 
   // ── Reviewer routing ────────────────────────────────────────────────
-  // Only surface the CE decision bar when there's actually a live CE
-  // decision available at the current sub-stage. This mirrors the L2
-  // pattern in AppraisalTab.
-  const decisions = (ws.decisionsForCurrent || []).filter(
-    (d) => d.kind === DECISION.APPROVE || d.kind === DECISION.REVERT,
-  )
+  // UAT 2026-10-02 bugfix (mirror of SustainabilityTab fix). Derive CE
+  // decisions from THIS track's own sub-stage state, not from
+  // `ws.decisionsForCurrent` which is a single-enum lookup on
+  // `ia.currentStage`. In the parallel-tracks world, `currentStage`
+  // reflects whichever track was most recently written, so the other
+  // tab would inherit the wrong decisions and silently fire the wrong
+  // sub-stage id through its own endpoint.
+  //
+  // CE sees the Approve/Revert bar on action plan iff GT has submitted
+  // the plan AND no CE decision has been recorded on it yet.
+  const isCeViewer = ws.viewerRole === 'CLUSTER_EXPERT'
+  const actionPlanSubmissionDone = actionPlanStage?.subStages?.[0]?.status === STATUS.COMPLETED
+  const actionPlanCeDone = actionPlanStage?.subStages?.[1]?.status === STATUS.COMPLETED
+  const actionPlanNeedsCe = isCeViewer && actionPlanSubmissionDone && !actionPlanCeDone
+    && actionPlanStatus !== STATUS.REJECTED
+  const decisions = useMemo(() => {
+    if (!actionPlanNeedsCe) return []
+    const build = (to, kind, label) => {
+      const stageId = stageIdOf(stagesQ.data, to)
+      return stageId != null ? { kind, to, label, stageId } : null
+    }
+    return [
+      build('CLUSTER_EXPERT_APPROVED', DECISION.APPROVE, 'Approve action plan'),
+      build('CLUSTER_EXPERT_REVERTED', DECISION.REVERT,  'Send back to GT'),
+    ].filter(Boolean)
+  }, [actionPlanNeedsCe, stagesQ.data])
   const isCeReviewer = decisions.length > 0
   // Only GT Field Team ever authors the action plan. Every other role
   // (SDE, CE, HO Maker, GT PMU) sees the read-only checklist regardless
@@ -735,20 +755,53 @@ const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dt
           boxShadow: '0 -6px 20px rgba(0,0,0,0.06)',
         }}
       >
+        {/* UAT 2026-10-02 item 63 — same composite warning as the
+            SustainabilityTab's decision bar. When the sustainability
+            matrix is already CE-approved, approving the Action Plan
+            fires the composite stageId → both tracks complete and the
+            IA moves to Detailed Appraisal in one write. Surface a clear
+            info strip so this isn't a silent cascade from the CE's
+            point of view. */}
+        {otherTrackApproved && compositeStageId != null && (
+          <Box
+            sx={{
+              mb: 1.5, px: 1.5, py: 1, borderRadius: 1,
+              bgcolor: alpha(theme.palette.info.main, 0.08),
+              border: 1, borderColor: alpha(theme.palette.info.main, 0.3),
+              color: theme.palette.info.dark,
+              fontSize: 12.5, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 0.75,
+            }}
+          >
+            <Box component="span" sx={{ fontSize: 10 }}>●</Box>
+            Sustainability Matrix has already been approved. Approving the Action Plan now will mark both tracks complete and advance this IA to Detailed Appraisal.
+          </Box>
+        )}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1.5, md: 3 }} alignItems={{ md: 'center' }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: theme.palette.text.disabled, mb: 0.5 }}>
               Cluster Expert comment
             </Typography>
+            {/* Same 500-char cap + counter as SustainabilityTab for the
+                same backend `stageComments` column. */}
             <TextField
               value={comment}
-              onChange={(e) => setComment(e.target.value.slice(0, 1000))}
+              onChange={(e) => setComment(e.target.value.slice(0, 500))}
               placeholder="Required if sending back to GT · optional on approval"
               fullWidth
               size="small"
               multiline
               minRows={1}
               maxRows={4}
+              inputProps={{ maxLength: 500 }}
+              helperText={`${comment.length} / 500`}
+              FormHelperTextProps={{
+                sx: {
+                  textAlign: 'right',
+                  color: comment.length >= 500 ? 'error.main' : 'text.disabled',
+                  m: 0, mt: 0.25, fontSize: 11,
+                },
+              }}
             />
           </Box>
           <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignSelf: { xs: 'flex-end', md: 'auto' } }}>
@@ -757,6 +810,10 @@ const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dt
               const disabled = busyKind !== null
               const variant = d.kind === DECISION.APPROVE ? 'contained' : 'outlined'
               const color = d.kind === DECISION.APPROVE ? 'success' : 'warning'
+              const willFireComposite = d.kind === DECISION.APPROVE && otherTrackApproved && compositeStageId != null
+              const label = busy
+                ? 'Recording…'
+                : (willFireComposite ? 'Approve & advance to Detailed Appraisal' : d.label)
               return (
                 <Button
                   key={d.kind + d.to}
@@ -766,9 +823,9 @@ const CeDecisionBar = memo(function CeDecisionBar({ matrixId, registrationId, dt
                   color={color}
                   disableElevation
                   startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}
-                  sx={{ textTransform: 'none', fontWeight: 700, minWidth: 148, py: 1, borderRadius: 1.5 }}
+                  sx={{ textTransform: 'none', fontWeight: 700, minWidth: willFireComposite ? 268 : 148, py: 1, borderRadius: 1.5 }}
                 >
-                  {busy ? 'Recording…' : d.label}
+                  {label}
                 </Button>
               )
             })}
@@ -884,7 +941,7 @@ function Toast({ toast, onClose }) {
   return (
     <Snackbar
       open={!!toast}
-      autoHideDuration={4200}
+      autoHideDuration={5000}
       onClose={onClose}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
     >

@@ -4,10 +4,10 @@ import {
   RhfTextField, SHRINK_LABEL, useForm, useWatch,
   CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
-import { createContent, updateContent, DIA_ENDPOINTS } from '../../apis/diaContent'
+import { createContent, updateContent, resubmitContent, DIA_ENDPOINTS } from '../../apis/diaContent'
 
 // DIA — Latest Developments
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 // Backed by react-hook-form — each field subscribes to its own path in
 // the form store, so typing anywhere never re-renders the other fields.
 
@@ -23,7 +23,7 @@ function recordToDefaults(record) {
   }
 }
 
-export default function DiaLatestDevelopments({ editId = null, initialRecord = null } = {}) {
+export default function DiaLatestDevelopments({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
   const methods = useForm({ mode: 'onSubmit', defaultValues: defaults })
@@ -46,13 +46,14 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
         startDate: values.startDate,
         endDate: values.endDate,
       }
-      if (isEdit) await updateContent(DIA_ENDPOINTS.LATEST_DEV, editId, dto)
+      if (isEdit) await resubmitContent(DIA_ENDPOINTS.LATEST_DEV, editId, dto)
       else await createContent(DIA_ENDPOINTS.LATEST_DEV, dto)
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -66,8 +67,8 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
     <PmuFormShell
       title={isEdit ? 'Resubmit Latest Developments' : 'Latest Developments'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Add a Latest Developments entry — submits to SIDBI HO Checker for approval.'}
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
+        : 'Add a Latest Developments entry — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
@@ -88,8 +89,8 @@ export default function DiaLatestDevelopments({ editId = null, initialRecord = n
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell span={{ xs: 12, md: 6 }}>

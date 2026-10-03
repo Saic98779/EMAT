@@ -6,10 +6,20 @@ import { clustersOf } from './clusters'
 
 const PINCODE = { re: /^[1-9]\d{5}$/, msg: '6-digit pincode' }
 // Human names / designations — letters, spaces, dots, hyphens, apostrophes.
-// Must start with a letter. Rejects digits and stray punctuation. Length
-// between 2 and 80 to catch stray single-char input without being restrictive.
+// Must start with a letter. Rejects digits and stray punctuation.
+//
+// UAT 2026-09-30 item 28 — earlier the regex was
+// `/^[A-Za-z][A-Za-z\s.'-]{1,79}$/`, which capped total length at 80 chars
+// regardless of the field's declared `max` (150 for Apex / Nodal Name +
+// Designation). Users typing beyond 80 chars saw the misleading
+// "Letters, spaces, dots, hyphens or apostrophes only (no numbers)"
+// message even when their input WAS valid alphabetics — the pattern was
+// silently the shorter-of-the-two limit. Length is now driven entirely
+// by each field's `max` (via FormRenderer's length check that emits
+// "Keep it under N characters."), so the pattern only enforces the
+// character-class contract.
 const NAME_PATTERN = {
-  re: /^[A-Za-z][A-Za-z\s.'-]{1,79}$/,
+  re: /^[A-Za-z][A-Za-z\s.'-]*$/,
   msg: 'Letters, spaces, dots, hyphens or apostrophes only (no numbers)',
 }
 // Accepts optional http/https, an optional `www.` (or any subdomain) prefix,
@@ -38,16 +48,33 @@ export function grantSumProblem(values) {
 }
 
 // Validator for CIBIL/SMART report dates on the appraisal — spec says they
-// must be dated after the parent In-Principle registration was created.
-// The parent IA's createdAt is threaded into form values under
-// `_ia_created_at` by AppraisalForm on seed.
+// must be dated after the parent In-Principle registration was created
+// AND not in the future (UAT 2026-09-30 — a due-diligence report can't
+// have a date that hasn't happened yet). The parent IA's createdAt is
+// threaded into form values under `_ia_created_at` by AppraisalForm on
+// seed.
+// Parse a "YYYY-MM-DD" string as LOCAL midnight. `new Date("YYYY-MM-DD")`
+// parses as UTC midnight, which in IST (+5:30) becomes the next day's
+// 05:30 AM local — comparing that to local-midnight "today" misreads
+// today's own date as 5½ hours in the future. See the same fix on
+// `incorporation_date` further down. Falls back to the generic Date
+// constructor for non-ISO inputs.
+const parseLocalDate = (v) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''))
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? null : d
+}
 const afterIaCreation = (v, values) => {
   if (!v) return ''
+  const d = parseLocalDate(v)
+  if (!d) return ''
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  if (d.getTime() > today.getTime()) return 'Date cannot be in the future.'
   const iaIso = values?._ia_created_at
   if (!iaIso) return ''
-  const d = new Date(v)
   const iaD = new Date(iaIso)
-  if (isNaN(d.getTime()) || isNaN(iaD.getTime())) return ''
+  if (isNaN(iaD.getTime())) return ''
   // Normalize IA timestamp to start-of-day so a same-day report is not
   // rejected on hour-of-day differences.
   const iaDay = new Date(iaD.getFullYear(), iaD.getMonth(), iaD.getDate())
@@ -56,34 +83,35 @@ const afterIaCreation = (v, values) => {
 }
 
 const apexNodal = (prefix) => [
-  { name: `${prefix}_name`, label: 'Name', type: 'text', span: 3 },
-  { name: `${prefix}_designation`, label: 'Designation', type: 'text', span: 3 },
+  // Name / designation capped tighter than the FormRenderer default 500
+  // — matches the L1 registration caps.
+  { name: `${prefix}_name`, label: 'Name', type: 'text', span: 3, max: 150 },
+  { name: `${prefix}_designation`, label: 'Designation', type: 'text', span: 3, max: 150 },
   { name: `${prefix}_contact`, label: 'Contact Number', type: 'tel', span: 3 },
   { name: `${prefix}_email`, label: 'Email ID', type: 'email', span: 3 },
 ]
 
-// Appraisal-only identity — sections 1–6 pulled autofetched from the parent
-// IA registration. Sections 1–4 are strictly read-only (spec says
-// "Autofetched from In-Principle approval format"). Sections 5–6 are seeded
-// but modifiable ("Subject to Approval by Reporting Officer").
+// Appraisal-only identity — sections 1–3 pulled autofetched from the parent
+// IA registration. Section 1 (IA snapshot) is strictly read-only — it groups
+// the single-field blocks (State, IA name, Constitution, Address) that used
+// to be their own sections. Sections 2–3 are seeded but modifiable
+// ("Subject to Approval by Reporting Officer").
 const identity = [
-  { n: 1, title: 'State', fields: [
-    { name: 'state', label: 'State', type: 'text', span: 4, readOnly: true, help: 'Auto-fetched from In-Principle registration' },
-  ] },
-  { n: 2, title: 'Industry Association (IA)', fields: [
-    { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 8, readOnly: true },
-  ] },
-  { n: 3, title: 'Constitution of IA', fields: [
+  { n: 1, title: 'IA Snapshot', desc: 'Autofetched from In-Principle registration — read-only.', fields: [
+    { name: '_snap_location', label: 'Location', type: 'subheading', span: 12 },
+    { name: 'state', label: 'State', type: 'text', span: 4, readOnly: true },
+    { name: 'district', label: 'District', type: 'text', span: 4, readOnly: true },
+    { name: 'pincode', label: 'Pincode', type: 'text', span: 4, readOnly: true },
+    { name: 'full_address', label: 'Full postal address', type: 'textarea', span: 12, readOnly: true },
+    { name: '_snap_ia', label: 'Industry Association', type: 'subheading', span: 12 },
+    { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 12, readOnly: true },
+    { name: '_snap_constitution', label: 'Constitution of IA', type: 'subheading', span: 12 },
     { name: 'year_incorp', label: 'Year of Incorporation', type: 'number', span: 3, readOnly: true },
     { name: 'ia_profit_type', label: 'Type of IA', type: 'text', span: 4, readOnly: true },
     { name: 'proof_constitution', label: 'Proof of Constitution', type: 'text', span: 5, readOnly: true },
   ] },
-  { n: 4, title: 'Address of IA', fields: [
-    { name: 'district', label: 'District', type: 'text', span: 4, readOnly: true },
-    { name: 'pincode', label: 'Pincode', type: 'text', span: 3, readOnly: true },
-  ] },
-  { n: 5, title: 'Apex Office Holder Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('apex') },
-  { n: 6, title: 'Nodal Person Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('nodal') },
+  { n: 2, title: 'Apex Office Holder Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('apex') },
+  { n: 3, title: 'Nodal Person Details of IA', desc: 'Autofetched and modifiable (subject to Approval by Reporting Officer)', fields: apexNodal('nodal') },
 ]
 
 // ── In-Principle Approval (GT capture, first level) — full validated format ──
@@ -108,13 +136,37 @@ export const makeInPrincipleSchema = ({
   sections: [
     { n: 1, title: 'Constitution of IA', fields: [
       { name: 'email', label: 'IA Email', type: 'email', span: 6, required: true },
+      // UAT 2026-10-01 — live PAN uniqueness check against
+      // `GET /validations/pan?panNo=…`. The `panLookup: true` flag asks
+      // FormRenderer to wrap this input in `<PanField>`, which fires the
+      // query as soon as the 10-char PAN pattern matches and writes
+      // `_pan_duplicate: true/false` back into form values. The schema
+      // validate below reads that bookkeeping flag so submit is blocked
+      // on a duplicate without having to replicate the API call at
+      // every submit call site. `dependsOn: ['_pan_duplicate']` forces
+      // SectionCard to re-render when the lookup resolves.
       { name: 'pan_no', label: 'IA PAN', type: 'text', span: 6, required: true,
-        // 10-char PAN — 5 letters + 4 digits + 1 letter (e.g. AABCS3480N).
-        validate: (v) => (!v ? '' : (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(String(v).trim().toUpperCase()) ? '' : '10-char PAN, e.g. AABCS3480N')) },
+        panLookup: true,
+        // Suppress the generic "N / 500" counter so the live PAN status
+        // ("Checking PAN…", "PAN is available.", "PAN already registered")
+        // can own the helper-text slot — FormRenderer's `helperText`
+        // priority is error > counter > help, so without this the
+        // success message would be hidden by the counter.
+        counter: false,
+        max: 10,
+        min: 10,
+        dependsOn: ['_pan_duplicate'],
+        validate: (v, values) => {
+          if (!v) return ''
+          const normalised = String(v).trim().toUpperCase()
+          if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(normalised)) return '10-char PAN, e.g. AABCS3480N'
+          if (values?._pan_duplicate === true) return 'This PAN is already registered to another IA.'
+          return ''
+        } },
       { name: 'constitution_type', label: 'Constitution', type: 'select', span: 6, required: true,
         options: ['Societies Registration Act 1860', 'Section 8 Company', 'Trust', 'Other'] },
       { name: 'constitution_other', label: 'If Other — specify', type: 'text', span: 6, required: true,
-        showIf: (v) => v.constitution_type === 'Other' },
+        showIf: (v) => v.constitution_type === 'Other', max: 200 },
       { name: 'ia_profit_type', label: 'Type of IA', type: 'select', span: 6, required: true, options: ['For Profit', 'Not for Profit'] },
       { name: 'incorporation_date', label: 'Date of Incorporation', type: 'date', span: 6, required: true,
         maxDate: 'today',
@@ -137,30 +189,63 @@ export const makeInPrincipleSchema = ({
       { name: 'constitution_proof', label: 'Proof of Constitution', type: 'file', span: 6, required: true },
     ] },
     { n: 2, title: 'Address of IA', fields: [
-      { name: 'full_address', label: 'Full postal address', type: 'textarea', span: 12, required: true,
-        placeholder: 'Line 1, Line 2, Landmark, City, State — PIN',
-        rows: 2, max: 500,
-        help: 'Enter the complete postal address as it should appear on official correspondence.' },
-      // Pincode first — the district is resolved from it via the pincode
-      // master, and a pincode outside the IA's state is rejected. See
-      // PincodeField in FormRenderer.
-      { name: 'pincode', label: 'Pincode', type: 'text', span: 6, required: true, pattern: PINCODE,
-        pincodeLookup: { stateField: 'state', districtField: 'district' },
-        // min/max 6 stop extra keystrokes and the 500-char default rule.
-        counter: false, min: 6, max: 6,
-        help: "Must be in the IA's state",
-        validate: (v, values) => values?._pincode_error || '' },
+      // District + pincode first so the user can pick + validate the
+      // locality before writing out the address. Full address sits at
+      // the bottom because it's the free-text field they can massage
+      // last once the structured location is confirmed.
+      //
+      // District dropdown is populated from the backend pincode master's
+      // per-state district list — writes into `_pincode_districts` land
+      // from PincodeField's effect (see FormRenderer). One API call per
+      // state, cached forever. Falls back to the static state→districts
+      // map when the master is unreachable.
       { name: 'district', label: 'District', type: 'select', span: 6, required: true,
+        placeholder: 'Select district',
+        // optionsFrom reads two bookkeeping keys PincodeField writes
+        // (`_pincode_districts`, `_pincode_lookup_failed`) — MUST list
+        // them in `dependsOn` so SectionCard re-renders when they land.
+        // Without this the section stays memoised on the initial (empty)
+        // values snapshot and the dropdown appears empty even though the
+        // API returned data.
+        dependsOn: ['_pincode_districts', '_pincode_lookup_failed'],
         optionsFrom: (v) => {
           if (Array.isArray(v._pincode_districts) && v._pincode_districts.length) return v._pincode_districts
           return v._pincode_lookup_failed ? districtsOf(v.state) : []
         },
-        help: 'Auto-fetched from the pincode' },
+        help: 'Pick the district your IA is in' },
+      // Pincode — validated against the selected district via the pincode
+      // master. One API call per unique {state, district} pair (cached).
+      // Mismatch is surfaced as an inline error and blocks submit via
+      // `_pincode_error`. See PincodeField in FormRenderer.
+      // Pincode dropdown — populated from the backend pincode master
+      // once the district is picked. PincodeField (opt-in via
+      // pincodeLookup) fetches /pincodes?state=X&district=Y and writes
+      // the list into `_district_pincodes` for this dropdown to read.
+      // User picks from the list; no manual typing = no invalid state
+      // possible, no after-the-fact validation needed.
+      { name: 'pincode', label: 'Pincode', type: 'select', span: 6, required: true,
+        pincodeLookup: { stateField: 'state', districtField: 'district' },
+        placeholder: 'Select pincode',
+        dependsOn: ['_district_pincodes', 'district'],
+        optionsFrom: (v) => {
+          // District picked but list hasn't landed yet → show a
+          // non-selectable "Loading…" placeholder so the empty dropdown
+          // doesn't feel broken during the ~500ms HTTP fetch.
+          if (v.district && !Array.isArray(v._district_pincodes)) return ['Loading pincodes…']
+          return Array.isArray(v._district_pincodes) ? v._district_pincodes : []
+        },
+        help: 'Pick the pincode — list loads from the selected district' },
+      { name: 'full_address', label: 'Full postal address', type: 'textarea', span: 12, required: true,
+        placeholder: 'Line 1, Line 2, Landmark, City, State — PIN',
+        rows: 2, max: 500,
+        help: 'Enter the complete postal address as it should appear on official correspondence.' },
     ] },
     { n: 3, title: 'Apex Office Holder Details of IA', fields: [
       { name: '_apex_contact', label: 'Contact', type: 'subheading', span: 12 },
-      { name: 'apex_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
-      { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
+      // Name / designation are short single-line inputs — cap tighter
+      // than the FormRenderer default 500.
+      { name: 'apex_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
+      { name: 'apex_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
       { name: 'apex_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'apex_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
       // KYC block: doc type + number + upload file all on one row (span 4
@@ -172,6 +257,9 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_kyc_number', label: 'KYC Document Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter document / bill number',
         showIf: (v) => !!v.apex_kyc_doc,
+        // Doc-type validators below enforce exact formats; a 50-char cap
+        // just stops the 500-char default from allowing junk paste.
+        max: 50,
         // Format check keyed on the selected KYC document type. Bills are
         // free-form (no standard numbering) so we skip the check there.
         validate: (v, values) => {
@@ -194,6 +282,7 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_id_number', label: 'ID Proof Number', type: 'text', span: 4, required: true,
         placeholder: 'Enter unique ID number',
         showIf: (v) => !!v.apex_id_proof,
+        max: 50,
         validate: (v, values) => {
           if (v === '' || v == null) return ''
           const t = values?.apex_id_proof
@@ -204,8 +293,9 @@ export const makeInPrincipleSchema = ({
       { name: 'apex_id_file', label: 'Upload ID proof', type: 'file', span: 4, required: true },
     ] },
     { n: 4, title: 'Details of Nodal Contact of IA', fields: [
-      { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
-      { name: 'nodal_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN },
+      // Name / designation caps — see apex fields.
+      { name: 'nodal_name', label: 'Name', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
+      { name: 'nodal_designation', label: 'Designation', type: 'text', span: 6, required: true, pattern: NAME_PATTERN, max: 150 },
       { name: 'nodal_contact', label: 'Contact Number', type: 'tel', span: 6, required: true },
       { name: 'nodal_email', label: 'Email ID', type: 'email', span: 6, required: true, otp: true },
     ] },
@@ -218,8 +308,18 @@ export const makeInPrincipleSchema = ({
       { name: 'cluster_which', label: 'If yes, which cluster', type: 'select', span: 12, required: true,
         showIf: (v) => v.cluster_mapped === 'yes',
         optionsFrom: (v) => { const c = clustersOf(v.state).map((x) => x.name); return c.length ? c : ['No identified cluster listed for this State'] } },
+      // UAT 2026-09-30 item 31 — cap at 1,00,00,000 (1 crore) per client
+      // update so a runaway paste / typo doesn't sail through, while
+      // leaving headroom for the largest metro districts.
       { name: 'msme_count', label: 'Number of MSMEs (without traders) in district', type: 'number', span: 12, required: true,
-        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+        placeholder: 'e.g. 5000',
+        help: 'Whole number, up to 1,00,00,000.',
+        validate: (v) => {
+          if (v === '') return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          if (Number(v) > 10000000) return 'Cannot exceed 1,00,00,000'
+          return ''
+        } },
     ] },
     { n: 6, title: 'Existing Infra Details', fields: [
       { name: '_members', label: 'Membership', type: 'subheading', span: 12 },
@@ -317,14 +417,41 @@ export const makeInPrincipleSchema = ({
 //                     GET /vendors/dropdown. The picked UUID is sent as
 //                     `vendorUuid` on the create payload — that's the vendor
 //                     who will mail the offer letter after final approval.
-export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = []) => ({
+// `geo` — backend-driven state/district dropdowns from /pincodes master
+// (UAT 2026-09-28). Falls back to the static STATES/districtsOf map when
+// the master hasn't loaded (caller supplies empty arrays before the query
+// resolves).
+export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = [], geo = {}) => ({
   key: 'bse-candidate',
   sections: [
     { n: 1, title: 'Location & Industry Association', fields: [
-      { name: 'state', label: 'State', type: 'select', options: STATES, span: 6, required: true },
-      { name: 'district', label: 'District', type: 'select', optionsFrom: (v) => districtsOf(v.state), span: 6, required: true },
+      { name: 'state', label: 'State', type: 'select',
+        options: (Array.isArray(geo.states) && geo.states.length) ? geo.states : STATES,
+        span: 6, required: true },
+      { name: 'district', label: 'District', type: 'select', span: 6, required: true,
+        // Backend list once state is picked; static fallback if the API
+        // hasn't landed. `dependsOn: ['state']` forces SectionCard to
+        // re-render when the state changes so the list refreshes.
+        dependsOn: ['state'],
+        optionsFrom: (v) => {
+          if (Array.isArray(geo.districts) && geo.districts.length) return geo.districts
+          return districtsOf(v.state)
+        } },
+      // Options are `{ value: registrationId, label: name }` — NOT bare
+      // strings. IA names are NOT unique on the backend (client UAT
+      // 2026-09-30 hit the case where "Test 28-09 IA" appeared multiple
+      // times), and MUI Select uses the option's `value` as both the
+      // MenuItem key AND the picked-value; when two options shared the
+      // same value, clicking the second one either fired onChange with
+      // an ambiguous match or React refused to reconcile the duplicate
+      // keys — user's click silently did nothing. Keying on the numeric
+      // id guarantees uniqueness. Downstream code reads the picked id
+      // from `values.ia_name` and resolves the full IA record via
+      // `approvedIAs.find(i => String(i.id) === values.ia_name)`.
       { name: 'ia_name', label: 'Name of Association (BSE Proposed For)', type: 'select',
-        options: approvedIAs.length ? approvedIAs : ['No In-Principle approved IA available'],
+        options: approvedIAs.length
+          ? approvedIAs.map((ia) => ({ value: String(ia.id), label: ia.name }))
+          : [{ value: '', label: 'No In-Principle approved IA available' }],
         span: 12, required: true },
       // Anchor coordinates used later for BSE attendance geofencing. GT
       // enters lat/lng of the BSE's working office (may not be the IA
@@ -362,24 +489,55 @@ export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = []) => 
     ] },
     { n: 3, title: 'Experience', fields: [
       { name: 'experience_status', label: 'Prior Experience', type: 'select', options: ['Yes', 'No'], span: 12, required: true },
+      // UAT 2026-09-30 item 37 — when Prior Experience = Yes, at least
+      // one of Years or Months must be > 0 (0y/0m is meaningless).
+      // Cross-field guard lives on both fields so whichever the user
+      // touches last surfaces the error.
       { name: 'experience_years', label: 'Experience — Years', type: 'number', span: 6,
         showIf: (v) => v.experience_status === 'Yes', required: true,
-        validate: (v) => (v === '' ? '' : (!/^\d+$/.test(String(v)) ? 'Whole number only' : '')) },
+        validate: (v, values) => {
+          if (v === '') return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          const years  = Number(v) || 0
+          const months = Number(values?.experience_months) || 0
+          if (years === 0 && months === 0) return 'Enter total experience — years and months cannot both be zero.'
+          return ''
+        } },
       { name: 'experience_months', label: 'Experience — Months', type: 'number', span: 6,
         showIf: (v) => v.experience_status === 'Yes', required: true,
-        validate: (v) => {
+        validate: (v, values) => {
           if (v === '') return ''
           if (!/^\d+$/.test(String(v))) return 'Whole number only'
           if (Number(v) > 11) return '0–11 months'
+          const years  = Number(values?.experience_years) || 0
+          const months = Number(v) || 0
+          if (years === 0 && months === 0) return 'Enter total experience — years and months cannot both be zero.'
           return ''
         } },
     ] },
     { n: 4, title: 'Employment & Salary', fields: [
       { name: 'employment_status', label: 'Employment Status', type: 'select', options: ['Working', 'Resigned'], span: 12, required: true },
+      // UAT 2026-09-30 item 38 — Working candidates must have a real
+      // current salary + a real notice period. Zero was slipping past
+      // the plain `required: true` guard because "0" is technically a
+      // filled numeric value.
       { name: 'current_salary', label: 'Current Salary (₹ / month)', type: 'number', span: 6, prefix: '₹',
-        showIf: (v) => v.employment_status === 'Working', required: true },
+        showIf: (v) => v.employment_status === 'Working', required: true,
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          const n = Number(v)
+          if (!Number.isFinite(n)) return 'Enter a valid amount'
+          if (n <= 0) return 'Current salary must be greater than 0.'
+          return ''
+        } },
       { name: 'notice_period', label: 'Minimum Notice Period (Days)', type: 'number', span: 6,
-        showIf: (v) => v.employment_status === 'Working', required: true },
+        showIf: (v) => v.employment_status === 'Working', required: true,
+        validate: (v) => {
+          if (v === '' || v == null) return ''
+          if (!/^\d+$/.test(String(v))) return 'Whole number only'
+          if (Number(v) <= 0) return 'Notice period must be greater than 0.'
+          return ''
+        } },
       { name: 'last_drawn_salary', label: 'Last Drawn Salary (₹ / month)', type: 'number', span: 12, prefix: '₹',
         showIf: (v) => v.employment_status === 'Resigned', required: true },
       { name: 'resignation_doc', label: 'Resignation Acceptance / Relieving Letter', type: 'file', span: 12,
@@ -413,7 +571,8 @@ export const makeBseCandidateSchema = (approvedIAs = [], vendorOptions = []) => 
     { n: 7, title: 'GT Field Manager Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation Status', type: 'radio',
         options: ['Recommended', 'Not Recommended'], span: 6, required: true },
-      { name: 'recommendation_date', label: 'Recommendation Date', type: 'date', span: 6, required: true },
+      // UAT 2026-09-28 — future dates disallowed on BSE onboarding.
+      { name: 'recommendation_date', label: 'Recommendation Date', type: 'date', span: 6, required: true, maxDate: 'today' },
     ] },
   ],
 })
@@ -608,8 +767,13 @@ const nonNegative = (v) => {
 function requireAllInputs(sections) {
   return sections.map((sec) => ({
     ...sec,
+    // `disclaimer` / `coordinates_capture` render no user input and therefore
+    // must NOT be forced-required — otherwise the appraisal submit gets stuck
+    // on an invisible "required" for the Annexure V/VI legal notes and the
+    // GT user sees a "Please fix the highlighted fields" toast with nothing
+    // to fix. Bug surfaced after UAT 2026-09-28 added the two disclaimers.
     fields: sec.fields.map((f) =>
-      ['subheading', 'computed'].includes(f.type) || f.readOnly || f.optional
+      ['subheading', 'computed', 'disclaimer', 'coordinates_capture'].includes(f.type) || f.readOnly || f.optional
         ? f
         : { ...f, required: true },
     ),
@@ -620,11 +784,11 @@ export const appraisalSchema = {
   key: 'appraisal',
   sections: requireAllInputs([
     ...identity,
-    { n: 7, title: 'Comments on Due Diligence', fields: [
+    { n: 4, title: 'Comments on Due Diligence', fields: [
       { name: '_dd_ia', label: 'Due Diligence of IA', type: 'subheading', span: 12 },
       { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
       { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
-      { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // Ranking is typically a short grade string ("A+", "B", "AAA") —
       // override the FormRenderer default 3-char minimum.
       { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3, min: 1 },
@@ -644,7 +808,7 @@ export const appraisalSchema = {
       { name: '_dd_ia_smart', label: 'SMART Report — IA', type: 'subheading', span: 12 },
       { name: 'smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
       { name: 'smart_ref_no', label: 'SMART Report Reference No.', type: 'text', span: 6, showIf: (v) => v.smart_verified === 'yes' },
-      { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.smart_verified === 'yes', maxDate: 'today', validate: afterIaCreation },
       { name: 'smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.smart_verified === 'yes' },
 
       { name: '_dd_ia_web', label: 'Web Search', type: 'subheading', span: 12 },
@@ -654,7 +818,7 @@ export const appraisalSchema = {
       { name: '_dd_holder', label: 'Comments on Due Diligence of IA Office Holder', type: 'subheading', span: 12 },
       { name: '_dd_holder_cibil', label: 'IA Office Holder — CIBIL', type: 'subheading', span: 12 },
       { name: 'holder_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
-      { name: 'holder_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'holder_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // CIBIL individual scores are numeric in the range 300–900. Anything
       // outside that band is either a typo or a corporate CMR (which has
       // its own field). Reject letters and out-of-range numbers.
@@ -672,13 +836,13 @@ export const appraisalSchema = {
 
       { name: '_dd_holder_smart', label: 'IA Office Holder — SMART', type: 'subheading', span: 12 },
       { name: 'holder_smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
-      { name: 'holder_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.holder_smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'holder_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.holder_smart_verified === 'yes', maxDate: 'today', validate: afterIaCreation },
       { name: 'holder_smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.holder_smart_verified === 'yes' },
 
       { name: '_dd_owner', label: 'Comments on Due Diligence of IA Beneficial Owner/s', type: 'subheading', span: 12 },
       { name: '_dd_owner_cibil', label: 'IA Beneficial Owner/s — CIBIL (extant KYC policy)', type: 'subheading', span: 12 },
       { name: 'owner_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
-      { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', validate: afterIaCreation },
+      { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // Ranking/score is a short grade string — see cibil_ranking above.
       { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3, min: 1 },
       { name: 'owner_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
@@ -686,13 +850,13 @@ export const appraisalSchema = {
 
       { name: '_dd_owner_smart', label: 'IA Beneficial Owner/s — SMART', type: 'subheading', span: 12 },
       { name: 'owner_smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
-      { name: 'owner_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.owner_smart_verified === 'yes', validate: afterIaCreation },
+      { name: 'owner_smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.owner_smart_verified === 'yes', maxDate: 'today', validate: afterIaCreation },
       { name: 'owner_smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.owner_smart_verified === 'yes' },
     ] },
-    { n: 8, title: 'Nearest SIDBI Branch Office', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
+    { n: 5, title: 'Nearest SIDBI Branch Office', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
       { name: 'sidbi_branch', label: 'Nearest SIDBI Branch Office', type: 'text', span: 6 },
     ] },
-    { n: 9, title: 'Cluster / District Details', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
+    { n: 6, title: 'Cluster / District Details', desc: 'Autofetched from In-Principle registration — modifiable', fields: [
       { name: 'cluster_mapped', label: 'Mapped with an identified cluster?', type: 'yesno', span: 3 },
       // Only surfaces (and only counts as required) when cluster_mapped === 'yes'.
       // Without the showIf, `requireAllInputs` above would keep the field
@@ -702,7 +866,7 @@ export const appraisalSchema = {
       { name: 'district_mapped', label: 'Mapped with an important district?', type: 'yesno', span: 4 },
       { name: 'msme_count', label: 'MSMEs (without traders) in district', type: 'number', span: 4 },
     ] },
-    { n: 10, title: 'Existing Infra Details', desc: 'Autofetched and modifiable', fields: [
+    { n: 7, title: 'Existing Infra Details', desc: 'Autofetched and modifiable', fields: [
       { name: 'members_gt200', label: 'Active members more than 200?', type: 'radio', options: ['Yes', 'No'], span: 6 },
       { name: 'active_members', label: 'No. of active members in IA', type: 'number', span: 3 },
       { name: 'members_justification', label: 'Justification if active member base is less than 200', type: 'textarea', span: 12,
@@ -727,7 +891,7 @@ export const appraisalSchema = {
       { name: 'major_sources_of_income', label: 'Major sources of income', type: 'textarea', span: 12 },
       { name: 'activities_last_year', label: 'List of activities done in the last year', type: 'textarea', span: 12 },
     ] },
-    { n: 11, title: 'DIA Specific Details', fields: [
+    { n: 8, title: 'DIA Specific Details', fields: [
       { name: 'ready_formalization', label: "IA's readiness to undertake the formalization process", type: 'textarea', span: 12, max: 500 },
       { name: 'ready_referral_yn', label: "IA's readiness to enter referral arrangement with SIDBI", type: 'yesno', span: 4 },
       { name: 'ready_referral', label: 'Remarks — referral arrangement', type: 'textarea', span: 8, max: 500 },
@@ -735,15 +899,22 @@ export const appraisalSchema = {
       { name: 'ready_bse', label: 'Remarks — placing SIDBI BSE', type: 'textarea', span: 8, max: 500 },
       { name: '_sectors', label: 'Top 3 sectors of the IA members', type: 'subheading', span: 12 },
       // Sector #1 required — client UAT (2026-09-25 #67): sectoral IAs
-      // may deal in only one sector, so #2 / #3 stay optional.
+      // may deal in only one sector, so #2 / #3 stay optional. All the
+      // key-problems textareas are optional too (descriptive only).
+      // `optional: true` is what tells `requireAllInputs` above to skip
+      // these fields when it force-marks the appraisal form's inputs.
       // Sector name fields — override the FormRenderer default 3-char
       // minimum so short codes / numbers ("IT", "1", "R&D") are accepted.
-      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true, min: 1 },
-      { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1 },
-      { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
-      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1 },
-      { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500 },
+      // UAT 2026-10-02 — sector NAME headings capped at 100 chars (was
+      // defaulting to the FormRenderer 500 fallback). The "3 to 5 key
+      // problems" descriptions keep the 500-char allowance since they
+      // need room for prose.
+      { name: 'sector_1', label: 'Sector #1', type: 'text', span: 4, required: true, min: 1, max: 100 },
+      { name: 'sector_1_problems', label: 'Sector #1 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
+      { name: 'sector_2', label: 'Sector #2', type: 'text', span: 4, min: 1, max: 100, optional: true },
+      { name: 'sector_2_problems', label: 'Sector #2 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
+      { name: 'sector_3', label: 'Sector #3', type: 'text', span: 4, min: 1, max: 100, optional: true },
+      { name: 'sector_3_problems', label: 'Sector #3 — 3 to 5 key problems', type: 'textarea', span: 8, max: 500, optional: true },
       { name: 'financing_scope', label: 'Scope for financing — description (50–75 words)', type: 'textarea', span: 8, max: 500 },
       { name: 'financing_scope_crore', label: 'Scope of financing (₹ crore)', type: 'number', span: 4, placeholder: 'e.g. 5',
         validate: (v) => {
@@ -798,7 +969,9 @@ export const appraisalSchema = {
           if (!Number.isFinite(n) || n < 0) return 'Enter a valid amount'
           return grantSumProblem(values)
         } },
-      { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, help: 'Autofetched — modifiable' },
+      // UAT 2026-09-28 §1.c.ii — Grant Details expanded to 4000 chars on L2
+      // so HO Maker / Checker can lay out the full sanction narrative.
+      { name: 'grant_details', label: 'Grant Details proposed', type: 'textarea', span: 12, rows: 4, max: 4000, help: 'Autofetched — modifiable' },
       { name: 'envisaged_output', label: 'Envisaged Output', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_outcome', label: 'Envisaged Outcome', type: 'textarea', span: 12, max: 500 },
       { name: 'envisaged_impact', label: 'Envisaged Impact', type: 'textarea', span: 12, max: 500 },
@@ -809,7 +982,11 @@ export const appraisalSchema = {
     // list on every PUT, so rows carry no id client-side. Column names
     // are camelCase to match `toAnnexureVList` / `fromAnnexureVList` /
     // `toAnnexureVIList` / `fromAnnexureVIList` in that adapter.
-    { n: 12, title: 'Annexure V — Cost & SIDBI Support', desc: 'Item-wise cost of the proposal and the SIDBI support sought against each item.', fields: [
+    // UAT 2026-09-28 §1.c.iii — Annexure V renamed to
+    // "Tentative Capacity building program details" with a mandatory
+    // disclaimer rendered below the table (italic muted text via the
+    // `disclaimer` field type in FormRenderer).
+    { n: 9, title: 'Annexure V — Tentative Capacity building program details', desc: 'Item-wise cost of the proposal and the SIDBI support sought against each item.', fields: [
       { name: 'annexure_v', label: 'Cost items', type: 'repeater', serial: true, addLabel: 'Add item',
         totals: ['totalCost', 'sidbiSupport'],
         columns: [
@@ -831,8 +1008,12 @@ export const appraisalSchema = {
           const support = rows.reduce((s, r) => s + (Number(r?.sidbiSupport) || 0), 0)
           return support > 1400000 ? 'Total SIDBI support cannot exceed ₹14,00,000' : ''
         } },
+      { name: 'annexure_v_note', type: 'disclaimer',
+        label: '* The above items are only indicative in nature and cost arrived as per the reasonable market pricing. Based on the specific hardware requirements of the IA as identified by PMA/SDE, need based changes in items / costs may be considered within the overall budget envisaged for such hard interventions per IAs.' },
     ] },
-    { n: 13, title: 'Annexure VI — Indicative List of Items', desc: 'Items the IA proposes to procure, with the maximum admissible cost.', fields: [
+    // UAT 2026-09-28 §1.c.iv — Annexure VI renamed to
+    // "Capital Expenditure Details" with its own disclaimer below.
+    { n: 10, title: 'Annexure VI — Capital Expenditure Details', desc: 'Items the IA proposes to procure, with the maximum admissible cost.', fields: [
       // Backend schema (verified via OpenAPI 2026-09-27) has ONLY these
       // four columns: indicativeItem, numbers, make, maximumCost.
       // Earlier drafts carried `section`, `sectionNote`, `maximumCostUnit`
@@ -843,13 +1024,15 @@ export const appraisalSchema = {
         optional: true,
         columns: [
           { name: 'indicativeItem', label: 'Indicative item', type: 'text', required: true, placeholder: 'e.g. Desktop computer' },
-          { name: 'numbers', label: 'Qty', type: 'number', width: 100,
+          { name: 'numbers', label: 'Number', type: 'number', width: 100,
             validate: (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 ? '' : 'Whole number, at least 1') },
           { name: 'make', label: 'Make', type: 'text' },
           { name: 'maximumCost', label: 'Max cost (₹)', type: 'number', validate: nonNegative },
         ] },
+      { name: 'annexure_vi_note', type: 'disclaimer',
+        label: '* The above items are only indicative in nature and cost arrived as per the reasonable market pricing. Based on the specific hardware requirements of the IA as identified by PMA/SDE/CE. Based on Need Assessment Report, need based changes in items / costs may be considered within the overall budget envisaged for such hard interventions per IAs. The Payment will be made on actual basis on submission of invoices.' },
     ] },
-    { n: 14, title: 'Terms of Assistance', desc: 'List each term or condition of assistance separately.', fields: [
+    { n: 11, title: 'Terms of Assistance', desc: 'List each term or condition of assistance separately.', fields: [
       // One text box per term — maps 1:1 to `termsAndConditions`
       // (List<String>) on the appraisal DTO.
       { name: 'terms', label: 'Terms of assistance including disbursement pattern and conditions', type: 'repeater',
@@ -864,7 +1047,7 @@ export const appraisalSchema = {
       // Cluster Expert Comments section.
       { name: 'cluster_expert_terms_comments', label: "Cluster Expert's comments on the Terms of Assistance", type: 'textarea', span: 12, rows: 3, ceOnly: true, optional: true },
     ] },
-    { n: 15, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
+    { n: 12, title: 'Cluster Expert Comments', desc: 'Filled by the Cluster Expert before final SDE approval.', fields: [
       // Mandatory for the Cluster Expert — it is the one thing that role is
       // asked to contribute. `required` is safe to keep on the shared schema
       // because GT/SDE variants filter this whole section out (see
@@ -873,7 +1056,7 @@ export const appraisalSchema = {
       // 500-char default the FormRenderer applies to free text.
       { name: 'cluster_expert_comments', label: "Cluster Expert's remarks on the proposal", type: 'textarea', span: 12, rows: 4, required: true, max: 2000 },
     ] },
-    { n: 16, title: 'Budget', fields: [
+    { n: 13, title: 'Budget', fields: [
       // Backend stores this as a LocalDate; we key each option on the
       // April-1 start-date so it round-trips cleanly.
       { name: 'financial_year', label: 'Financial Year', type: 'select', span: 3,
@@ -906,12 +1089,20 @@ export const appraisalSchema = {
           return Math.max(0, a - u)
         } },
     ] },
-    { n: 17, title: 'Delegation of Power', fields: [
-      { name: 'dop_date', label: 'DoP date (as per extant PDIV DoP)', type: 'date', span: 6 },
+    { n: 14, title: 'Delegation of Power', fields: [
+      { name: 'dop_date', label: 'DoP date (as per extant PDIV DoP)', type: 'date', span: 6, maxDate: 'today' },
+      // UAT 2026-09-28 §1.c.vii — free-text reference note capped at 500 chars.
+      { name: 'dop_reference', label: 'DoP Reference', type: 'textarea', span: 12, rows: 2, max: 500,
+        placeholder: 'e.g. Extant PDIV DoP dated 12-Aug-2025, para 4.3 (a)',
+        help: 'Reference to the extant PDIV DoP under which this proposal is being placed.' },
     ] },
-    { n: 18, title: 'Recommendation', fields: [
+    { n: 15, title: 'Recommendation', fields: [
       { name: 'recommendation', label: 'Recommendation', type: 'radio', options: ['Recommended', 'Not Recommended'], span: 6, required: true },
       { name: 'recommendation_remarks', label: 'Remarks', type: 'textarea', span: 12 },
     ] },
+    // NOTE: Panel Approval Letter is NOT part of the appraisal form.
+    // HO Checker uploads it on a dedicated post-approval screen — see
+    // `HoCheckerPanelLetterUpload` rendered by AppraisalTab when the
+    // IA is at DETAILED_APPRAISAL_APPROVAL_BY_HO_CHECKER.
   ]),
 }

@@ -5,12 +5,12 @@ import {
   useForm, CHAR_LIMITS, requiredText, optionalText, capChars,
 } from './_shared'
 import {
-  createContent, updateContent, uploadContentAttachments,
+  createContent, updateContent, resubmitContent, uploadContentAttachments,
   toBackendChannels, DIA_ENDPOINTS,
 } from '../../apis/diaContent'
 
 // DIA — 3C Info-Series
-// GT_PMU raises; SIDBI HO Checker approves.
+// GT_PMU raises; SIDBI HO Maker approves first, then HO Checker signs off.
 
 const CHANNELS = [
   { value: 'Email', label: 'Email' },
@@ -41,7 +41,7 @@ function recordToDefaults(record) {
   }
 }
 
-export default function Dia3cInfoSeries({ editId = null, initialRecord = null } = {}) {
+export default function Dia3cInfoSeries({ editId = null, initialRecord = null, onResubmitDone } = {}) {
   const isEdit = !!editId
   const existingAttachment = initialRecord?.attachment || null
   const defaults = useMemo(() => recordToDefaults(initialRecord), [initialRecord])
@@ -75,7 +75,7 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
         attachment: isEdit ? existingAttachment : null,
       }
       const savedId = isEdit
-        ? (await updateContent(DIA_ENDPOINTS.INFO_SERIES, editId, dto))?.id ?? editId
+        ? (await resubmitContent(DIA_ENDPOINTS.INFO_SERIES, editId, dto))?.id ?? editId
         : (await createContent(DIA_ENDPOINTS.INFO_SERIES, dto))?.id
       if (values.attachment && savedId) {
         try {
@@ -91,9 +91,10 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
       }
       setToast({
         severity: 'success',
-        msg: isEdit ? 'Resubmitted. The checker will re-review.' : 'Submitted. Sent to SIDBI HO Checker for approval.',
+        msg: isEdit ? 'Resubmitted. The maker will re-review.' : 'Submitted. Sent to SIDBI HO Maker for approval.',
       })
       if (!isEdit) methods.reset(INITIAL)
+      else onResubmitDone?.()
     } catch (err) {
       setToast({ severity: 'error', msg: err.message || 'Submit failed.' })
     } finally {
@@ -107,8 +108,8 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
     <PmuFormShell
       title={isEdit ? 'Resubmit 3C Info-Series' : '3C Info-Series'}
       subtitle={isEdit
-        ? 'Address the checker\'s remarks and resubmit for re-review.'
-        : 'Draft an info-series entry — submits to SIDBI HO Checker for approval.'}
+        ? 'Address the reviewer\'s remarks and resubmit for re-review.'
+        : 'Draft an info-series entry — submits to SIDBI HO Maker for approval.'}
       methods={methods}
       onSubmit={submit}
       onReset={reset}
@@ -136,24 +137,24 @@ export default function Dia3cInfoSeries({ editId = null, initialRecord = null } 
             <RhfTextField
               name="relevance" fullWidth required multiline minRows={2}
               label="Relevance of the topic"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="brief" fullWidth required multiline minRows={3}
               label="Brief of the content"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
           <FieldCell>
             <RhfTextField
               name="mainContent" fullWidth required multiline minRows={6}
               label="Main content"
-              rules={requiredText(CHAR_LIMITS.LONG)}
-              inputProps={capChars(CHAR_LIMITS.LONG)}
+              rules={requiredText(CHAR_LIMITS.MEDIUM)}
+              inputProps={capChars(CHAR_LIMITS.MEDIUM)}
             />
           </FieldCell>
         </FieldRow>

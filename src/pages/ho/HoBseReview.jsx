@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Box, Card, CardContent, Grid, Stack, Typography, Button, Chip, Divider,
@@ -7,10 +7,12 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SaveIcon from '@mui/icons-material/Save'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined'
 import { SectionCard } from '../../components/shared'
 import DocUpload from '../../components/DocUpload'
 import { useBse, useUpdateBse } from '../../queries'
 import { toUpdatePayload, fromDto } from '../../apis/bseRecommendations'
+import { uploadFile, viewFile } from '../../apis/files'
 
 // SIDBI HO Maker workspace for a single BSE recommendation.
 //
@@ -82,6 +84,11 @@ export default function HoBseReview() {
     committeeRecommendation: d.recommendation,
     committeeDate: d.date || todayIso(),
     committeeRemarks: d.remarks,
+    // UAT 2026-10-01 — attach the Minutes-of-Meeting filename when the
+    // committee block has one (either freshly picked in this session or
+    // already saved on the DTO). Only sent when non-empty so a save of
+    // just the recommendation / date / remarks doesn't null the file.
+    ...(d.committeeMom ? { committeeMom: d.committeeMom } : null),
   }), [doSave])
 
   const saveOnboarding = useCallback((d) => doSave('Onboarding details', {
@@ -134,7 +141,7 @@ export default function HoBseReview() {
             <CandidateProfile view={view} />
             <UpstreamRecommendations dto={dto} />
             <HoBlock initial={dto} onSave={saveHo} />
-            <CommitteeBlock initial={dto} onSave={saveCommittee} />
+            <CommitteeBlock initial={dto} onSave={saveCommittee} bseId={uuid} />
             {committeeApproved && <OnboardingBlock initial={dto} onSave={saveOnboarding} />}
           </Stack>
         </Grid>
@@ -151,7 +158,7 @@ export default function HoBseReview() {
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={3000}
+        autoHideDuration={5000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
@@ -210,12 +217,24 @@ const HoBlock = memo(function HoBlock({ initial, onSave }) {
     remarks: initial.hoRemarks || '',
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
-  const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), [])
+  const set = useCallback((k) => (v) => {
+    setD((p) => ({ ...p, [k]: v }))
+    if (error) setError('')
+  }, [error])
+  // UAT 2026-09-30 — no future dates on a reviewer's own decision.
+  // Cap the native picker at today AND validate at save so a paste /
+  // DevTools bypass can't sneak one through.
+  const todayIsoStr = todayIso()
   const save = useCallback(async () => {
+    if (d.date && d.date > todayIsoStr) {
+      setError('Recommendation date cannot be in the future.')
+      return
+    }
     setSaving(true)
     try { await onSave(d) } finally { setSaving(false) }
-  }, [onSave, d])
+  }, [onSave, d, todayIsoStr])
 
   const dirty = isDirty(d, initial, HO_MAPPING)
 
@@ -230,12 +249,15 @@ const HoBlock = memo(function HoBlock({ initial, onSave }) {
           <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} label="Recommendation" />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <DateField value={d.date} onChange={set('date')} label="Date" />
+          <DateField value={d.date} onChange={set('date')} label="Date" inputProps={{ max: todayIsoStr }} />
         </Grid>
         <Grid size={{ xs: 12, sm: 5 }}>
           <TextInput value={d.remarks} onChange={set('remarks')} label="Remarks" />
         </Grid>
       </Grid>
+      {error && (
+        <Typography sx={{ mt: 1, fontSize: 13, color: 'error.main' }}>{error}</Typography>
+      )}
       <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save HO recommendation" />
     </SectionCard>
   )
@@ -245,21 +267,62 @@ const COMMITTEE_MAPPING = [
   ['recommendation', 'committeeRecommendation', false],
   ['date', 'committeeDate', true],
   ['remarks', 'committeeRemarks', false],
+  ['committeeMom', 'committeeMom', false],
 ]
 
-const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
+const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave, bseId }) {
   const [d, setD] = useState({
     recommendation: initial.committeeRecommendation || '',
     date: (initial.committeeDate || '').slice(0, 10),
     remarks: initial.committeeRemarks || '',
+    // UAT 2026-10-01 — committee MoM filename (goes into backend
+    // `committeeMom` column). Pre-seed from the DTO so an existing file
+    // shows in the "Currently attached" line.
+    committeeMom: initial.committeeMom || '',
   })
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+  const momInputRef = useRef(null)
 
-  const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), [])
+  const set = useCallback((k) => (v) => {
+    setD((p) => ({ ...p, [k]: v }))
+    if (error) setError('')
+  }, [error])
+  // UAT 2026-09-30 — same "no future date" rule as HO / PMU: a
+  // committee can't record a decision dated in the future.
+  const todayIsoStr = todayIso()
   const save = useCallback(async () => {
+    if (d.date && d.date > todayIsoStr) {
+      setError('Committee date cannot be in the future.')
+      return
+    }
     setSaving(true)
     try { await onSave(d) } finally { setSaving(false) }
-  }, [onSave, d])
+  }, [onSave, d, todayIsoStr])
+
+  // MoM upload — same pattern used by `PanelSubmissionUpload`. The file
+  // goes to the server immediately against this BSE record's id; the
+  // returned filename sits in `d.committeeMom` and gets persisted on the
+  // next "Save committee decision" click.
+  const pickMom = () => momInputRef.current?.click()
+  const onMomChosen = useCallback(async (e) => {
+    const file = e.target.files?.[0]
+    if (momInputRef.current) momInputRef.current.value = ''
+    if (!file || !bseId) return
+    setUploading(true)
+    try {
+      const res = await uploadFile(bseId, 'bse', bseId, file)
+      const filename = res?.filename || file.name
+      setD((p) => ({ ...p, committeeMom: filename }))
+      setError('')
+    } catch (err) {
+      setError(err?.message || 'Upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }, [bseId])
+  const viewMom = () => d.committeeMom && bseId && viewFile(bseId, 'bse', bseId, d.committeeMom)
 
   const dirty = isDirty(d, initial, COMMITTEE_MAPPING)
 
@@ -274,12 +337,60 @@ const CommitteeBlock = memo(function CommitteeBlock({ initial, onSave }) {
           <RecommendationSelect value={d.recommendation} onChange={set('recommendation')} label="Committee status" />
         </Grid>
         <Grid size={{ xs: 12, sm: 8 }}>
-          <DateField value={d.date} onChange={set('date')} label="Committee date" />
+          <DateField value={d.date} onChange={set('date')} label="Committee date" inputProps={{ max: todayIsoStr }} />
         </Grid>
         <Grid size={12}>
           <TextInput value={d.remarks} onChange={set('remarks')} label="Committee remarks" multiline />
         </Grid>
+        {/* MoM upload row — UAT 2026-10-01. Pattern mirrors the panel
+            approval letter uploader on PanelSubmissionUpload. */}
+        <Grid size={12}>
+          <Box
+            sx={{
+              mt: 0.5, p: 1.5, borderRadius: 1.5,
+              border: 1, borderColor: 'divider',
+              bgcolor: 'action.hover',
+              display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap',
+            }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'text.disabled' }}>
+                Minutes of Meeting (MoM)
+              </Typography>
+              {d.committeeMom
+                ? (
+                  <Typography sx={{ mt: 0.25, fontSize: 13, fontWeight: 600, color: 'text.primary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.committeeMom}>
+                    {d.committeeMom}
+                  </Typography>
+                )
+                : (
+                  <Typography sx={{ mt: 0.25, fontSize: 12.5, color: 'text.secondary' }}>
+                    No MoM attached yet. Upload the signed committee minutes (PDF).
+                  </Typography>
+                )}
+            </Box>
+            {d.committeeMom && bseId && (
+              <Button size="small" onClick={viewMom} sx={{ textTransform: 'none' }}>
+                View
+              </Button>
+            )}
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={uploading ? <CircularProgress size={14} /> : <CloudUploadOutlinedIcon />}
+              disabled={uploading || !bseId}
+              onClick={pickMom}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+            >
+              {d.committeeMom ? 'Replace file' : 'Choose PDF'}
+            </Button>
+            <input ref={momInputRef} type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={onMomChosen} />
+          </Box>
+        </Grid>
       </Grid>
+      {error && (
+        <Typography sx={{ mt: 1, fontSize: 13, color: 'error.main' }}>{error}</Typography>
+      )}
       <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save committee decision" />
     </SectionCard>
   )
@@ -301,16 +412,27 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
     iaMapped: !!initial.iaMapped,
   })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
-  const set = useCallback((k) => (v) => setD((p) => ({ ...p, [k]: v })), [])
-  const save = useCallback(async () => {
-    setSaving(true)
-    try { await onSave(d) } finally { setSaving(false) }
-  }, [onSave, d])
+  const set = useCallback((k) => (v) => {
+    setD((p) => ({ ...p, [k]: v }))
+    if (error) setError('')
+  }, [error])
 
-  // Onboarding has no "recommendation" — treat "any onboarding value present"
-  // as the saved indicator so the chip appears once HO has filled it in.
-  const onboarded = initial.dateOfJoining || initial.approvedSalary != null || initial.iaMapped
+  // UAT 2026-09-30 items 39 / 40 / 41 / 42.
+  //   • 39 — Date of Joining cannot be a past date.
+  //   • 40 — Date of Joining cannot be earlier than Committee Approval date.
+  //   • 41 — Approved Salary and Approved TA are required and must be > 0.
+  //   • 42 — Once the record has been onboarded (DOJ set on the backend),
+  //          Date of Joining becomes read-only so the joining date can't
+  //          be silently rewritten post-hoc.
+  const committeeApprovalIso = (initial.committeeDate || '').slice(0, 10)
+  const onboarded = !!initial.dateOfJoining
+    || initial.approvedSalary != null
+    || !!initial.iaMapped
+  const dojLocked = !!initial.dateOfJoining
+  const todayIsoStr = todayIso()
+
   // Manual dirty-check because iaMapped is a boolean coerced from a string.
   const dirty =
     String(d.approvedSalary ?? '') !== String(initial.approvedSalary ?? '') ||
@@ -318,10 +440,51 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
     (d.dateOfJoining || '') !== (initial.dateOfJoining || '').slice(0, 10) ||
     !!d.iaMapped !== !!initial.iaMapped
 
+  const validate = useCallback(() => {
+    const salary = Number(d.approvedSalary)
+    const ta = Number(d.approvedTravelAllowance)
+    if (d.approvedSalary === '' || d.approvedSalary == null || !Number.isFinite(salary) || salary <= 0) {
+      return 'Approved salary is required and must be greater than 0.'
+    }
+    if (d.approvedTravelAllowance === '' || d.approvedTravelAllowance == null || !Number.isFinite(ta) || ta <= 0) {
+      return 'Approved TA is required and must be greater than 0.'
+    }
+    // Only enforce the DOJ rules when the field is still editable —
+    // once dojLocked, we're saving other fields (IA mapped / salary
+    // corrections) against a joining date the backend already accepted.
+    if (!dojLocked) {
+      if (!d.dateOfJoining) return 'Date of joining is required.'
+      if (d.dateOfJoining < todayIsoStr) {
+        return 'Date of joining cannot be a past date.'
+      }
+      if (committeeApprovalIso && d.dateOfJoining < committeeApprovalIso) {
+        return 'Date of joining cannot be earlier than the committee approval date.'
+      }
+    }
+    return ''
+  }, [d, dojLocked, todayIsoStr, committeeApprovalIso])
+
+  const save = useCallback(async () => {
+    const problem = validate()
+    if (problem) { setError(problem); return }
+    setSaving(true)
+    try { await onSave(d) } finally { setSaving(false) }
+  }, [validate, onSave, d])
+
+  // `min` bound for the date picker — whichever is later of today or the
+  // committee approval date. Empty when the field is locked (item 42).
+  const dojMin = dojLocked
+    ? undefined
+    : (committeeApprovalIso && committeeApprovalIso > todayIsoStr
+        ? committeeApprovalIso
+        : todayIsoStr)
+
   return (
     <SectionCard
       title="Onboarding"
-      subtitle="Confirm salary, travel allowance, joining date and IA mapping."
+      subtitle={dojLocked
+        ? 'Salary, TA and IA mapping remain editable; joining date is locked once onboarded.'
+        : 'Confirm salary, travel allowance, joining date and IA mapping.'}
       action={
         <Stack direction="row" spacing={1} alignItems="center">
           <Chip size="small" color="success" icon={<CheckCircleOutlineIcon />} label="Committee approved" />
@@ -340,13 +503,19 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
     >
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <MoneyField value={d.approvedSalary} onChange={set('approvedSalary')} label="Approved salary (₹/month)" />
+          <MoneyField value={d.approvedSalary} onChange={set('approvedSalary')} label="Approved salary (₹/month) *" />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <MoneyField value={d.approvedTravelAllowance} onChange={set('approvedTravelAllowance')} label="Approved TA (₹/month)" />
+          <MoneyField value={d.approvedTravelAllowance} onChange={set('approvedTravelAllowance')} label="Approved TA (₹/month) *" />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
-          <DateField value={d.dateOfJoining} onChange={set('dateOfJoining')} label="Date of joining" />
+          <DateField
+            value={d.dateOfJoining}
+            onChange={set('dateOfJoining')}
+            label={dojLocked ? 'Date of joining (locked)' : 'Date of joining *'}
+            inputProps={dojLocked ? { readOnly: true } : { min: dojMin }}
+            disabled={dojLocked}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 3 }}>
           <TextField
@@ -359,6 +528,9 @@ const OnboardingBlock = memo(function OnboardingBlock({ initial, onSave }) {
           </TextField>
         </Grid>
       </Grid>
+      {error && (
+        <Typography sx={{ mt: 1.5, fontSize: 13, color: 'error.main' }}>{error}</Typography>
+      )}
       <SaveRow onSave={save} saving={saving} dirty={dirty} label="Save onboarding details" color="success" />
     </SectionCard>
   )
@@ -379,13 +551,15 @@ const RecommendationSelect = memo(function RecommendationSelect({ value, onChang
   )
 })
 
-const DateField = memo(function DateField({ value, onChange, label }) {
+const DateField = memo(function DateField({ value, onChange, label, inputProps, disabled }) {
   return (
     <TextField
       fullWidth size="small" type="date" label={label}
       InputLabelProps={{ shrink: true }}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      inputProps={inputProps}
+      disabled={disabled}
     />
   )
 })

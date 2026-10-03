@@ -379,17 +379,24 @@ function messageFrom(v) {
   return sanitizeErrorMessage(raw)
 }
 
-// Backend occasionally leaks raw JDBC / Hibernate prepared-statement
-// text into error responses (e.g. `... industry_association_name=?,
-// is_active=?, ...` reflected out of a DataIntegrityViolationException).
-// Users shouldn't see SQL fragments. Detect the shape and swap in a
-// generic message; the raw text is still available on `err.data` for
-// developer log inspection.
+// Backend occasionally leaks internals into error responses — raw JDBC
+// prepared-statement text, Jackson deserialisation stack chatter,
+// Oracle ORA-* codes, Java class-qualified exception names, etc. None
+// of those should ever hit the UI. Detect each shape here and swap in
+// a friendly generic message; the raw text is still available on
+// `err.data` for developer log inspection.
+//
+// Each family gets its own tailored friendly message where useful (e.g.
+// invalid-character rejections tell the user which character is not
+// allowed instead of a bland "something went wrong"), so the UI stays
+// actionable when we CAN infer intent from the noise.
 function sanitizeErrorMessage(raw) {
   const s = String(raw)
-  // Heuristic: SQL prepared-statement noise almost always carries a
-  // run of "column=?, column=?, …" segments. `=?,` doesn't naturally
-  // appear in prose, so 2+ hits is a strong signal.
+
+  // ── SQL prepared-statement noise ─────────────────────────────────────
+  // Hibernate / JDBC exceptions leak "column=?, column=?" fragments and
+  // full DML text. 2+ `=?` hits or an INSERT/UPDATE/SELECT keyword is a
+  // strong signal we're looking at raw SQL, not prose.
   const paramHits = (s.match(/=\?/g) || []).length
   const hasSqlKeywords = /\b(insert into|update\s+\w+\s+set|select\s+.*\s+from|values\s*\()/i.test(s)
   if (paramHits >= 2 || hasSqlKeywords) {
@@ -397,9 +404,129 @@ function sanitizeErrorMessage(raw) {
     console.warn('[api] suppressed SQL-shaped error from backend:', s)
     return 'Something went wrong on the server. Please try again — if it keeps happening, share this timestamp with support.'
   }
-  return s
+
+  // ── Oracle ORA-* errors ─────────────────────────────────────────────
+  // Convert the well-known ones to actionable messages, everything else
+  // to the generic fallback.
+  const ora = s.match(/ORA-(\d{5})/i)
+  if (ora) {
+    // eslint-disable-next-line no-console
+    console.warn('[api] suppressed Oracle error from backend:', s)
+    if (ora[1] === '12899') {
+      // UAT 2026-10-02 items 49 / 51 — extract the offending column
+      // name + its actual-vs-max byte counts from the full Oracle text
+      // so the user knows which field to shorten. Format of the raw
+      // error (verified live):
+      //   ORA-12899: value too large for column
+      //     "EMAT"."TABLE_NAME"."COLUMN_NAME" (actual: 530, maximum: 500)
+      const detail = s.match(/\"[^\"]+\"\.\"[^\"]+\"\.\"([A-Z0-9_]+)\"[^(]*\(actual:\s*(\d+)[^)]*maximum:\s*(\d+)/i)
+      if (detail) {
+        const field = humaniseColumnName(detail[1])
+        return `${field} is longer than the server allows (${detail[2]} chars entered, maximum ${detail[3]}). Please shorten it and try again.`
+      }
+      return 'One of the fields is longer than the server allows. Please shorten it and try again.'
+    }
+    if (ora[1] === '00001') return 'A record with the same identifier already exists.'
+    if (ora[1] === '02291') return 'A required linked record is missing. Please refresh and try again.'
+    if (ora[1] === '01400') {
+      // Same treatment for "cannot insert NULL" — surface the column.
+      const col = s.match(/\"[^\"]+\"\.\"[^\"]+\"\.\"([A-Z0-9_]+)\"/)
+      if (col) return `${humaniseColumnName(col[1])} is required. Please fill it in and try again.`
+      return 'A required field is missing. Please fill it in and try again.'
+    }
+    return 'Something went wrong on the server. Please try again — if it keeps happening, share this timestamp with support.'
+  }
+
+  // ── Jackson / Spring "Malformed request body" ────────────────────────
+  // Example: "Malformed request body: Field 'topic' contains invalid
+  //   character '<'. Input must not contain the prohibited characters
+  //   '<', '>', at [Source: REDACTED …] (through reference chain: …)"
+  // Convert to the client-facing rule ("HTML tags are not allowed.")
+  // where we can identify the specific violation, otherwise fall back.
+  if (/malformed request body|jsonparseexception|jsonmappingexception|jsonprocessingexception|streamreadfeature|reference chain:/i.test(s)) {
+    // eslint-disable-next-line no-console
+    console.warn('[api] suppressed Jackson-shaped error from backend:', s)
+    if (/prohibited characters?\s*['"]?<|invalid character\s*['"]?<|invalid character\s*['"]?>/i.test(s)) {
+      return 'HTML tags are not allowed.'
+    }
+    return 'The form has an invalid value. Please review your entries and try again.'
+  }
+
+  // ── Java stack-trace or FQCN leakage ─────────────────────────────────
+  // Package-qualified class names (org.…, com.…, java.…, jakarta.…) or
+  // classic "…Exception:" prefixes with a stack marker (`at …(:LN)`).
+  if (/(^|\s)(org|com|java|jakarta|io|net)\.[a-z]+(\.[A-Za-z][A-Za-z0-9_]+){1,}[:.]/.test(s)
+      || /\b[A-Z][A-Za-z0-9_]*Exception\b/.test(s)
+      || /\n\s*at\s+[\w$.]+\(/.test(s)) {
+    // eslint-disable-next-line no-console
+    console.warn('[api] suppressed stack-trace-shaped error from backend:', s)
+    return 'Something went wrong on the server. Please try again — if it keeps happening, share this timestamp with support.'
+  }
+
+  // ── Trim obvious noise on otherwise-prose messages ──────────────────
+  // If the message is a single readable sentence but ends with a
+  // package-qualified suffix like "… (org.emat.dto.CreatePopUpsRequest["topic"])",
+  // strip the trailing tail so the user sees only the sentence.
+  return s.replace(/\s*\((?:org|com|java|jakarta|io|net)\.[^)]*\)\s*$/, '').trim()
 }
 
 function safeJson(t) {
   try { return JSON.parse(t) } catch { return null }
+}
+
+// Human-readable name for an Oracle column so an ORA-12899 / ORA-01400
+// error can tell the user which field to fix.
+//
+// Explicit mappings cover the frequently-reported ones (UAT 2026-10-02
+// items 49 / 51 flagged `CONSTITUTION_OTHER` and the three
+// `SECTOR_N_PROBLEMS` columns). Anything not listed falls back to
+// snake-case → "Title Case" conversion so even an unmapped column
+// still reads as prose instead of a shouting backend identifier.
+const COLUMN_LABELS = {
+  CONSTITUTION_OTHER:       'Constitution — If Other, specify',
+  SECTOR_1:                 'Sector #1',
+  SECTOR_1_PROBLEMS:        'Sector #1 — Key problems',
+  SECTOR_2:                 'Sector #2',
+  SECTOR_2_PROBLEMS:        'Sector #2 — Key problems',
+  SECTOR_3:                 'Sector #3',
+  SECTOR_3_PROBLEMS:        'Sector #3 — Key problems',
+  GRANT_DETAILS:            'Grant Details proposed',
+  JUSTIFICATION:            'Justification for choosing this IA',
+  SELECTION_CRITERIA:       'Basis of selection',
+  WILLINGNESS_COMMENTS:     'Willingness comments',
+  ENVISAGED_OUTPUT:         'Envisaged Output',
+  ENVISAGED_OUTCOME:        'Envisaged Outcome',
+  ENVISAGED_IMPACT:         'Envisaged Impact',
+  ADVERSE_REMARKS:          'Adverse remarks details',
+  PAID_SERVICES_DETAILS:    'Details of paid services',
+  INFRASTRUCTURE_TYPE:      'IT infrastructure available',
+  SECRETARIAT_STAFF:        'Secretariat staff',
+  ADDRESS:                  'Full postal address',
+  APPROVAL_LETTER:          'Approval letter filename',
+  WEB_REPORT:               'Web search report filename',
+  PAN_NO:                   'IA PAN',
+  EMAIL:                    'IA Email',
+  INDUSTRY_ASSOCIATION_NAME: 'Industry Association name',
+  COMMITTEE_COMMENTS:       'Committee comments',
+  CLUSTER_EXPERT_COMMENTS:  "Cluster Expert's remarks",
+  DOP_REFERENCE:            'DoP Reference',
+  RECOMMENDATION_REMARKS:   'Recommendation remarks',
+  STAGE_COMMENTS:           'Reviewer remarks',
+  REMARK:                   'Reviewer remark',
+  HO_REMARKS:               'HO Maker remarks',
+  PMU_REMARKS:              'PMU remarks',
+  GT_REMARKS:               'GT Field Manager remarks',
+  COMMITTEE_REMARKS:        'Committee remarks',
+}
+
+function humaniseColumnName(raw) {
+  const key = String(raw || '').toUpperCase()
+  if (COLUMN_LABELS[key]) return `"${COLUMN_LABELS[key]}"`
+  // Snake-case fallback: GRANT_PROPOSED → "Grant Proposed"
+  return `"${key
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')}"`
 }

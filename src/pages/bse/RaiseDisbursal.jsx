@@ -47,7 +47,7 @@ export default function RaiseDisbursal() {
         </CardContent>
       </Card>
 
-      <Snackbar open={toast} autoHideDuration={2000} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      <Snackbar open={toast} autoHideDuration={5000} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled">Disbursal request raised — awaiting GT (L1) approval.</Alert>
       </Snackbar>
     </Box>

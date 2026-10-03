@@ -336,6 +336,30 @@ const DecisionBar = memo(function DecisionBar({
     }
   }, [pendingDecision, comments, onDecide])
 
+  // UAT 2026-10-02 item 66 — if the role has no decisions available at
+  // the current sub-stage (DAVE scenario: SDE opens an IA that's past
+  // their action point), the previous version rendered an empty decision
+  // bar with no explanation. The reviewer saw sections marked "Done"
+  // and no Approve button and assumed a bug. Surface a plain informational
+  // banner instead so they know why there's nothing to click.
+  if (!decisions || decisions.length === 0) {
+    return (
+      <Box
+        sx={{
+          mt: 3, p: 2, borderRadius: 2,
+          border: 1, borderColor: alpha(theme.palette.info.main, 0.3),
+          bgcolor: alpha(theme.palette.info.main, 0.06),
+          display: 'flex', alignItems: 'center', gap: 1.25,
+        }}
+      >
+        <Box component="span" sx={{ fontSize: 10, color: theme.palette.info.main }}>●</Box>
+        <Typography sx={{ fontSize: 13.5, color: theme.palette.text.primary }}>
+          <b>No action needed from you on this IA right now.</b> The record has moved past your decision point in the workflow. Check the <b>Activity</b> tab for the audit trail.
+        </Typography>
+      </Box>
+    )
+  }
+
   return (
     <>
       <Box

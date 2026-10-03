@@ -42,7 +42,16 @@ export default function HoMakerDashboard() {
   const { roleInfo } = useAuth()
   const { data: ias = [], isLoading, error } = useIAs()
 
-  const reviewable = ias.filter((i) => HO_REVIEWABLE_STAGES.has(i.currentStage) && !!i.appraisal)
+  const reviewable = ias
+    .filter((i) => HO_REVIEWABLE_STAGES.has(i.currentStage) && !!i.appraisal)
+    // Newest first — see HoIaApprovals for rationale.
+    .slice()
+    .sort((a, b) => {
+      const at = new Date(a?.raw?.updatedAt || a?.raw?.createdAt || 0).getTime()
+      const bt = new Date(b?.raw?.updatedAt || b?.raw?.createdAt || 0).getTime()
+      if (at !== bt) return bt - at
+      return (Number(b?.id) || 0) - (Number(a?.id) || 0)
+    })
   const decisionOf = (i) => unpackHoDecision(i.appraisal).decision
   // Pending = HO hasn't decided yet AND the workflow is currently at
   // CE_COMMENTS_SUBMITTED. Decided = HO's remark packet is on record or

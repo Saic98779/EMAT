@@ -85,7 +85,8 @@ export const NAV = {
     { icon: 'home', label: 'Dashboard', path: '/sde', overline: 'Overview', title: 'SIDBI HO Maker' },
     { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
     { icon: 'groups', label: 'BSE Approvals', path: '/sde/bse-approvals', overline: 'Approvals', title: 'BSE Approvals' },
-    { icon: 'doc', label: 'Panel Submissions', path: '/sde/panel-submissions', overline: 'Approvals', title: 'BSE Panel Submissions' },
+    // Panel Submissions moved to HO Checker (2026-09-28) — HO Checker is
+    // the final signer on L2 appraisals and uploads the panel letter.
     // Content Approvals: HO Maker acts first on GT-PMU submissions.
     // Approving here forwards the record to HO Checker's queue for
     // final sign-off (per 2026-09-25 backend split into makerStatus +
@@ -94,10 +95,17 @@ export const NAV = {
     { icon: 'payments', label: 'Vendor Disbursements', path: '/sde/vendor-disbursements', overline: 'Approvals', title: 'Vendor Disbursements' },
     { icon: 'doc', label: 'Capacity Building', path: '/sde/capacity-building-officials', overline: 'Approvals', title: 'Capacity Building (IA Officials) Approvals' },
   ],
+  // SIDBI HO Checker — final L2 signer + panel-letter uploader + DIA
+  // content approvals. Rides both /sde/* and /checker route spaces.
+  ho_checker: [
+    { icon: 'doc', label: 'IA Approvals', path: '/sde/ia-approvals', overline: 'Approvals', title: 'IA Approvals' },
+    { icon: 'doc', label: 'Panel Submissions', path: '/sde/panel-submissions', overline: 'Approvals', title: 'BSE Panel Submissions' },
+    { icon: 'inbox', label: 'Content Approvals', path: '/checker', overline: 'Approvals', title: 'Content Approvals (HO Checker)' },
+  ],
   // GT_PMU rides the /gt workspace but only sees the PMU review screens.
   pmu: [
     { icon: 'home', label: 'Dashboard', path: '/gt', overline: 'Overview', title: 'GT PMU' },
-    { icon: 'inbox', label: 'PMU Queue', path: '/gt/pmu/queue', overline: 'Approvals', title: 'BSE PMU Queue' },
+    { icon: 'inbox', label: 'BSE Onboarding', path: '/gt/pmu/queue', overline: 'Approvals', title: 'BSE Onboarding' },
     { icon: 'doc', label: 'Capacity Building', path: '/gt/pmu/capacity-building', overline: 'Approvals', title: 'Capacity Building (IA Officials) — Event Review' },
     { icon: 'doc', label: 'Action Plan', path: '/gt/action-plans', overline: 'Industry Association', title: 'Action Plan' },
     { icon: 'doc', label: '3C Info-Series', path: '/gt/pmu/list/dia-3c-info-series', overline: 'Content · DIA', title: 'DIA 3C Info-Series' },
@@ -136,11 +144,13 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [anchor, setAnchor] = useState(null)
 
-  // Cluster experts and SIDBI HO Makers share the `sde` workspace but each
-  // get their own trimmed nav.
+  // Cluster experts, HO Maker, and HO Checker share the `sde` route
+  // space but each gets their own trimmed nav. HO Checker also keeps
+  // access to `/checker` for their DIA content review.
   const navKey =
     rawRole === 'CLUSTER_EXPERT' ? 'ce'
     : rawRole === 'SIDBI_HO_MAKER' ? 'ho'
+    : rawRole === 'SIDBI_HO_CHECKER' ? 'ho_checker'
     : rawRole === 'GT_PMU' ? 'pmu'
     : role
 
@@ -172,6 +182,7 @@ export default function AppLayout() {
             read "SIDBI SDE" — name the actual role instead. */}
         {rawRole === 'CLUSTER_EXPERT' ? 'Cluster Expert'
           : rawRole === 'SIDBI_HO_MAKER' ? 'SIDBI HO Maker'
+          : rawRole === 'SIDBI_HO_CHECKER' ? 'SIDBI HO Checker'
           : rawRole === 'GT_PMU' ? 'GT PMU'
           : roleInfo?.label}
       </Typography>
