@@ -49,7 +49,7 @@ export default function Appraisal({ backPath = '/gt/ias' } = {}) {
 
       <Snackbar
         open={!!toast.msg}
-        autoHideDuration={5000}
+        autoHideDuration={7000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

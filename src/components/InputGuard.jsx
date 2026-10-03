@@ -59,7 +59,7 @@ export default function InputGuard() {
     <Snackbar
       key={notice?.key}
       open={!!notice}
-      autoHideDuration={3500}
+      autoHideDuration={7000}
       onClose={(_, reason) => { if (reason !== 'clickaway') setNotice(null) }}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
     >

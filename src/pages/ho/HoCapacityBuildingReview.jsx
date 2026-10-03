@@ -131,7 +131,7 @@ export default function HoCapacityBuildingReview() {
         </Card>
       )}
 
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)}
+      <Snackbar open={!!toast} autoHideDuration={7000} onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {toast && <Alert severity={toast.kind} variant="filled" onClose={() => setToast(null)}>{toast.msg}</Alert>}
       </Snackbar>

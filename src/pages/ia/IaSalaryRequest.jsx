@@ -47,7 +47,7 @@ export default function IaSalaryRequest() {
         <Button variant="contained" startIcon={<SendIcon />} onClick={submit}>Submit to GT</Button>
       </Paper>
 
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      <Snackbar open={!!toast} autoHideDuration={7000} onClose={() => setToast('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={toast === 'done' ? 'success' : 'warning'} variant="filled">
           {toast === 'done' ? 'Request submitted to GT for approval.' : toast}
         </Alert>

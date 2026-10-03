@@ -382,7 +382,7 @@ export default function MpaRaiseDisbursement() {
         </Button>
       </Paper>
 
-      <Snackbar open={!!toast.msg} autoHideDuration={5000}
+      <Snackbar open={!!toast.msg} autoHideDuration={7000}
         onClose={() => setToast({ severity: '', msg: '' })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={toast.severity || 'info'} variant="filled"

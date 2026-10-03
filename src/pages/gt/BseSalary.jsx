@@ -35,7 +35,7 @@ export default function BseSalary() {
         <Button variant="contained" startIcon={<PaymentsIcon />} onClick={submit}>Disburse Salary</Button>
       </Paper>
 
-      <Snackbar open={toast} autoHideDuration={5000} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      <Snackbar open={toast} autoHideDuration={7000} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled">BSE salary disbursed — recorded in Disbursals.</Alert>
       </Snackbar>
     </Box>

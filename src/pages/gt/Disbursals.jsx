@@ -60,7 +60,7 @@ export default function Disbursals({ role = 'gt' }) {
           </Card>
         ))}
       </Stack>
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      <Snackbar open={!!toast} autoHideDuration={7000} onClose={() => setToast('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled">{toast}</Alert>
       </Snackbar>
     </Box>

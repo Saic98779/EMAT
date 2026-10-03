@@ -37,7 +37,7 @@ export default function CapexNote() {
         <Button variant="contained" startIcon={<PaymentsIcon />} onClick={submit}>Disburse CAPEX</Button>
       </Paper>
 
-      <Snackbar open={toast} autoHideDuration={5000} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+      <Snackbar open={toast} autoHideDuration={7000} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled">CAPEX disbursement recorded in Disbursals.</Alert>
       </Snackbar>
     </Box>

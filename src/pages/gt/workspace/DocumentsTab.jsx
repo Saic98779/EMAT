@@ -63,7 +63,7 @@ export default function DocumentsTab() {
         ))}
       </Stack>
 
-      <Snackbar open={!!toast} autoHideDuration={5000} onClose={() => setToast(null)}
+      <Snackbar open={!!toast} autoHideDuration={7000} onClose={() => setToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {toast ? (
           <Alert severity={toast.severity} variant="filled" onClose={() => setToast(null)}>

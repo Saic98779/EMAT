@@ -798,11 +798,14 @@ export const appraisalSchema = {
     { n: 4, title: 'Comments on Due Diligence', fields: [
       { name: '_dd_ia', label: 'Due Diligence of IA', type: 'subheading', span: 12 },
       { name: '_dd_ia_cibil', label: 'CIBIL — IA', type: 'subheading', span: 12 },
-      { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
+      // UAT 2026-10-03 — CIBIL Reference No. and Ranking fields allow
+      // up to 100 chars (defaults for free-text were 500; client wants
+      // tighter here but longer than the earlier short-cap behaviour).
+      { name: 'cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6, min: 1, max: 100 },
       { name: 'cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
-      // Ranking is typically a short grade string ("A+", "B", "AAA") —
-      // override the FormRenderer default 3-char minimum.
-      { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3, min: 1 },
+      // Ranking is typically a short grade string ("A+", "B", "AAA") but
+      // the client wants headroom for descriptive forms — allow up to 100.
+      { name: 'cibil_ranking', label: 'Ranking (per CCR)', type: 'text', span: 3, min: 1, max: 100 },
       { name: 'cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
 
       { name: '_dd_ia_darpan', label: 'NGO Darpan', type: 'subheading', span: 12 },
@@ -818,7 +821,7 @@ export const appraisalSchema = {
 
       { name: '_dd_ia_smart', label: 'SMART Report — IA', type: 'subheading', span: 12 },
       { name: 'smart_verified', label: 'SMART Report Available?', type: 'yesno', span: 6 },
-      { name: 'smart_ref_no', label: 'SMART Report Reference No.', type: 'text', span: 6, showIf: (v) => v.smart_verified === 'yes' },
+      { name: 'smart_ref_no', label: 'SMART Report Reference No.', type: 'text', span: 6, min: 1, max: 100, showIf: (v) => v.smart_verified === 'yes' },
       { name: 'smart_date', label: 'SMART Report Date', type: 'date', span: 6, help: 'Must be after In-Principle creation', showIf: (v) => v.smart_verified === 'yes', maxDate: 'today', validate: afterIaCreation },
       { name: 'smart_remarks', label: 'SMART Remarks', type: 'textarea', span: 12, showIf: (v) => v.smart_verified === 'yes' },
 
@@ -828,7 +831,7 @@ export const appraisalSchema = {
 
       { name: '_dd_holder', label: 'Comments on Due Diligence of IA Office Holder', type: 'subheading', span: 12 },
       { name: '_dd_holder_cibil', label: 'IA Office Holder — CIBIL', type: 'subheading', span: 12 },
-      { name: 'holder_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
+      { name: 'holder_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6, min: 1, max: 100 },
       { name: 'holder_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // CIBIL individual scores are numeric in the range 300–900. Anything
       // outside that band is either a typo or a corporate CMR (which has
@@ -852,10 +855,10 @@ export const appraisalSchema = {
 
       { name: '_dd_owner', label: 'Comments on Due Diligence of IA Beneficial Owner/s', type: 'subheading', span: 12 },
       { name: '_dd_owner_cibil', label: 'IA Beneficial Owner/s — CIBIL (extant KYC policy)', type: 'subheading', span: 12 },
-      { name: 'owner_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6 },
+      { name: 'owner_cibil_ref_no', label: 'CIBIL Report Reference No.', type: 'text', span: 6, min: 1, max: 100 },
       { name: 'owner_cibil_date', label: 'CIBIL Report Date', type: 'date', span: 3, help: 'Must be after In-Principle creation', maxDate: 'today', validate: afterIaCreation },
       // Ranking/score is a short grade string — see cibil_ranking above.
-      { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3, min: 1 },
+      { name: 'owner_cibil_ranking', label: 'Ranking / Score', type: 'text', span: 3, min: 1, max: 100 },
       { name: 'owner_cibil_remarks', label: 'CIBIL Remarks', type: 'textarea', span: 12 },
       { name: 'owner_cibil_file', label: 'CIBIL Report (upload)', type: 'file', span: 12 },
 

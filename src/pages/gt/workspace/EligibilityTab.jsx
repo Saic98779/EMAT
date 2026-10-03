@@ -391,7 +391,7 @@ function Toast({ toast, onClose }) {
   return (
     <Snackbar
       open={!!toast}
-      autoHideDuration={5000}
+      autoHideDuration={7000}
       onClose={onClose}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
     >
