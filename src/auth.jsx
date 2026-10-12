@@ -160,12 +160,33 @@ export function AuthProvider({ children }) {
   // Same cache reset on logout so nothing from the previous session
   // lingers into the next login attempt. Also wipes the in-memory RSA
   // + AES keys so a follow-up login re-fetches fresh material.
+  //
+  // UAT 2026-10-11 — notify the backend via `POST /users/logout` so it
+  // can invalidate the server-side session (per `user-controller`
+  // Swagger). Fire-and-forget: we never want a backend hiccup to leave
+  // the user stranded with a half-cleared session, so the server call
+  // runs in parallel with the local teardown and any failure is logged
+  // (not surfaced). The JWT ride-along is handled by `apiFetch` reading
+  // from `localStorage.emat.session` — so we must call `apiFetch`
+  // BEFORE `setSession(null)` wipes the token.
   const logout = useCallback(() => {
+    // Snapshot the token first because `setSession(null)` triggers the
+    // storage-wipe effect synchronously (via setState) and apiFetch's
+    // next tick would then not find it. Pass it explicitly so the POST
+    // still authenticates even after local state clears.
+    const tokenAtLogout = session?.token || null
+    if (tokenAtLogout) {
+      apiFetch('/users/logout', { method: 'POST', token: tokenAtLogout })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn('[auth] /users/logout failed (session cleared locally anyway):', err)
+        })
+    }
     qc.clear()
     clearPiiKey()
     clearPublicKey()
     setSession(null)
-  }, [qc])
+  }, [qc, session])
 
   // The value object is memoized on session identity so consumers of
   // useAuth() don't re-render whenever an unrelated parent re-renders.
