@@ -1,5 +1,5 @@
 import { API_BASE, apiFetch } from '../api'
-import { encryptString } from './pii'
+import { encryptString, looksLikeCiphertext } from './pii'
 
 // Backend `file-controller`.
 //
@@ -47,20 +47,23 @@ function getStoredToken() {
   } catch { return null }
 }
 
-// Backend flipped to strict encryption on the file API (2026-09-23):
-// query params `registrationId` and `stageId` must be `ENC:...` strings,
-// plain integers now 400 with `Plain-text value rejected: expected an
-// encrypted ENC:... value for a PII-protected field`. `stage` is a
-// non-PII tag and stays plain-text.
+// Backend requires PII-protected ids on the file API to be AES-GCM
+// ciphertext (url-safe-base64). Plain integers return 400 with
+// `Plain-text value rejected: expected an encrypted value for a
+// PII-protected field`. `stage` is a non-PII tag and stays plain-text.
 //
-// Callers still hand us whatever id they have in memory (an ENC string
-// from a URL param, or a plain integer from a decrypted DTO); we
-// idempotently upgrade both to ENC here. Because encryptString is
-// async, every file API call site is async now.
+// Callers hand us whatever id they have in memory — a decrypted plain
+// integer, a raw ciphertext string already read from an earlier
+// response, or (legacy) a `ENC:...` string from an older URL. The
+// helper normalises all three to the current wire format: strip legacy
+// prefix, pass through anything already shaped like ciphertext, encrypt
+// anything that still looks like plaintext.
 async function encryptIdForFiles(v) {
   const s = v == null ? '' : String(v)
-  if (s.startsWith('ENC:')) return s
-  return await encryptString(s)
+  if (!s) return s
+  const stripped = s.startsWith('ENC:') ? s.slice(4) : s
+  if (looksLikeCiphertext(stripped)) return stripped
+  return await encryptString(stripped)
 }
 
 async function scopeQuery(registrationId, stage, stageId) {

@@ -1,4 +1,4 @@
-import { decryptString, encryptString } from './apis/pii'
+import { decryptString, encryptString, looksLikeCiphertext } from './apis/pii'
 
 // Base URL for the backend.
 //
@@ -347,8 +347,12 @@ async function decryptResponseBody(payload) {
 async function decryptWalk(node) {
   if (node == null) return node
   if (typeof node === 'string') {
-    if (node.startsWith('ENC:')) return decryptString(node)
-    return node
+    // 2026-10-29: backend dropped the `ENC:` prefix. Detection is now
+    // shape-based via `looksLikeCiphertext` (url-safe-b64 charset, ≥39
+    // chars); `decryptString` then confirms via AES-GCM auth tag and
+    // falls back to the original string on mismatch. The legacy prefix
+    // is still tolerated upstream for any endpoint not yet migrated.
+    return looksLikeCiphertext(node) ? decryptString(node) : node
   }
   if (Array.isArray(node)) {
     return Promise.all(node.map(decryptWalk))
