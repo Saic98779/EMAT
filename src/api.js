@@ -269,6 +269,30 @@ const ENDPOINT_PII_MAP = [
   //     the "stageId encrypted everywhere" rule we also encrypt `stageId`.
   { matchPath: (p) => p.startsWith('/sustainability-matrix'),
     fields: ['appraisalId', 'stageId'] },
+
+  // 23. DIA Monitoring — Credit Application (2026-11-05 backend)
+  //     `mobileNo` is confirmed PII (raw plaintext POST surfaced a
+  //     BufferUnderflowException on the decrypt step). `email` + `applicantPan`
+  //     are inferred PII by convention with vendor / BSE endpoints that treat
+  //     the same column names as encrypted.
+  { matchPath: (p) => p === '/dia-credit-application' || /^\/dia-credit-application\/.+$/.test(p),
+    fields: ['mobileNo', 'email', 'applicantPan'] },
+
+  // 24. DIA Monitoring — Exposure Visit Participant
+  //     Participant-profile PII + the FK (`exposureVisitId`) back to the
+  //     parent visit. Backend treats the FK as a PII-encrypted Long (same
+  //     pattern as `registrationId` / `appraisalId` elsewhere) — confirmed
+  //     by a `BufferUnderflowException` on the raw-int path.
+  { matchPath: (p) => p === '/dia-exposure-visit-participant'
+                      || /^\/dia-exposure-visit-participant\/.+$/.test(p),
+    fields: ['exposureVisitId', 'email', 'contactNo', 'panNo', 'udyamAadharNo'] },
+
+  // 25. DIA Monitoring — MSME Participant (CB participants)
+  //     Mirrors the exposure-visit-participant contract; FK column is
+  //     `eventId` back to `/dia-capacity-building-program`.
+  { matchPath: (p) => p === '/dia-msme-participant'
+                      || /^\/dia-msme-participant\/.+$/.test(p),
+    fields: ['eventId', 'email', 'contactNo', 'panNo', 'udyamAadharNo'] },
 ]
 
 function bodyFieldsForPath(rawPath, method) {

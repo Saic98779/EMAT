@@ -113,6 +113,7 @@ import {
   updateContentStatus, updateLegacyContentStatus, listContent, getContent,
 } from './apis/contentStatus'
 import { updateContent, resubmitContent } from './apis/diaContent'
+import { BY_SLUG as DIA_BY_SLUG, unwrapList as unwrapDiaList } from './apis/diaMonitoring'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -155,6 +156,10 @@ export const keys = {
     all: ['users'],
     search: (params) => ['users', 'search', params],
     byRole: (role) => ['users', 'byRole', role],
+  },
+  dia: {
+    monitoring: (slug) => ['dia', 'monitoring', slug],
+    monitoringDetail: (slug, id) => ['dia', 'monitoring', slug, 'detail', String(id)],
   },
   branches: {
     byState: (state) => ['branches', 'byState', state],
@@ -1616,5 +1621,47 @@ export function useUpdateContentStatus() {
       qc.invalidateQueries({ queryKey: contentKey.list(path), refetchType: 'all' })
       if (id) qc.invalidateQueries({ queryKey: contentKey.detail(path, id) })
     },
+  })
+}
+
+// ── DIA Monitoring (Annexure XVI) ───────────────────────────────────────────
+// One shared factory for all six monitoring forms — the form slug maps to
+// an API module in `DIA_BY_SLUG`, so the hub + form pages can stay
+// slug-driven without a special hook per endpoint.
+export function useDiaMonitoringList(slug) {
+  const mod = DIA_BY_SLUG[slug]
+  return useQuery({
+    queryKey: keys.dia.monitoring(slug),
+    enabled: !!mod,
+    // `throwOnError: false` so an in-flight backend migration doesn't break
+    // the hub — list endpoints return 404 "table does not exist" until the
+    // DB catches up, and we want the hub cards to still render with a 0.
+    queryFn: ({ signal }) => mod.list({ signal }).then((d) => unwrapDiaList(d).map(mod.fromResponse ? (r) => ({ ...r, _raw: r }) : (r) => r)),
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useDiaMonitoringCreate(slug) {
+  const qc = useQueryClient()
+  const mod = DIA_BY_SLUG[slug]
+  return useMutation({
+    mutationFn: (formValues) => {
+      if (!mod) throw new Error(`Unknown DIA monitoring form: ${slug}`)
+      return mod.create(mod.toRequest(formValues))
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.dia.monitoring(slug) }) },
+  })
+}
+
+export function useDiaMonitoringDelete(slug) {
+  const qc = useQueryClient()
+  const mod = DIA_BY_SLUG[slug]
+  return useMutation({
+    mutationFn: (id) => {
+      if (!mod) throw new Error(`Unknown DIA monitoring form: ${slug}`)
+      return mod.remove(id)
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.dia.monitoring(slug) }) },
   })
 }

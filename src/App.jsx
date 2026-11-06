@@ -30,6 +30,8 @@ import GtCapacityBuildingReview from './pages/gt/GtCapacityBuildingReview'
 import ActionPlan from './pages/gt/ActionPlan'
 import ActionPlansList from './pages/gt/ActionPlansList'
 import ActionPlanView from './pages/gt/ActionPlanView'
+import DiaMonitoringForm from './pages/gt/diaMonitoring/DiaMonitoringForm'
+import { DIA_MONITORING_FORMS } from './pages/gt/diaMonitoring/schemas'
 import IaWorkspaceLayout, { WorkspaceIndexRedirect } from './components/workspace/IaWorkspaceLayout'
 import {
   OverviewTab, EligibilityTab, RegistrationTab, SustainabilityTab,
@@ -186,6 +188,14 @@ export default function App() {
         <Route path="/gt/action-plan" element={<ActionPlan />} />
         <Route path="/gt/action-plans" element={<ActionPlansList />} />
         <Route path="/gt/action-plans/:id" element={<ActionPlanView />} />
+        {/* DIA Monitoring (Annexure XVI) — GT Field Team data-entry forms for
+            the six "-P" sheets. There's no landing page: the parent sidebar
+            row only toggles the group. A bare /gt/dia-monitoring hit lands
+            on the first form so old bookmarks keep working. GT_PMU rides
+            the same /gt workspace but has its own queue, so this screen
+            stays off their nav even though the route is open. */}
+        <Route path="/gt/dia-monitoring" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Navigate to={`/gt/dia-monitoring/${DIA_MONITORING_FORMS[0].slug}`} replace /></DenyRawRoles>} />
+        <Route path="/gt/dia-monitoring/:form" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><DiaMonitoringForm /></DenyRawRoles>} />
         {/* Legacy standalone Eligibility Matrix → workspace draft mode. */}
         <Route path="/gt/eligibility/new" element={<DenyRawRoles roles={['GT_PMU']} to="/gt"><Navigate to="/gt/ias/new/workspace/eligibility" replace /></DenyRawRoles>} />
         {/* IA Workspace — the new anchor pattern. Every stage of an IA

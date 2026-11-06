@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import {
   Box, Drawer, AppBar, Toolbar, List, ListItem, ListItemButton, ListItemIcon,
   ListItemText, Typography, Avatar, Badge, IconButton, InputBase, Stack, Divider,
-  Chip, Menu, MenuItem, useMediaQuery,
+  Chip, Menu, MenuItem, useMediaQuery, Collapse,
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined'
@@ -18,11 +18,15 @@ import SearchIcon from '@mui/icons-material/Search'
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuIcon from '@mui/icons-material/Menu'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import CircleIcon from '@mui/icons-material/Circle'
 import { useAuth } from '../auth'
 import Logo from './Logo'
 import sidbiLogo from '../assets/sidbi-logo.png'
 import { useIAs, useAppraisals, useBseAttendanceManualRequestList } from '../queries'
 import { unpackHoDecision } from '../apis/industryAssociationAppraisals'
+import { DIA_MONITORING_FORMS } from '../pages/gt/diaMonitoring/schemas'
 
 const DRAWER_WIDTH = 288
 
@@ -45,6 +49,19 @@ export const NAV = {
     { icon: 'doc', label: 'CAPEX Verification', path: '/gt/capex', overline: 'Field ops', title: 'CAPEX — Field Verification' },
     { icon: 'doc', label: 'Capacity Building', path: '/gt/capacity-building', overline: 'Field ops', title: 'Capacity Building — Event Review' },
     { icon: 'doc', label: 'Action Plan', path: '/gt/action-plans', overline: 'Industry Association', title: 'Action Plan' },
+    // Collapsible group — each Annexure XVI form shows up as a sub-item so
+    // GT can jump straight to the form they need. Clicking the parent only
+    // toggles the group; the parent has no landing page of its own, and
+    // `/gt/dia-monitoring` without a slug redirects to the first form
+    // (see App.jsx) to keep legacy bookmarks from 404-ing.
+    { icon: 'inbox', label: 'DIA Monitoring', overline: 'DIA · Monitoring', title: 'DIA Monitoring (Annexure XVI)',
+      groupPrefix: '/gt/dia-monitoring',
+      children: DIA_MONITORING_FORMS.map((f) => ({
+        label: f.title,
+        path: `/gt/dia-monitoring/${f.slug}`,
+        overline: 'DIA · Monitoring',
+        title: f.title,
+      })) },
     // Eligibility Matrix intentionally not in the sidebar — it's opened
     // as a read-only modal via the "View Eligibility Matrix" button inside
     // the In-Principle Approval form (see InPrincipleApproval.jsx). The
@@ -163,7 +180,11 @@ export default function AppLayout() {
     return live ? { ...item, badge: live } : item
   })
   // Longest-prefix match so detail routes keep their parent highlighted.
-  const active = [...nav].sort((a, b) => b.path.length - a.path.length)
+  // `flatNav` walks into collapsible groups so a child route still lights
+  // up the parent (and top-bar meta still finds the matching title).
+  const flatNav = nav.flatMap((n) => n.children ? [n, ...n.children] : [n])
+  const active = [...flatNav].filter((n) => n.path)
+    .sort((a, b) => b.path.length - a.path.length)
     .find((n) => location.pathname === n.path || location.pathname.startsWith(n.path + '/'))
   const meta = active || nav[0]
 
@@ -187,29 +208,22 @@ export default function AppLayout() {
           : roleInfo?.label}
       </Typography>
       <List sx={{ px: 1, flexGrow: 1 }}>
-        {nav.map((item) => {
-          const Icon = ICONS[item.icon]
-          // Use `active` (not `meta`) so pages without a matching nav item
-          // (e.g. /gt/eligibility/new) don't accidentally light up the
-          // fallback Dashboard entry. Top-bar title still uses `meta`.
-          const selected = active?.path === item.path
-          return (
-            <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
-              <ListItemButton
-                selected={selected}
+        {nav.map((item) => (
+          item.children
+            ? <NavGroup
+                key={item.label}
+                item={item}
+                activePath={active?.path}
+                currentPath={location.pathname}
+                onNavigate={(p) => { navigate(p); setMobileOpen(false) }}
+              />
+            : <NavItem
+                key={item.path}
+                item={item}
+                selected={active?.path === item.path}
                 onClick={() => { navigate(item.path); setMobileOpen(false) }}
-                sx={{
-                  '&.Mui-selected': { bgcolor: 'primary.light', color: 'primary.dark' },
-                  '&.Mui-selected:hover': { bgcolor: 'primary.light' },
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 40, color: selected ? 'primary.dark' : 'text.secondary' }}><Icon fontSize="small" /></ListItemIcon>
-                <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: selected ? 700 : 500, fontSize: '0.9rem' }} />
-                {item.badge > 0 && <Chip label={item.badge} size="small" color={selected ? 'primary' : 'default'} />}
-              </ListItemButton>
-            </ListItem>
-          )
-        })}
+              />
+        ))}
       </List>
       <Divider />
       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ p: 1.5 }}>
@@ -340,4 +354,77 @@ function useLiveBadges(role) {
     return { '/gt/attendance': pending }
   }
   return {}
+}
+
+// Flat nav row — the old render loop extracted into a component so NavGroup
+// can recurse into it for children.
+function NavItem({ item, selected, onClick, dense = false }) {
+  const Icon = ICONS[item.icon]
+  return (
+    <ListItem disablePadding sx={{ mb: 0.25 }}>
+      <ListItemButton
+        selected={selected}
+        onClick={onClick}
+        sx={{
+          pl: dense ? 4.5 : undefined,
+          '&.Mui-selected': { bgcolor: 'primary.light', color: 'primary.dark' },
+          '&.Mui-selected:hover': { bgcolor: 'primary.light' },
+        }}
+      >
+        <ListItemIcon sx={{ minWidth: dense ? 28 : 40, color: selected ? 'primary.dark' : 'text.secondary' }}>
+          {dense
+            ? <CircleIcon sx={{ fontSize: 6, color: selected ? 'primary.dark' : 'text.disabled' }} />
+            : Icon ? <Icon fontSize="small" /> : null}
+        </ListItemIcon>
+        <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: selected ? 700 : 500, fontSize: dense ? '0.85rem' : '0.9rem' }} />
+        {item.badge > 0 && <Chip label={item.badge} size="small" color={selected ? 'primary' : 'default'} />}
+      </ListItemButton>
+    </ListItem>
+  )
+}
+
+// Collapsible nav group. Expanded state is auto-synced to the current route:
+// if any child path matches the current URL the group opens itself so the
+// user doesn't have to re-expand after a refresh. Clicking the parent row
+// just toggles the group (no navigation) — individual children own the
+// navigation.
+function NavGroup({ item, activePath, currentPath, onNavigate }) {
+  const Icon = ICONS[item.icon]
+  const prefix = item.groupPrefix || ''
+  const isActiveSection = prefix && (currentPath === prefix || currentPath.startsWith(prefix + '/'))
+  const [open, setOpen] = useState(isActiveSection)
+  useEffect(() => { if (isActiveSection) setOpen(true) }, [isActiveSection])
+
+  return (
+    <>
+      <ListItem disablePadding sx={{ mb: 0.25 }}>
+        <ListItemButton
+          onClick={() => setOpen((o) => !o)}
+          sx={{
+            color: isActiveSection ? 'primary.dark' : undefined,
+            bgcolor: isActiveSection && !open ? (t) => alpha(t.palette.primary.main, 0.08) : undefined,
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: 40, color: isActiveSection ? 'primary.dark' : 'text.secondary' }}>
+            {Icon ? <Icon fontSize="small" /> : null}
+          </ListItemIcon>
+          <ListItemText primary={item.label} primaryTypographyProps={{ fontWeight: isActiveSection ? 700 : 500, fontSize: '0.9rem' }} />
+          {open ? <ExpandMoreIcon fontSize="small" color="action" /> : <ChevronRightIcon fontSize="small" color="action" />}
+        </ListItemButton>
+      </ListItem>
+      <Collapse in={open} timeout="auto" unmountOnExit>
+        <List disablePadding sx={{ mb: 0.5 }}>
+          {item.children.map((child) => (
+            <NavItem
+              key={child.path}
+              item={child}
+              selected={activePath === child.path}
+              onClick={() => onNavigate(child.path)}
+              dense
+            />
+          ))}
+        </List>
+      </Collapse>
+    </>
+  )
 }
