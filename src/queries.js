@@ -114,6 +114,7 @@ import {
 } from './apis/contentStatus'
 import { updateContent, resubmitContent } from './apis/diaContent'
 import { BY_SLUG as DIA_BY_SLUG, unwrapList as unwrapDiaList } from './apis/diaMonitoring'
+import { listRegionalOffices, unwrapList as unwrapROs, toRoOption } from './apis/regionalOffice'
 
 // ── Key catalogue ─────────────────────────────────────────────────────────
 export const keys = {
@@ -160,6 +161,9 @@ export const keys = {
   dia: {
     monitoring: (slug) => ['dia', 'monitoring', slug],
     monitoringDetail: (slug, id) => ['dia', 'monitoring', slug, 'detail', String(id)],
+  },
+  regionalOffices: {
+    all: ['regional-offices'],
   },
   branches: {
     byState: (state) => ['branches', 'byState', state],
@@ -1663,5 +1667,34 @@ export function useDiaMonitoringDelete(slug) {
       return mod.remove(id)
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: keys.dia.monitoring(slug) }) },
+  })
+}
+
+// Full-record update (PUT /dia-*/{id}). Same `toRequest` mapper as the
+// create mutation so edits ship the same shape as inserts.
+export function useDiaMonitoringUpdate(slug) {
+  const qc = useQueryClient()
+  const mod = DIA_BY_SLUG[slug]
+  return useMutation({
+    mutationFn: ({ id, values }) => {
+      if (!mod) throw new Error(`Unknown DIA monitoring form: ${slug}`)
+      return mod.update(id, mod.toRequest(values))
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: keys.dia.monitoring(slug) }) },
+  })
+}
+
+// ── Regional Offices ────────────────────────────────────────────────────────
+// Lightweight list used as a searchable-dropdown source on the DIA monitoring
+// forms. `retry: false` so an endpoint 403 (policy still being added for
+// GT_FIELD_TEAM) doesn't thrash — the autocomplete gracefully falls back to
+// free-text input via `freeSolo`.
+export function useRegionalOfficeOptions() {
+  return useQuery({
+    queryKey: keys.regionalOffices.all,
+    queryFn: ({ signal }) => listRegionalOffices({ signal })
+      .then((d) => unwrapROs(d).map(toRoOption)),
+    retry: false,
+    staleTime: 5 * 60_000,
   })
 }

@@ -293,6 +293,23 @@ const ENDPOINT_PII_MAP = [
   { matchPath: (p) => p === '/dia-msme-participant'
                       || /^\/dia-msme-participant\/.+$/.test(p),
     fields: ['eventId', 'email', 'contactNo', 'panNo', 'udyamAadharNo'] },
+
+  // 26. DIA Monitoring — Capacity Building Program + Exposure Visit
+  //     Backend update 2026-11-09 added FK ids (`roId`, `industryAssociationId`)
+  //     alongside the display-name string columns. By convention every Long
+  //     FK on these controllers is PII-encrypted — matches eventId /
+  //     exposureVisitId behaviour. The display-name columns stay plaintext.
+  { matchPath: (p) => p === '/dia-capacity-building-program'
+                      || /^\/dia-capacity-building-program\/.+$/.test(p)
+                      || p === '/dia-exposure-visit'
+                      || /^\/dia-exposure-visit\/.+$/.test(p),
+    fields: ['roId', 'industryAssociationId'] },
+
+  // 27. DIA Monitoring — Enhancement (2026-11-09)
+  //     New POC FK columns `sidbiPocId` / `gtPocId` reference the users
+  //     master, same encrypt treatment as the FK fields above.
+  { matchPath: (p) => p === '/dia-enhancement' || /^\/dia-enhancement\/.+$/.test(p),
+    fields: ['sidbiPocId', 'gtPocId'] },
 ]
 
 function bodyFieldsForPath(rawPath, method) {

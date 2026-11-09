@@ -3,7 +3,7 @@ import {
   Box, Card, Grid, Stack, Typography, TextField, MenuItem, InputAdornment,
   ToggleButtonGroup, ToggleButton, Avatar, RadioGroup, FormControlLabel,
   Radio, FormGroup, Checkbox, Button, Chip, LinearProgress,
-  Table, TableHead, TableBody, TableRow, TableCell, IconButton,
+  Table, TableHead, TableBody, TableRow, TableCell, IconButton, Autocomplete,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
@@ -1067,6 +1067,91 @@ const Field = memo(function Field({ f, value, error, computed, options, verified
     )
   }
 
+  // Searchable dropdown. Opt-in via `type: 'autocomplete'`. Supports
+  // `optionsFrom(values)` for async-hydrated option bags (same contract as
+  // `select`). Defaults to `freeSolo` so the user can type a value that
+  // isn't in the suggestion list.
+  //
+  // Stored shape in form state:
+  //   • `{ value, label }` when the user picked an option — the mapper on
+  //     the way to the backend can read `.value` (FK id) and `.label`
+  //     (display name) separately.
+  //   • plain string when the user typed something not in the options
+  //     (freeSolo). The mapper treats this as "name only, no FK".
+  //   • `''` / null when empty.
+  if (f.type === 'autocomplete') {
+    const opts = (options || []).map(asOption)
+    const freeSolo = f.freeSolo !== false
+
+    // Normalise whatever is in form state into the shape Autocomplete
+    // expects: either an option object or a plain string (freeSolo).
+    let autoValue
+    if (value && typeof value === 'object') {
+      autoValue = value
+    } else if (value != null && value !== '') {
+      const matched = opts.find((o) => o.label === String(value) || String(o.value) === String(value))
+      autoValue = matched || (freeSolo ? String(value) : null)
+    } else {
+      autoValue = freeSolo ? '' : null
+    }
+
+    const handlePickChange = (_e, next) => {
+      if (next == null) return onChange('')
+      // freeSolo: user typed something + pressed Enter → MUI hands back a
+      // string. Store as-is; the mapper interprets strings as "name only".
+      if (typeof next === 'string') return onChange(next)
+      // Picked an option → keep the full object so downstream code can
+      // pull `.value` (FK id) and `.label` (display name).
+      onChange(next)
+    }
+    const handleInputChange = (_e, next, reason) => {
+      if (!freeSolo) return
+      if (reason === 'reset') return
+      // If the typed text matches a known label, snap to that option so
+      // we keep the FK id. Otherwise store the raw string.
+      const matched = opts.find((o) => o.label === next)
+      onChange(matched || next)
+    }
+
+    return (
+      <Grid size={{ xs: 12, sm: f.span || 6 }}>
+        <Autocomplete
+          size="small"
+          fullWidth
+          freeSolo={freeSolo}
+          disableClearable={!!f.required}
+          options={opts}
+          getOptionLabel={(o) => (typeof o === 'string' ? o : (o?.label ?? ''))}
+          isOptionEqualToValue={(o, v) => {
+            if (!o || v == null) return false
+            if (typeof v === 'string') return (o.label ?? '') === v
+            return String(o.value) === String(v.value)
+          }}
+          value={autoValue}
+          onChange={handlePickChange}
+          onInputChange={handleInputChange}
+          renderOption={(props, o) => (
+            <li {...props} key={String(o.value)}>{o.label}</li>
+          )}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={f.label + (f.required ? ' *' : '')}
+              placeholder={f.placeholder || 'Start typing to search…'}
+              helperText={error || f.help}
+              error={!!error}
+              inputProps={{
+                ...params.inputProps,
+                'data-charset': charsetForField(f),
+                maxLength: f.max,
+              }}
+            />
+          )}
+        />
+      </Grid>
+    )
+  }
+
   return (
     <Grid size={{ xs: 12, sm: f.span || 6 }}>
       <TextField
@@ -1261,7 +1346,7 @@ const SectionCard = memo(function SectionCard({
             if (!isVisible(f, values)) return null
             const val = values[f.name]
             let options
-            if (['select', 'radio', 'checkboxes'].includes(f.type)) {
+            if (['select', 'radio', 'checkboxes', 'autocomplete'].includes(f.type)) {
               const next = optsOf(f, values)
               const cached = stableArray(optionsCacheRef.current[f.name], next)
               optionsCacheRef.current[f.name] = cached

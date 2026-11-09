@@ -29,6 +29,29 @@ const dateOrNull = (v) => (v == null || v === '') ? null : v
 const numOrNull  = (v) => (v == null || v === '') ? null : Number(v)
 const intOrNull  = (v) => (v == null || v === '') ? null : parseInt(v, 10)
 
+// Unpack an autocomplete field into a backend-friendly `{id, name}` pair.
+// FormRenderer stores the value as either a `{value, label}` option object
+// (when picked from the dropdown) or a raw string (when typed freeSolo).
+//   • option object → id = value, name = label
+//   • raw string    → id = null, name = string
+//   • empty         → id = null, name = null
+const unpackAuto = (v) => {
+  if (v && typeof v === 'object' && 'value' in v) {
+    return { id: v.value != null ? intOrNull(v.value) : null, name: trimOrNull(v.label) }
+  }
+  if (typeof v === 'string' && v.trim()) return { id: null, name: v.trim() }
+  return { id: null, name: null }
+}
+
+// Pack a backend response's `{id, name}` pair back into the form state
+// shape so edit mode shows the right option in the autocomplete. If only
+// the name is present (legacy row), fall back to a plain string.
+const packAuto = (id, name) => {
+  if (id != null && name) return { value: id, label: name }
+  if (name) return name
+  return ''
+}
+
 function crud(path) {
   return {
     list:   ({ signal } = {}) => apiFetch(path, { signal }),
@@ -48,18 +71,29 @@ export function unwrapList(data) {
 }
 
 // ── 1. /dia-enhancement ─────────────────────────────────────────────────────
+// Backend update 2026-11-09 added `sidbiPocId`, `gtPocId`, and
+// `enhancementSupportFilePath` — POCs now carry a FK to the users table
+// alongside the display name, and the form can finally persist an
+// attachment reference.
 export const diaEnhancement = {
   ...crud('/dia-enhancement'),
-  toRequest: (v = {}) => ({
-    platform:           trimOrNull(v.platform),
-    enhancementType:    trimOrNull(v.enhancement_type),
-    enhancementDetails: trimOrNull(v.details),
-    initiationDate:     dateOrNull(v.date_of_initiation),
-    completionDate:     dateOrNull(v.date_of_completion),
-    status:             trimOrNull(v.status),
-    pocSidbi:           trimOrNull(v.poc_sidbi),
-    pocGt:              trimOrNull(v.poc_gt),
-  }),
+  toRequest: (v = {}) => {
+    const sidbi = unpackAuto(v.poc_sidbi)
+    const gt    = unpackAuto(v.poc_gt)
+    return {
+      platform:                   trimOrNull(v.platform),
+      enhancementType:            trimOrNull(v.enhancement_type),
+      enhancementDetails:         trimOrNull(v.details),
+      initiationDate:             dateOrNull(v.date_of_initiation),
+      completionDate:             dateOrNull(v.date_of_completion),
+      status:                     trimOrNull(v.status),
+      pocSidbi:                   sidbi.name,
+      pocGt:                      gt.name,
+      sidbiPocId:                 sidbi.id,
+      gtPocId:                    gt.id,
+      enhancementSupportFilePath: trimOrNull(v.attachment_path),
+    }
+  },
   fromResponse: (r = {}) => ({
     platform:             r.platform || '',
     enhancement_type:     r.enhancementType || '',
@@ -67,40 +101,50 @@ export const diaEnhancement = {
     date_of_initiation:   r.initiationDate || '',
     date_of_completion:   r.completionDate || '',
     status:               r.status || '',
-    poc_sidbi:            r.pocSidbi || '',
-    poc_gt:               r.pocGt || '',
+    poc_sidbi:            packAuto(r.sidbiPocId, r.pocSidbi),
+    poc_gt:               packAuto(r.gtPocId, r.pocGt),
+    attachment_path:      r.enhancementSupportFilePath || '',
   }),
   summary: (r = {}) => [r.platform, r.enhancementType, r.status].filter(Boolean).join(' · '),
 }
 
 // ── 2. /dia-capacity-building-program ───────────────────────────────────────
+// Backend update 2026-11-09 added `roId` + `industryAssociationId` so the
+// row can link back to the master tables when the user picks from the
+// dropdown (freeSolo entries ship with only the name and a null FK).
 export const diaCapacityBuildingProgram = {
   ...crud('/dia-capacity-building-program'),
-  toRequest: (v = {}) => ({
-    roName:                   trimOrNull(v.ro),
-    industryAssociationName:  trimOrNull(v.ia_name),
-    participantType:          trimOrNull(v.target_audience),
-    eventName:                trimOrNull(v.event_name),
-    eventDate:                dateOrNull(v.event_date),
-    eventDuration:            trimOrNull(v.duration),
-    eventNature:              trimOrNull(v.event_nature),
-    eventType:                trimOrNull(v.event_type),
-    eventTheme:               trimOrNull(v.event_theme),
-    eventDescription:         trimOrNull(v.event_description),
-    partOfDia:                yn(v.part_of_dia),
-    costInterventionType:     trimOrNull(v.cost_intervention),
-    associationContribution:  numOrNull(v.association_contribution),
-    costBreakup:              trimOrNull(v.cost_breakup),
-    trainerName:              trimOrNull(v.trainer_name),
-    attendeesCount:           intOrNull(v.attendee_count),
-    trainingReportPrepared:   yn(v.training_report_prepared),
-    trainingReportPath:       trimOrNull(v.training_report_path),
-    feedbackFormShared:       yn(v.feedback_form_shared),
-    uploadedOnDiaPortal:      yn(v.uploaded_on_dia_portal),
-  }),
+  toRequest: (v = {}) => {
+    const ro = unpackAuto(v.ro)
+    const ia = unpackAuto(v.ia_name)
+    return {
+      roId:                      ro.id,
+      industryAssociationId:     ia.id,
+      roName:                    ro.name,
+      industryAssociationName:   ia.name,
+      participantType:           trimOrNull(v.target_audience),
+      eventName:                 trimOrNull(v.event_name),
+      eventDate:                 dateOrNull(v.event_date),
+      eventDuration:             trimOrNull(v.duration),
+      eventNature:               trimOrNull(v.event_nature),
+      eventType:                 trimOrNull(v.event_type),
+      eventTheme:                trimOrNull(v.event_theme),
+      eventDescription:          trimOrNull(v.event_description),
+      partOfDia:                 yn(v.part_of_dia),
+      costInterventionType:      trimOrNull(v.cost_intervention),
+      associationContribution:   numOrNull(v.association_contribution),
+      costBreakup:               trimOrNull(v.cost_breakup),
+      trainerName:               trimOrNull(v.trainer_name),
+      attendeesCount:            intOrNull(v.attendee_count),
+      trainingReportPrepared:    yn(v.training_report_prepared),
+      trainingReportPath:        trimOrNull(v.training_report_path),
+      feedbackFormShared:        yn(v.feedback_form_shared),
+      uploadedOnDiaPortal:       yn(v.uploaded_on_dia_portal),
+    }
+  },
   fromResponse: (r = {}) => ({
-    ro:                       r.roName || '',
-    ia_name:                  r.industryAssociationName || '',
+    ro:                       packAuto(r.roId, r.roName),
+    ia_name:                  packAuto(r.industryAssociationId, r.industryAssociationName),
     target_audience:          r.participantType || '',
     event_name:               r.eventName || '',
     event_date:               r.eventDate || '',
@@ -129,29 +173,37 @@ export const diaCapacityBuildingProgram = {
 }
 
 // ── 3. /dia-exposure-visit ──────────────────────────────────────────────────
+// Backend update 2026-11-09 — same roId / industryAssociationId FK pair
+// introduced on CB Program is now mirrored here.
 export const diaExposureVisit = {
   ...crud('/dia-exposure-visit'),
-  toRequest: (v = {}) => ({
-    roName:                   trimOrNull(v.ro),
-    industryAssociationName:  trimOrNull(v.ia_name),
-    visitDate:                dateOrNull(v.visit_date),
-    visitDuration:            trimOrNull(v.duration),
-    theme:                    trimOrNull(v.theme),
-    description:              trimOrNull(v.subject),
-    partOfDia:                yn(v.part_of_dia),
-    costInterventionType:     trimOrNull(v.cost_intervention),
-    associationContribution:  numOrNull(v.association_contribution),
-    costBreakup:              trimOrNull(v.cost_breakup),
-    trainerName:              trimOrNull(v.trainer_name),
-    attendeesCount:           intOrNull(v.attendee_count),
-    visitReportPrepared:      yn(v.visit_report_prepared),
-    visitReportPath:          trimOrNull(v.visit_report_path),
-    feedbackCollected:        yn(v.feedback_collected),
-    feedbackPath:             trimOrNull(v.feedback_path),
-  }),
+  toRequest: (v = {}) => {
+    const ro = unpackAuto(v.ro)
+    const ia = unpackAuto(v.ia_name)
+    return {
+      roId:                     ro.id,
+      industryAssociationId:    ia.id,
+      roName:                   ro.name,
+      industryAssociationName:  ia.name,
+      visitDate:                dateOrNull(v.visit_date),
+      visitDuration:            trimOrNull(v.duration),
+      theme:                    trimOrNull(v.theme),
+      description:              trimOrNull(v.subject),
+      partOfDia:                yn(v.part_of_dia),
+      costInterventionType:     trimOrNull(v.cost_intervention),
+      associationContribution:  numOrNull(v.association_contribution),
+      costBreakup:              trimOrNull(v.cost_breakup),
+      trainerName:              trimOrNull(v.trainer_name),
+      attendeesCount:           intOrNull(v.attendee_count),
+      visitReportPrepared:      yn(v.visit_report_prepared),
+      visitReportPath:          trimOrNull(v.visit_report_path),
+      feedbackCollected:        yn(v.feedback_collected),
+      feedbackPath:             trimOrNull(v.feedback_path),
+    }
+  },
   fromResponse: (r = {}) => ({
-    ro:                       r.roName || '',
-    ia_name:                  r.industryAssociationName || '',
+    ro:                       packAuto(r.roId, r.roName),
+    ia_name:                  packAuto(r.industryAssociationId, r.industryAssociationName),
     visit_date:               r.visitDate || '',
     duration:                 r.visitDuration || '',
     theme:                    r.theme || '',

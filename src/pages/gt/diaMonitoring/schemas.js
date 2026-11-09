@@ -39,6 +39,15 @@ const PARTICIPANT_TYPE_OPTIONS = [
   'IA Member', 'Business Support Executive (BSE)',
 ]
 
+// Udyam Aadhar / Udyam Registration number — government format is
+// UDYAM-<state 2 letters>-<district 2 digits>-<enterprise 7 digits>,
+// e.g. UDYAM-TN-14-0012345. The hyphens are mandatory. The pattern runs
+// in FormRenderer's generic `pattern` check so the error shows up inline.
+const UDYAM_PATTERN = {
+  re: /^UDYAM-[A-Z]{2}-\d{2}-\d{7}$/,
+  msg: 'Format: UDYAM-XX-00-0000000 (e.g. UDYAM-TN-14-0012345)',
+}
+
 // ── 1. DIA Enhancement log (sheet "DIA enhancement-P") ──────────────────────
 export const diaEnhancementSchema = {
   key: 'dia-enhancement',
@@ -60,8 +69,25 @@ export const diaEnhancementSchema = {
         options: ENHANCEMENT_STATUS_OPTIONS },
     ] },
     { n: 3, title: 'Points of Contact', fields: [
-      { name: 'poc_sidbi', label: 'POC — SIDBI', type: 'text', span: 6, required: true },
-      { name: 'poc_gt', label: 'POC — GT', type: 'text', span: 6, required: true },
+      // POCs are free-form names but the form host hydrates a suggestion
+      // list from the `/users` directory (SIDBI roles for POC-SIDBI, GT
+      // roles for POC-GT). `freeSolo` stays on so a POC not in the
+      // directory can still be typed in.
+      { name: 'poc_sidbi', label: 'POC — SIDBI', type: 'autocomplete', span: 6, required: true,
+        dependsOn: ['_sidbi_users'],
+        optionsFrom: (v) => (Array.isArray(v._sidbi_users) ? v._sidbi_users : []),
+        placeholder: 'Search a SIDBI user or type a new name' },
+      { name: 'poc_gt', label: 'POC — GT', type: 'autocomplete', span: 6, required: true,
+        dependsOn: ['_gt_users'],
+        optionsFrom: (v) => (Array.isArray(v._gt_users) ? v._gt_users : []),
+        placeholder: 'Search a GT user or type a new name' },
+    ] },
+    // Backend added `enhancementSupportFilePath: string` on 2026-11-09 —
+    // the mapper in diaMonitoring.js ships this field now.
+    { n: 4, title: 'Attachment', fields: [
+      { name: 'attachment_path', label: 'Supporting document link / path', type: 'text', span: 12,
+        placeholder: 'Paste a link or filename', max: 500,
+        help: 'Optional — enhancement note, release change-log, screen recording, etc.' },
     ] },
   ],
 }
@@ -71,8 +97,18 @@ export const capacityBuildingProgramSchema = {
   key: 'capacity-building-program',
   sections: [
     { n: 1, title: 'Association & Event', fields: [
-      { name: 'ro', label: 'Name of RO', type: 'text', span: 6, required: true },
-      { name: 'ia_name', label: 'Full Name of Industry Association', type: 'text', span: 6, required: true },
+      // RO + IA are searchable dropdowns sourced from `/regional-office`
+      // and `/industry-association-registrations/dropdown`. `freeSolo` is
+      // on so an RO / IA that isn't in the directory can still be typed
+      // in — backend accepts a plain string in either column.
+      { name: 'ro', label: 'Name of RO', type: 'autocomplete', span: 6, required: true,
+        dependsOn: ['_ro_options'],
+        optionsFrom: (v) => (Array.isArray(v._ro_options) ? v._ro_options : []),
+        placeholder: 'Search a regional office' },
+      { name: 'ia_name', label: 'Full Name of Industry Association', type: 'autocomplete', span: 6, required: true,
+        dependsOn: ['_ia_options'],
+        optionsFrom: (v) => (Array.isArray(v._ia_options) ? v._ia_options : []),
+        placeholder: 'Search an IA' },
       { name: 'target_audience', label: 'Training/Workshop for', type: 'select', span: 6, required: true,
         options: PARTICIPANT_TYPE_OPTIONS },
       { name: 'event_name', label: 'Name of the Event', type: 'text', span: 6, required: true },
@@ -146,8 +182,8 @@ export const cbParticipantSchema = {
       { name: 'contact_no', label: 'Contact No.', type: 'tel', span: 6, required: true },
       { name: 'pan_no', label: 'PAN No.', type: 'text', span: 6, max: 10, placeholder: 'ABCDE1234F',
         help: 'Either PAN or Udyam Aadhar must be provided' },
-      { name: 'udyam_aadhar_no', label: 'Udyam Aadhar No.', type: 'text', span: 6, max: 20,
-        placeholder: 'UDYAM-XX-00-0000000' },
+      { name: 'udyam_aadhar_no', label: 'Udyam Aadhar No.', type: 'text', span: 6, max: 19,
+        placeholder: 'UDYAM-XX-00-0000000', pattern: UDYAM_PATTERN, min: 0 },
     ] },
   ],
 }
@@ -157,8 +193,17 @@ export const exposureVisitSchema = {
   key: 'exposure-visit',
   sections: [
     { n: 1, title: 'Association & Visit', fields: [
-      { name: 'ro', label: 'Name of RO', type: 'text', span: 6, required: true },
-      { name: 'ia_name', label: 'Name of Industry Association', type: 'text', span: 6, required: true },
+      // Searchable pickers for RO + IA — same contract as the Capacity
+      // Building form. `freeSolo` lets a user type any value when the
+      // directory doesn't include it yet.
+      { name: 'ro', label: 'Name of RO', type: 'autocomplete', span: 6, required: true,
+        dependsOn: ['_ro_options'],
+        optionsFrom: (v) => (Array.isArray(v._ro_options) ? v._ro_options : []),
+        placeholder: 'Search a regional office' },
+      { name: 'ia_name', label: 'Name of Industry Association', type: 'autocomplete', span: 6, required: true,
+        dependsOn: ['_ia_options'],
+        optionsFrom: (v) => (Array.isArray(v._ia_options) ? v._ia_options : []),
+        placeholder: 'Search an IA' },
       { name: 'visit_date', label: 'Date of Exposure Visit', type: 'date', span: 6, required: true },
       { name: 'duration', label: 'Duration of Exposure Visit', type: 'text', span: 6, required: true,
         placeholder: 'e.g. 3 days' },
@@ -215,8 +260,8 @@ export const exposureVisitParticipantSchema = {
       { name: 'contact_no', label: 'Contact No.', type: 'tel', span: 6, required: true },
       { name: 'pan_no', label: 'PAN No.', type: 'text', span: 6, max: 10, placeholder: 'ABCDE1234F',
         help: 'Either PAN or Udyam Aadhar must be provided' },
-      { name: 'udyam_aadhar_no', label: 'Udyam Aadhar No.', type: 'text', span: 6, max: 20,
-        placeholder: 'UDYAM-XX-00-0000000' },
+      { name: 'udyam_aadhar_no', label: 'Udyam Aadhar No.', type: 'text', span: 6, max: 19,
+        placeholder: 'UDYAM-XX-00-0000000', pattern: UDYAM_PATTERN, min: 0 },
     ] },
   ],
 }
