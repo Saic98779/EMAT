@@ -82,12 +82,14 @@ export const diaEnhancementSchema = {
         optionsFrom: (v) => (Array.isArray(v._gt_users) ? v._gt_users : []),
         placeholder: 'Search a GT user or type a new name' },
     ] },
-    // Backend added `enhancementSupportFilePath: string` on 2026-11-09 —
-    // the mapper in diaMonitoring.js ships this field now.
+    // Backend `enhancementSupportFilePath` (2026-11-09). Real file picker
+    // — the actual upload happens post-save in DiaMonitoringForm: create
+    // the record first to get an id, upload via /files with stage
+    // `dia-enhancement`, then PATCH the URL back onto the record (same
+    // two-phase pattern DIA 3C Info Series uses).
     { n: 4, title: 'Attachment', fields: [
-      { name: 'attachment_path', label: 'Supporting document link / path', type: 'text', span: 12,
-        placeholder: 'Paste a link or filename', max: 500,
-        help: 'Optional — enhancement note, release change-log, screen recording, etc.' },
+      { name: 'attachment_path', label: 'Supporting document', type: 'file', span: 12, single: true,
+        help: 'Enhancement notes, release change-log, screen recording, etc. Optional.' },
     ] },
   ],
 }

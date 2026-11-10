@@ -21,6 +21,7 @@ import {
   useRegionalOfficeOptions, useUsersByRole,
 } from '../../../queries'
 import { BY_SLUG } from '../../../apis/diaMonitoring'
+import { uploadContentAttachments } from '../../../apis/diaContent'
 
 // Generic form host — resolves the schema from `formBySlug(:form)` and
 // talks to the backend via the useDiaMonitoring* hooks. Dropdown sources
@@ -154,13 +155,50 @@ function FormHost({ def, navigate }) {
     }
     try {
       const clean = stripReserved(values)
+      // DIA Enhancement is the only slug with a `type: 'file'` field right
+      // now. If a fresh `File` was picked we do the two-phase upload after
+      // the record is persisted (same pattern as Dia3cInfoSeries):
+      //   1. create/update the record (file field left as null)
+      //   2. uploadContentAttachments(stage, id, [file]) → URL
+      //   3. PUT the URL back into enhancementSupportFilePath
+      const pickedFile = slug === 'dia-enhancement'
+        ? firstFileObject(values.attachment_path)
+        : null
+
+      let savedId
       if (editingId != null) {
         await updateM.mutateAsync({ id: editingId, values: clean })
-        setToast({ severity: 'success', msg: 'Entry updated.' })
+        savedId = editingId
       } else {
-        await createM.mutateAsync(clean)
-        setToast({ severity: 'success', msg: 'Entry saved.' })
+        const saved = await createM.mutateAsync(clean)
+        // apiFetch unwraps the envelope → payload.id is the new record.
+        savedId = saved?.id
       }
+
+      if (pickedFile && savedId) {
+        try {
+          const urls = await uploadContentAttachments('dia-enhancement', savedId, [pickedFile])
+          const url = urls?.[0]
+          if (url) {
+            // PUT the record again with the uploaded URL, preserving
+            // everything else the user just saved.
+            await updateM.mutateAsync({
+              id: savedId,
+              values: { ...clean, attachment_path: [url] },
+            })
+          }
+        } catch (uploadErr) {
+          setToast({
+            severity: 'warning',
+            msg: `Entry saved, but attachment upload failed: ${uploadErr?.message || 'unknown error'}.`,
+          })
+          setEditingId(null)
+          resetToDefaults()
+          return
+        }
+      }
+
+      setToast({ severity: 'success', msg: editingId != null ? 'Entry updated.' : 'Entry saved.' })
       setEditingId(null)
       resetToDefaults()
     } catch (err) {
@@ -248,6 +286,13 @@ function FormHost({ def, navigate }) {
         values={values}
         setValue={setValue}
         showAllErrors={showAllErrors}
+        // When editing an existing DIA Enhancement, scope the file
+        // previews back to the /files endpoint using the same
+        // `(id, stage, id)` triple the upload step used. Lets the
+        // FileChip click-through work for files saved earlier.
+        fileScope={slug === 'dia-enhancement' && editingId != null
+          ? { registrationId: editingId, stage: 'dia-enhancement', stageId: editingId }
+          : null}
       />
 
       <Paper
@@ -293,7 +338,6 @@ function FormHost({ def, navigate }) {
 
       <ViewRowDialog
         row={viewingRow}
-        schema={schema}
         onClose={() => setViewingRow(null)}
       />
 
@@ -337,6 +381,17 @@ function userToOption(u = {}) {
   const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
     || u.username || `User #${u.id}`
   return { value: u.id, label: name }
+}
+
+// Pull the first browser `File` object out of an Uploader value — used to
+// decide whether a two-phase post-save upload is needed. Strings are
+// already-persisted URLs and skip the upload step.
+function firstFileObject(v) {
+  const arr = Array.isArray(v) ? v : (v ? [v] : [])
+  for (const item of arr) {
+    if (item instanceof File) return item
+  }
+  return null
 }
 
 function SavedRows({ rows, isLoading, isError, error, mod, onView, onEdit, onRemove, isDeleting, editingId }) {
@@ -423,7 +478,7 @@ function SavedRows({ rows, isLoading, isError, error, mod, onView, onEdit, onRem
 // Read-only view of every field in a saved row, grouped by schema section.
 // Pretty-prints booleans, ISO dates, numbers and arrays; renders unknown
 // values via JSON.stringify so bugs are visible rather than silent.
-function ViewRowDialog({ row, schema, onClose }) {
+function ViewRowDialog({ row, onClose }) {
   const raw = row?._raw || row
   if (!raw) return null
   return (

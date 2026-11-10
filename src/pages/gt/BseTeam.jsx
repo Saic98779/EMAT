@@ -202,6 +202,7 @@ export default function BseTeam() {
   )
 }
 
+
 function Stat({ label, value }) {
   return (
     <Box sx={{ flex: 1, bgcolor: 'background.default', borderRadius: 2, p: 1.5, minWidth: 0 }}>
@@ -210,3 +211,4 @@ function Stat({ label, value }) {
     </Box>
   )
 }
+

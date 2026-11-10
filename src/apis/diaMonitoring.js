@@ -52,6 +52,23 @@ const packAuto = (id, name) => {
   return ''
 }
 
+// Extract the persisted URL / filename out of an Uploader value. The field
+// holds an array where elements are either:
+//   • `File` objects — just picked, not yet uploaded. Return null here;
+//     the form host uploads them post-save and PATCHes the real URL in.
+//   • strings — already-persisted URLs/filenames from a previous save.
+//     Return the first one.
+const filePathFromUploader = (v) => {
+  const arr = Array.isArray(v) ? v : (v ? [v] : [])
+  if (!arr.length) return null
+  const first = arr[0]
+  if (typeof first === 'string') return first.trim() || null
+  return null
+}
+
+// Wrap a persisted path string into the array shape Uploader expects.
+const uploaderValueFromPath = (p) => (p ? [p] : [])
+
 function crud(path) {
   return {
     list:   ({ signal } = {}) => apiFetch(path, { signal }),
@@ -91,7 +108,7 @@ export const diaEnhancement = {
       pocGt:                      gt.name,
       sidbiPocId:                 sidbi.id,
       gtPocId:                    gt.id,
-      enhancementSupportFilePath: trimOrNull(v.attachment_path),
+      enhancementSupportFilePath: filePathFromUploader(v.attachment_path),
     }
   },
   fromResponse: (r = {}) => ({
@@ -103,7 +120,7 @@ export const diaEnhancement = {
     status:               r.status || '',
     poc_sidbi:            packAuto(r.sidbiPocId, r.pocSidbi),
     poc_gt:               packAuto(r.gtPocId, r.pocGt),
-    attachment_path:      r.enhancementSupportFilePath || '',
+    attachment_path:      uploaderValueFromPath(r.enhancementSupportFilePath),
   }),
   summary: (r = {}) => [r.platform, r.enhancementType, r.status].filter(Boolean).join(' · '),
 }
